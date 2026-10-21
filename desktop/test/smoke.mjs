@@ -40,7 +40,10 @@ const results = [];
 function check(name, ok, evidence) {
   results.push({ name, ok: !!ok, evidence });
   console.log(`${ok ? 'PASS' : 'FAIL'}  ${name}${evidence !== undefined ? '  ' + JSON.stringify(evidence) : ''}`);
+  // in GitHub Actions a failed check also becomes an annotation, readable without the job log
+  if (!ok && process.env.GITHUB_ACTIONS) console.log(`::error title=Smoke test (${process.platform})::${annotate(name + (evidence !== undefined ? '  ' + JSON.stringify(evidence) : ''))}`);
 }
+const annotate = (t) => t.slice(0, 4000).replace(/%/g, '%25').replace(/\r/g, '%0D').replace(/\n/g, '%0A');
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 // Chromium's --log-net-log JSON; if the app was killed the closing brackets may be missing
 function readNetLog(file) {
@@ -269,4 +272,5 @@ try {
 failed = results.some((r) => !r.ok);
 fs.writeFileSync(path.join(tmp, 'results.json'), JSON.stringify(results, null, 2));
 console.log(`\n${results.filter((r) => r.ok).length}/${results.length} passed (${dev ? 'electron .' : exe}); details in ${path.join(tmp, 'results.json')}`);
+if (process.env.GITHUB_ACTIONS) console.log(`::notice title=Smoke test (${process.platform})::${results.filter((r) => r.ok).length}/${results.length} passed`);
 process.exit(failed ? 1 : 0);
