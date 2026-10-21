@@ -7,6 +7,7 @@ on:
     branches: [main]
     tags: ['v*']
   workflow_dispatch:
+  workflow_call:        # run by release.yml
 
 permissions:
   contents: write
@@ -57,12 +58,12 @@ jobs:
       - name: Build the desktop packages
         working-directory: desktop
         run: |
-          # on a tag v1.2.3 the packages get version 1.2.3
-          args=()
+          # version: from a tag v1.2.3, otherwise from build/package.json (shared with web and Android)
           v="${GITHUB_REF_NAME#v}"
-          if [[ "$GITHUB_REF" == refs/tags/v* && "$v" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]; then
-            args+=("-c.extraMetadata.version=$v")
+          if ! [[ "$GITHUB_REF" == refs/tags/v* && "$v" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]; then
+            v="$(node -p "require('../build/package.json').version")"
           fi
+          args=("-c.extraMetadata.version=$v")
           npm run ${{ matrix.script }} -- "${args[@]}"
           ls -l out
 
