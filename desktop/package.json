@@ -1,0 +1,109 @@
+{
+  "name": "glina",
+  "productName": "Glina",
+  "version": "1.0.0",
+  "description": "Глина Sculpt: безплатно 3D скулптиране със стилус, работи без интернет",
+  "homepage": "https://github.com/maevjoan-hash/glina-sculpt",
+  "author": {
+    "name": "Glina Sculpt"
+  },
+  "license": "UNLICENSED",
+  "private": true,
+  "main": "main.js",
+  "scripts": {
+    "prepare-app": "node scripts/prepare-app.mjs",
+    "start": "npm run prepare-app && electron .",
+    "dist:linux": "npm run prepare-app && electron-builder --linux AppImage deb --x64 --publish never",
+    "dist:win": "npm run prepare-app && electron-builder --win nsis portable --x64 --publish never",
+    "dist:win-from-linux": "npm run prepare-app && electron-builder --win portable zip --x64 --publish never",
+    "test": "node test/smoke.mjs"
+  },
+  "desktopName": "glina.desktop",
+  "build": {
+    "appId": "bg.glina.sculpt",
+    "productName": "Glina",
+    "copyright": "Глина Sculpt",
+    "directories": {
+      "output": "out",
+      "buildResources": "resources"
+    },
+    "files": [
+      "main.js",
+      "app/**/*"
+    ],
+    "electronLanguages": [
+      "bg",
+      "en-US"
+    ],
+    "icon": "../build/icons/icon-1024.png",
+    "publish": null,
+    "linux": {
+      "target": [
+        "AppImage",
+        "deb"
+      ],
+      "icon": "icons",
+      "category": "Graphics",
+      "executableName": "glina",
+      "syncDesktopName": true,
+      "synopsis": "3D скулптиране със стилус, без интернет",
+      "description": "Безплатно 3D скулптиране със стилус (с натиск), мишка или пръст. Работи изцяло без интернет.",
+      "maintainer": "Glina Sculpt <glina@example.invalid>",
+      "artifactName": "Glina-${version}-${arch}.${ext}",
+      "desktop": {
+        "entry": {
+          "Name": "Глина",
+          "Name[bg]": "Глина",
+          "GenericName": "3D скулптиране",
+          "Keywords": "3D;скулптура;sculpt;модел;stylus;OBJ;STL;"
+        }
+      }
+    },
+    "appImage": {
+      "executableArgs": []
+    },
+    "deb": {
+      "packageName": "glina",
+      "artifactName": "glina_${version}_${arch}.${ext}"
+    },
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        },
+        {
+          "target": "portable",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "artifactName": "Glina-${version}-${arch}-win.${ext}"
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "Глина",
+      "uninstallDisplayName": "Глина",
+      "installerLanguages": [
+        "bg_BG"
+      ],
+      "language": "1026",
+      "artifactName": "Glina-Setup-${version}-${arch}.${ext}"
+    },
+    "portable": {
+      "artifactName": "Glina-${version}-${arch}-portable.${ext}"
+    }
+  },
+  "devDependencies": {
+    "electron": "44.6.0",
+    "electron-builder": "26.17.0",
+    "playwright-core": "1.56.1"
+  }
+}

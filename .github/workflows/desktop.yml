@@ -1,0 +1,97 @@
+# Builds the desktop apps (Electron) for Linux and Windows from the offline single-file app
+# and attaches them to the release on tags v*.
+name: desktop
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            platform: linux
+            script: dist:linux
+            files: |
+              desktop/out/*.AppImage
+              desktop/out/*.deb
+          - os: windows-latest   # native build, so the installer and the .exe get their icon without Wine
+            platform: windows
+            script: dist:win
+            files: |
+              desktop/out/Glina-Setup-*.exe
+              desktop/out/*-portable.exe
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: |
+            build/package-lock.json
+            desktop/package-lock.json
+
+      - name: Build the offline web app (dist/glina.html)
+        working-directory: build
+        run: |
+          npm ci
+          node build.mjs
+
+      - name: Install the desktop build tools
+        working-directory: desktop
+        run: npm ci
+
+      - name: Build the desktop packages
+        working-directory: desktop
+        run: |
+          # on a tag v1.2.3 the packages get version 1.2.3
+          args=()
+          v="${GITHUB_REF_NAME#v}"
+          if [[ "$GITHUB_REF" == refs/tags/v* && "$v" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]; then
+            args+=("-c.extraMetadata.version=$v")
+          fi
+          npm run ${{ matrix.script }} -- "${args[@]}"
+          ls -l out
+
+      - name: Smoke test (Linux, headless)
+        if: matrix.platform == 'linux'
+        working-directory: desktop
+        run: |
+          # Ubuntu 24.04 blocks unprivileged user namespaces, which Chromium's sandbox needs
+          sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0 || true
+          xvfb-run -a -s "-screen 0 1920x1080x24" node test/smoke.mjs
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: glina-desktop-${{ matrix.platform }}
+          path: ${{ matrix.files }}
+          if-no-files-found: error
+
+  release:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: glina-desktop-*
+          path: packages
+          merge-multiple: true
+      - run: ls -l packages
+      - name: Attach to the release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: packages/*

@@ -1,0 +1,21 @@
+{
+  "appId": "bg.glina.sculpt",
+  "appName": "Глина",
+  "webDir": "www",
+  "backgroundColor": "#121519",
+  "server": {
+    "androidScheme": "https"
+  },
+  "android": {
+    "allowMixedContent": false,
+    "captureInput": false
+  },
+  "plugins": {
+    "SystemBars": {
+      "style": "DARK",
+      "hidden": true,
+      "insetsHandling": "css",
+      "initialViewportFitValueHint": "cover"
+    }
+  }
+}

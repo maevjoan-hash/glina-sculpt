@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- the app's dark background (same as the web page) -->
+    <color name="glina_background">#121519</color>
+</resources>

@@ -1,0 +1,44 @@
+# Builds the offline single-file app and the installable web app (PWA) and attaches them to releases.
+name: web
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  web:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: build/package-lock.json
+      - name: Build offline versions
+        working-directory: build
+        run: |
+          npm ci
+          node build.mjs
+      - name: Pack the web app
+        run: |
+          cp dist/glina.html Glina-offline.html
+          (cd dist/web && zip -r ../../Glina-web-app.zip .)
+      - uses: actions/upload-artifact@v4
+        with:
+          name: glina-web
+          path: |
+            Glina-offline.html
+            Glina-web-app.zip
+      - name: Attach to the release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            Glina-offline.html
+            Glina-web-app.zip

@@ -1,0 +1,16 @@
+# dependencies and build output (GitHub Actions rebuilds everything)
+node_modules/
+dist/
+build/.tmp/
+desktop/out/
+desktop/app/glina.html
+android/www/
+android/android/app/build/
+android/android/build/
+android/android/.gradle/
+android/android/app/src/main/assets/public/
+android/android/capacitor-cordova-android-plugins/
+android/android/local.properties
+*.keystore
+*.jks
+.DS_Store

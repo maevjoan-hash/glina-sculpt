@@ -1,0 +1,132 @@
+# Builds the Android app (Capacitor, folder android/): a debug APK on every run, and a signed
+# release APK + AAB when the signing secrets are set. Attaches them to the GitHub release on tags v*.
+#
+# Release signing (optional): Settings > Secrets and variables > Actions > New repository secret.
+# Set all four, or none (then only the debug APK is built):
+#   ANDROID_KEYSTORE_BASE64    the keystore file in base64:  base64 -w0 glina-release.jks
+#   ANDROID_KEYSTORE_PASSWORD  the keystore password
+#   ANDROID_KEY_ALIAS          the key alias inside the keystore (e.g. glina)
+#   ANDROID_KEY_PASSWORD       the key password (the same as the keystore password for PKCS12 keystores)
+# How to make the keystore: android/README.md.
+name: android
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  android:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      HAS_RELEASE_KEY: ${{ secrets.ANDROID_KEYSTORE_BASE64 != '' && secrets.ANDROID_KEYSTORE_PASSWORD != '' && secrets.ANDROID_KEY_ALIAS != '' && secrets.ANDROID_KEY_PASSWORD != '' }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: |
+            build/package-lock.json
+            android/package-lock.json
+
+      - name: Build the web app (dist/web)
+        working-directory: build
+        run: |
+          npm ci
+          node build.mjs
+
+      - name: Copy it into the Android project (www -> cap sync)
+        working-directory: android
+        run: |
+          npm ci
+          npm run sync
+
+      - name: Test export and the Capacitor bridge in Chrome
+        working-directory: android
+        run: npm test
+
+      - name: Version
+        id: version
+        run: |
+          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then v="${GITHUB_REF_NAME#v}"; else v="$(node -p "require('./build/package.json').version")"; fi
+          echo "version=$v" >> "$GITHUB_OUTPUT"
+          echo "Глина $v"
+
+      # Capacitor 8 compiles with Java 21 (capacitor.build.gradle: JavaVersion.VERSION_21)
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+
+      - uses: android-actions/setup-android@v3
+
+      # Gradle cache; also checks gradle-wrapper.jar against the official checksums
+      - uses: gradle/actions/setup-gradle@v4
+
+      # the debug key lives in ~/.android/debug.keystore; keeping it between runs lets a newer
+      # debug APK install over an older one (otherwise Android refuses: different signature)
+      - name: Keep the debug signing key between runs
+        uses: actions/cache@v4
+        with:
+          path: ~/.android/debug.keystore
+          key: glina-android-debug-keystore
+
+      - name: Build the debug APK
+        working-directory: android/android
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          chmod +x gradlew
+          ./gradlew --no-daemon assembleDebug -PglinaVersion="$VERSION"
+
+      - name: Build the signed release APK and AAB
+        if: env.HAS_RELEASE_KEY == 'true'
+        working-directory: android/android
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          GLINA_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          GLINA_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          GLINA_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          export GLINA_KEYSTORE_FILE="$RUNNER_TEMP/glina-release.jks"
+          echo "$ANDROID_KEYSTORE_BASE64" | base64 --decode > "$GLINA_KEYSTORE_FILE"
+          ./gradlew --no-daemon assembleRelease bundleRelease -PglinaVersion="$VERSION"
+          rm -f "$GLINA_KEYSTORE_FILE"
+
+      - name: Collect and check the files
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          mkdir -p out
+          outputs=android/android/app/build/outputs
+          cp "$outputs/apk/debug/app-debug.apk" "out/Glina-$VERSION-debug.apk"
+          if [ "$HAS_RELEASE_KEY" = "true" ]; then
+            cp "$outputs/apk/release/app-release.apk" "out/Glina-$VERSION.apk"
+            cp "$outputs/bundle/release/app-release.aab" "out/Glina-$VERSION.aab"
+          fi
+          tools="$ANDROID_HOME/build-tools/$(ls "$ANDROID_HOME/build-tools" | sort -V | tail -1)"
+          for apk in out/*.apk; do
+            echo "== $apk"
+            "$tools/apksigner" verify --print-certs "$apk" | grep -E 'Signer #1 certificate (DN|SHA-256)'
+            "$tools/aapt2" dump badging "$apk" | grep -E "^package:|^application-label:|^sdkVersion:|^targetSdkVersion:"
+          done
+          ls -l out
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: glina-android
+          path: out/*
+
+      - name: Attach to the release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: out/*

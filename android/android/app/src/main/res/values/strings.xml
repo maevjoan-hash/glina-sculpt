@@ -1,0 +1,8 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">Глина</string>
+    <string name="title_activity_main">Глина</string>
+    <string name="package_name">bg.glina.sculpt</string>
+    <string name="custom_url_scheme">bg.glina.sculpt</string>
+    <string name="press_back_again">Натиснете „Назад“ още веднъж, за да излезете</string>
+</resources>
