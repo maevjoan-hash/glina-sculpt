@@ -8,8 +8,9 @@ def glinaVersion = (findProperty('glinaVersion') ?: {
     pkg.exists() ? new groovy.json.JsonSlurper().parse(pkg).version : '1.0.0'
 }()).toString()
 def glinaVersionCode = (findProperty('glinaVersionCode') ?: {
-    def m = (glinaVersion =~ /^(\d+)\.(\d+)\.(\d+)/)
-    m.find() ? m.group(1).toInteger() * 10000 + m.group(2).toInteger() * 100 + m.group(3).toInteger() : 1
+    // minor and patch may be missing: 1.2 -> 10200, 2 -> 20000
+    def m = (glinaVersion =~ /^(\d+)(?:\.(\d+))?(?:\.(\d+))?/)
+    m.find() ? m.group(1).toInteger() * 10000 + (m.group(2) ?: '0').toInteger() * 100 + (m.group(3) ?: '0').toInteger() : 1
 }()).toString().toInteger()
 
 // Release signing, only when a keystore is given: in GitHub Actions from the repository secrets

@@ -118,8 +118,8 @@ const injected = [
   readAsset('public/cordova.js'), readAsset('public/cordova_plugins.js'), '',
 ].join('\n\n');
 const fsPlugin = installed.find((p) => p.id === 'Filesystem'), sharePlugin = installed.find((p) => p.id === 'Share');
-check('the APK registers the Filesystem and Share plugins with writeFile and share',
-  fsPlugin && sharePlugin && fsPlugin.methods.some((m) => m.name === 'writeFile' && m.rtype === 'promise') && sharePlugin.methods.some((m) => m.name === 'share'),
+check('the APK registers the Filesystem and Share plugins with writeFile, appendFile and share',
+  fsPlugin && sharePlugin && ['writeFile', 'appendFile'].every((n) => fsPlugin.methods.some((m) => m.name === n && m.rtype === 'promise')) && sharePlugin.methods.some((m) => m.name === 'share'),
   { plugins: [...builtIn, ...installed].map((p) => p.id) });
 
 // ---------- page helpers ----------
@@ -128,7 +128,10 @@ const FAKE_CAPACITOR = `
   window.Capacitor = {
     isNativePlatform: () => true, getPlatform: () => 'android',
     Plugins: {
-      Filesystem: { writeFile: async (o) => { window.__calls.push(['writeFile', o]); if (window.__mode === 'nospace') throw new Error('No space left on device'); return { uri: '${CACHE_DIR}' + o.path }; } },
+      Filesystem: {
+        writeFile: async (o) => { window.__calls.push(['writeFile', o]); if (window.__mode === 'nospace') throw new Error('No space left on device'); return { uri: '${CACHE_DIR}' + o.path }; },
+        appendFile: async (o) => { window.__calls.push(['appendFile', o]); },
+      },
       Share: { share: async (o) => { window.__calls.push(['share', o]); if (window.__mode === 'cancel') throw new Error('Share canceled'); return { activityType: 'com.example.files' }; } },
     },
   };`;
@@ -139,6 +142,7 @@ const FAKE_NATIVE = `
       const m = JSON.parse(json); window.__msgs.push(m);
       let data = {};
       if (m.pluginId === 'Filesystem' && m.methodName === 'writeFile') data = { uri: '${CACHE_DIR}' + m.options.path };
+      // appendFile answers with no data
       if (m.pluginId === 'Share' && m.methodName === 'share') data = { activityType: 'com.example.files' };
       const reply = { save: false, callbackId: m.callbackId, pluginId: m.pluginId, methodName: m.methodName, success: true, data };
       setTimeout(() => window.androidBridge.onmessage({ data: JSON.stringify(reply) }), 5);
@@ -192,6 +196,19 @@ function stlProblem(buf, m) {
   return null;
 }
 const isBase64 = (s) => typeof s === 'string' && s.length > 0 && s.length % 4 === 0 && /^[A-Za-z0-9+/]+={0,2}$/.test(s);
+// The file arrives as writeFile (first part) + appendFile (the rest, 3 MB each) + share.
+// Returns the joined bytes, or a description of what is wrong with the sequence.
+function joinParts(parts, file) {
+  if (!parts.length) return { problem: 'no writeFile' };
+  const [first, ...rest] = parts;
+  if (first.method !== 'writeFile') return { problem: 'first call is ' + first.method };
+  for (const p of parts) {
+    if (p !== first && p.method !== 'appendFile') return { problem: 'unexpected ' + p.method };
+    if (p.o.path !== file || p.o.directory !== 'CACHE' || p.o.encoding !== undefined || !isBase64(p.o.data)) return { problem: 'bad options ' + JSON.stringify({ ...p.o, data: String(p.o.data).slice(0, 20) }) };
+    if (p !== parts[parts.length - 1] && Buffer.from(p.o.data, 'base64').length !== 3 * 1024 * 1024) return { problem: 'a middle part is not 3 MB' };
+  }
+  return { bytes: Buffer.concat(parts.map((p) => Buffer.from(p.o.data, 'base64'))), count: parts.length, appends: rest.length };
+}
 
 let browser;
 try {
@@ -234,21 +251,20 @@ try {
     for (const [label, file, kind] of [['OBJ', 'glina-model.obj', 'obj'], ['STL', 'glina-model.stl', 'stl']]) {
       await page.evaluate(() => { window.__calls.length = 0; });
       await exportFromMenu(page, label);
-      await page.waitForFunction(() => window.__calls.length >= 2, null, { timeout: 30000 });
+      await page.waitForFunction(() => window.__calls.some((c) => c[0] === 'share'), null, { timeout: 30000 });
       const calls = await page.evaluate(() => window.__calls);
       const m = await model(page);
-      const [w, s] = calls;
-      const okWrite = w[0] === 'writeFile' && w[1].path === file && w[1].directory === 'CACHE' && w[1].encoding === undefined && isBase64(w[1].data);
-      const bytes = okWrite ? Buffer.from(w[1].data, 'base64') : Buffer.alloc(0);
-      const problem = okWrite ? (kind === 'obj' ? objProblem(bytes, m) : stlProblem(bytes, m)) : 'bad writeFile call';
-      check(`stand-in: Export > ${label}: writeFile({path:'${file}', directory:'CACHE', data: base64}) holds a correct ${label} of the model`,
-        okWrite && !problem, { problem, bytes: bytes.length, vertices: m.n, triangles: m.f });
+      const s = calls[calls.length - 1];
+      const j = joinParts(calls.slice(0, -1).map(([method, o]) => ({ method, o })), file);
+      const problem = j.problem || (kind === 'obj' ? objProblem(j.bytes, m) : stlProblem(j.bytes, m));
+      check(`stand-in: Export > ${label}: writeFile + appendFile parts in CACHE join into a correct ${label} of the model`,
+        !problem, { problem, bytes: j.bytes && j.bytes.length, parts: j.count, vertices: m.n, triangles: m.f });
       check(`stand-in: Export > ${label}: share() gets the uri writeFile returned`,
         s[0] === 'share' && s[1].url === CACHE_DIR + file && s[1].title === file && s[1].dialogTitle === 'Запази или изпрати модела', s[1]);
     }
     await page.evaluate(() => { window.__calls.length = 0; window.__mode = 'cancel'; document.getElementById('toast').textContent = ''; });
     await exportFromMenu(page, 'STL');
-    await page.waitForFunction(() => window.__calls.length >= 2, null, { timeout: 30000 }); await page.waitForTimeout(300);
+    await page.waitForFunction(() => window.__calls.some((c) => c[0] === 'share'), null, { timeout: 30000 }); await page.waitForTimeout(300);
     const cancelToast = await page.evaluate(() => document.getElementById('toast').textContent);
     check('stand-in: closing the share sheet ("Share canceled") shows no error', cancelToast === '', cancelToast);
     await page.evaluate(() => { window.__calls.length = 0; window.__mode = 'nospace'; });
@@ -317,18 +333,18 @@ try {
     for (const [label, file, kind] of [['OBJ', 'glina-model.obj', 'obj'], ['STL', 'glina-model.stl', 'stl']]) {
       await page.evaluate(() => { window.__msgs.length = 0; });
       await exportFromMenu(page, label);
-      await page.waitForFunction(() => window.__msgs.filter((m) => m.pluginId === 'Filesystem' || m.pluginId === 'Share').length >= 2, null, { timeout: 30000 });
+      await page.waitForFunction(() => window.__msgs.some((m) => m.pluginId === 'Share'), null, { timeout: 30000 });
       await page.waitForTimeout(200);
       const msgs = (await page.evaluate(() => window.__msgs)).filter((m) => m.pluginId === 'Filesystem' || m.pluginId === 'Share');
       const m = await model(page);
-      const [w, s] = msgs;
-      const okWrite = w.pluginId === 'Filesystem' && w.methodName === 'writeFile' && w.options.path === file && w.options.directory === 'CACHE' && isBase64(w.options.data);
-      const bytes = okWrite ? Buffer.from(w.options.data, 'base64') : Buffer.alloc(0);
-      const problem = okWrite ? (kind === 'obj' ? objProblem(bytes, m) : stlProblem(bytes, m)) : 'bad writeFile message';
-      check(`bridge: Export > ${label} sends Filesystem.writeFile to native with a correct base64 ${label} of the sculpted model`,
-        okWrite && !problem, { problem, bytes: bytes.length, vertices: m.n, triangles: m.f, type: w.type });
+      const s = msgs[msgs.length - 1];
+      const fsMsgs = msgs.slice(0, -1);
+      const j = fsMsgs.every((x) => x.pluginId === 'Filesystem') ? joinParts(fsMsgs.map((x) => ({ method: x.methodName, o: x.options })), file) : { problem: 'non-Filesystem message before share' };
+      const problem = j.problem || (kind === 'obj' ? objProblem(j.bytes, m) : stlProblem(j.bytes, m));
+      check(`bridge: Export > ${label} sends Filesystem.writeFile (+ appendFile parts) to native that join into a correct ${label} of the sculpted model`,
+        !problem, { problem, bytes: j.bytes && j.bytes.length, parts: j.count, vertices: m.n, triangles: m.f });
       check(`bridge: then Share.share with the uri native returned`,
-        s.pluginId === 'Share' && s.methodName === 'share' && s.options.url === CACHE_DIR + file && s.options.title === file && s.options.dialogTitle === 'Запази или изпрати модела' && msgs.length === 2,
+        s.pluginId === 'Share' && s.methodName === 'share' && s.options.url === CACHE_DIR + file && s.options.title === file && s.options.dialogTitle === 'Запази или изпрати модела',
         s.options);
     }
     const regs = await page.evaluate(async () => (await navigator.serviceWorker.getRegistrations()).length);

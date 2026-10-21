@@ -2172,8 +2172,10 @@ $('fileIn').onchange = async () => {
   busy(true);
   try {
     let r;
+    // the Android picker lets any file through, so check the name before reading it all
     if (/\.stl$/i.test(file.name)) r = parseSTL(await file.arrayBuffer());
-    else r = parseOBJ(await file.text());
+    else if (/\.obj$/i.test(file.name)) r = parseOBJ(await file.text());
+    else throw new Error('изберете файл .obj или .stl.');
     if (!r.idx.length) throw new Error('Файлът няма триъгълници.');
     dropUnusedVerts(r);
     normalizeArrays(r.pos);
@@ -2237,8 +2239,15 @@ async function offerFile(filename, bytes) {
   const cap = window.Capacitor;
   if (cap && cap.isNativePlatform && cap.isNativePlatform() && cap.Plugins && cap.Plugins.Filesystem && cap.Plugins.Share) {
     try {
-      const res = await cap.Plugins.Filesystem.writeFile({ path: filename, data: bytesToBase64(bytes), directory: 'CACHE' });
-      await cap.Plugins.Share.share({ title: filename, url: res.uri, dialogTitle: 'Запази или изпрати модела' });
+      // in 3 MB parts (a multiple of 3, so each part is whole base64): one message with a big model
+      // (tens of MB) could run the WebView or the app out of memory
+      const CH = 3 * 1024 * 1024, FS = cap.Plugins.Filesystem;
+      let uri = null;
+      for (let o = 0; o === 0 || o < bytes.length; o += CH) {
+        const part = { path: filename, data: bytesToBase64(bytes.subarray(o, o + CH)), directory: 'CACHE' };
+        if (o === 0) uri = (await FS.writeFile(part)).uri; else await FS.appendFile(part);
+      }
+      await cap.Plugins.Share.share({ title: filename, url: uri, dialogTitle: 'Запази или изпрати модела' });
     } catch (e) {
       const msg = String((e && e.message) || e);
       if (!/cancel/i.test(msg)) toast('Файлът не може да се запише: ' + msg);

@@ -21,7 +21,8 @@ permissions:
 
 jobs:
   android:
-    runs-on: ubuntu-latest
+    # pinned: ubuntu-latest is moving to Ubuntu 26, where the Android setup failed (Oct 2026)
+    runs-on: ubuntu-24.04
     timeout-minutes: 45
     env:
       HAS_RELEASE_KEY: ${{ secrets.ANDROID_KEYSTORE_BASE64 != '' && secrets.ANDROID_KEYSTORE_PASSWORD != '' && secrets.ANDROID_KEY_ALIAS != '' && secrets.ANDROID_KEY_PASSWORD != '' }}
@@ -48,6 +49,11 @@ jobs:
           npm ci
           npm run sync
 
+      # the exact Chromium build that playwright-core is made for, not whatever Chrome the runner has
+      - name: Install Chromium for the test
+        working-directory: android
+        run: npx playwright-core install --with-deps chromium
+
       - name: Test export and the Capacitor bridge in Chrome
         working-directory: android
         run: npm test
@@ -65,7 +71,24 @@ jobs:
           distribution: temurin
           java-version: 21
 
-      - uses: android-actions/setup-android@v3
+      # Android SDK: the runner image normally has one; otherwise fetch Google's command-line tools.
+      # AGP downloads any missing platform or build-tools itself once the licences are accepted.
+      - name: Android SDK
+        run: |
+          SDK="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-}}"
+          if [ -z "$SDK" ] || [ ! -x "$SDK/cmdline-tools/latest/bin/sdkmanager" ]; then
+            SDK="$HOME/android-sdk"
+            mkdir -p "$SDK/cmdline-tools"
+            curl -fsSL -o "$RUNNER_TEMP/cmdline-tools.zip" https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip
+            unzip -q "$RUNNER_TEMP/cmdline-tools.zip" -d "$SDK/cmdline-tools"
+            mv "$SDK/cmdline-tools/cmdline-tools" "$SDK/cmdline-tools/latest"
+          fi
+          echo "ANDROID_HOME=$SDK" >> "$GITHUB_ENV"
+          echo "ANDROID_SDK_ROOT=$SDK" >> "$GITHUB_ENV"
+          echo "$SDK/cmdline-tools/latest/bin" >> "$GITHUB_PATH"
+          echo "$SDK/platform-tools" >> "$GITHUB_PATH"
+          yes | "$SDK/cmdline-tools/latest/bin/sdkmanager" --licenses > /dev/null || true
+          "$SDK/cmdline-tools/latest/bin/sdkmanager" --install "platform-tools" "platforms;android-36" "build-tools;36.0.0"
 
       # Gradle cache; also checks gradle-wrapper.jar against the official checksums
       - uses: gradle/actions/setup-gradle@v4
