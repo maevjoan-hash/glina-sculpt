@@ -1,7 +1,7 @@
 {
   "name": "glina",
   "productName": "Glina",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Глина Sculpt: безплатно 3D скулптиране със стилус, работи без интернет",
   "homepage": "https://github.com/maevjoan-hash/glina-sculpt",
   "author": {
@@ -64,7 +64,8 @@
     },
     "deb": {
       "packageName": "glina",
-      "artifactName": "glina_${version}_${arch}.${ext}"
+      "artifactName": "glina_${version}_${arch}.${ext}",
+      "packageCategory": "graphics"
     },
     "win": {
       "target": [
@@ -99,6 +100,11 @@
     },
     "portable": {
       "artifactName": "Glina-${version}-${arch}-portable.${ext}"
+    },
+    "electronFuses": {
+      "runAsNode": false,
+      "enableNodeOptionsEnvironmentVariable": false,
+      "onlyLoadAppFromAsar": true
     }
   },
   "devDependencies": {

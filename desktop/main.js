@@ -18,6 +18,8 @@ const ICON = path.join(__dirname, 'app', 'icon.png');
 // WebGL is required: if the GPU is blocklisted or missing (old drivers, virtual machines), allow Chromium's
 // software renderer. It is called "unsafe" because of untrusted web pages; this window only shows our own file.
 app.commandLine.appendSwitch('enable-unsafe-swiftshader');
+// Windows groups taskbar buttons by this id; the installer's shortcuts carry the same one (build.appId)
+if (process.platform === 'win32') app.setAppUserModelId('bg.glina.sculpt');
 
 let win = null;
 

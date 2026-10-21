@@ -2,7 +2,7 @@
 # To release: set the version in build/package.json, then push that commit to the `release` branch:
 #   git push origin main:release
 # This runs the web, desktop and Android workflows; when all of them pass it creates the tag
-# v<version> and the release with all the files (or adds the files to it if it already exists).
+# v<version> and the release with all the files. A version that is already released is refused.
 name: release
 
 on:
@@ -33,9 +33,20 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false   # npm install scripts must not see a write token
       - name: Version
         id: version
         run: echo "version=$(node -p "require('./build/package.json').version")" >> "$GITHUB_OUTPUT"
+      - name: Stop if this version is already released
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          if gh release view "v$VERSION" --repo "$GITHUB_REPOSITORY" > /dev/null 2>&1; then
+            echo "::error::v$VERSION is already released. Raise the version in build/package.json first."
+            exit 1
+          fi
       - uses: actions/download-artifact@v4
         with:
           path: files

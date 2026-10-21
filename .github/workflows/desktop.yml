@@ -37,6 +37,8 @@ jobs:
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false   # npm install scripts must not see a write token
       - uses: actions/setup-node@v4
         with:
           node-version: 22
@@ -66,6 +68,11 @@ jobs:
           args=("-c.extraMetadata.version=$v")
           npm run ${{ matrix.script }} -- "${args[@]}"
           ls -l out
+
+      - name: Smoke test (Windows)
+        if: matrix.platform == 'windows'
+        working-directory: desktop
+        run: node test/smoke.mjs --exe out/win-unpacked/Glina.exe
 
       - name: Smoke test (Linux, headless)
         if: matrix.platform == 'linux'
