@@ -43,7 +43,8 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           VERSION: ${{ steps.version.outputs.version }}
         run: |
-          if gh release view "v$VERSION" --repo "$GITHUB_REPOSITORY" > /dev/null 2>&1; then
+          # (published releases only: a draft left by a failed upload is reused and finished by the next run)
+          if gh api "repos/$GITHUB_REPOSITORY/releases/tags/v$VERSION" --silent > /dev/null 2>&1; then
             echo "::error::v$VERSION is already released. Raise the version in build/package.json first."
             exit 1
           fi
