@@ -13,4 +13,5 @@ android/android/capacitor-cordova-android-plugins/
 android/android/local.properties
 *.keystore
 *.jks
+!android/android/app/glina-debug.keystore
 .DS_Store
