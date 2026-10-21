@@ -29,9 +29,11 @@ const appArgs = dev ? [DESKTOP] : [];
 const sandboxArgs = process.getuid && process.getuid() === 0 ? ['--no-sandbox'] : [];
 const gpuArgs = process.env.GLINA_TEST_GPU === '1' ? [] : ['--disable-gpu'];
 
-// GLINA_TEST_DIR: where the test keeps its throw-away HOME, net log and exported file (default: the temp dir)
+// GLINA_TEST_DIR: where the test keeps its throw-away HOME, profile, net log and exported file (default: the temp dir)
 const tmp = fs.mkdtempSync(path.join(process.env.GLINA_TEST_DIR || os.tmpdir(), 'glina-test-'));
 const env = { ...process.env, HOME: tmp, XDG_CONFIG_HOME: path.join(tmp, '.config') };
+// the app's profile (autosave, single-instance lock) goes there too; on Windows HOME does not move %APPDATA%
+const profileArgs = [`--user-data-dir=${path.join(tmp, 'profile')}`];
 delete env.ELECTRON_RUN_AS_NODE;
 const netlog = path.join(tmp, 'netlog.json');
 const netlog2 = path.join(tmp, 'netlog2.json');
@@ -59,11 +61,18 @@ function netCheck(name, file) {
   const remoteUrls = urls.filter((u) => !/^(file|blob|data|devtools|chrome|about):/i.test(u) && u !== 'https://example.com/');
   const dns = nl.events.filter((e) => /^HOST_RESOLVER/.test(typeName[e.type]));
   const connects = nl.events.filter((e) => typeName[e.type] === 'TCP_CONNECT');
-  check(name, dns.length === 0 && connects.length === 0 && remoteUrls.length === 0, { events: nl.events.length, dns: dns.length, tcpConnect: connects.length, remoteUrls });
+  // which names were looked up, and by what (event types, source types), to tell a real lookup from bookkeeping
+  const dnsSources = new Set(dns.map((e) => e.source && e.source.id));
+  const sourceName = Object.fromEntries(Object.entries(nl.constants.logSourceType || {}).map(([k, v]) => [v, k]));
+  const hosts = [...new Set(nl.events.filter((e) => dnsSources.has(e.source && e.source.id) && e.params)
+    .flatMap((e) => [e.params.host, e.params.hostname, e.params.url].filter(Boolean)))];
+  const dnsTypes = {};
+  for (const e of dns) { const k = typeName[e.type] + '/' + (sourceName[e.source && e.source.type] || '?'); dnsTypes[k] = (dnsTypes[k] || 0) + 1; }
+  check(name, dns.length === 0 && connects.length === 0 && remoteUrls.length === 0, { events: nl.events.length, dns: dns.length, tcpConnect: connects.length, remoteUrls, hosts, dnsTypes });
 }
 
 async function launch(extraArgs = []) {
-  const app = await electron.launch({ executablePath: exe, args: [...appArgs, ...sandboxArgs, ...gpuArgs, ...extraArgs], env, timeout: 60000 });
+  const app = await electron.launch({ executablePath: exe, args: [...appArgs, ...sandboxArgs, ...gpuArgs, ...profileArgs, ...extraArgs], env, timeout: 60000 });
   const log = [];
   app.process().stdout.on('data', (d) => log.push(String(d)));
   app.process().stderr.on('data', (d) => log.push(String(d)));
@@ -71,7 +80,8 @@ async function launch(extraArgs = []) {
   const errors = [];
   page.on('console', (m) => { if (m.type() === 'error') errors.push(m.text()); });
   page.on('pageerror', (e) => errors.push(String(e)));
-  await page.waitForFunction(() => window.__glina && window.__glina.mesh && window.__glina.mesh.pos.length > 0, null, { timeout: 60000 });
+  await page.waitForFunction(() => window.__glina && window.__glina.mesh && window.__glina.mesh.pos.length > 0, null, { timeout: 60000 })
+    .catch((e) => { throw new Error(`${e.message} | page errors: ${errors.join(' | ')} | log: ${log.join('').slice(-1500)}`); });
   return { app, page, log, errors };
 }
 
@@ -122,12 +132,19 @@ try {
   const { app, page, log, errors } = await launch([`--log-net-log=${netlog}`]);
   check('page loads, window.__glina.mesh exists', true, { url: page.url().replace(/^.*\/resources\//, '…/resources/'), vertices: await page.evaluate(() => window.__glina.mesh.pos.length / 3) });
 
-  const win = await app.evaluate(({ BrowserWindow, Menu }) => {
+  const win = await app.evaluate(({ BrowserWindow, Menu, screen }) => {
     const w = BrowserWindow.getAllWindows()[0]; const wp = w.webContents.getLastWebPreferences();
-    return { title: w.getTitle(), size: w.getSize(), min: w.getMinimumSize(), bg: w.getBackgroundColor(), menu: Menu.getApplicationMenu(),
+    const wa = screen.getDisplayMatching(w.getBounds()).workAreaSize;
+    return { title: w.getTitle(), size: w.getSize(), workArea: [wa.width, wa.height], min: w.getMinimumSize(), bg: w.getBackgroundColor(), menu: Menu.getApplicationMenu(),
       contextIsolation: wp.contextIsolation, nodeIntegration: wp.nodeIntegration, sandbox: wp.sandbox, spellcheck: wp.spellcheck, count: BrowserWindow.getAllWindows().length };
   });
-  check('window: title Глина, 1400x900, min size, #121519, no menu, isolated+sandboxed', win.title === 'Глина' && win.size[0] === 1400 && win.size[1] === 900 && win.min[0] > 0 && win.bg.toLowerCase() === '#121519' && win.menu === null && win.contextIsolation && !win.nodeIntegration && win.sandbox && win.count === 1, win);
+  // 1400x900, or as much of it as the screen's work area allows (Windows shrinks a window that does not fit;
+  // GitHub's Windows runners have a 1024x768 screen)
+  const want = [Math.min(1400, win.workArea[0]), Math.min(900, win.workArea[1])];
+  // (fitted to the work area: Windows matches it exactly, X11 leaves a pixel or so)
+  const sizeOk = (win.size[0] === 1400 && win.size[1] === 900)
+    || (win.size[0] <= want[0] && win.size[1] <= want[1] && want[0] - win.size[0] <= 8 && want[1] - win.size[1] <= 8);
+  check('window: title Глина, 1400x900 (or the work area), min size, #121519, no menu, isolated+sandboxed', win.title === 'Глина' && sizeOk && win.min[0] > 0 && win.bg.toLowerCase() === '#121519' && win.menu === null && win.contextIsolation && !win.nodeIntegration && win.sandbox && win.count === 1, win);
   check('no Node.js in the page', await page.evaluate(() => typeof require === 'undefined' && typeof process === 'undefined'));
   // with the app's default flags on a machine without a usable GPU the first context is lost and restored ~1 s later
   await sleep(2000);   // (a loss may still be on its way)
@@ -255,9 +272,14 @@ try {
 
   // ---------------- second run: autosave restored, second instance exits ----------------
   const run2 = await launch([`--log-net-log=${netlog2}`]);
-  await sleep(500);
-  check('autosave (IndexedDB, file://) restores the model after restart', (await meshSum(run2.page)) === kept);
-  const second = spawn(exe, [...appArgs, ...sandboxArgs, ...gpuArgs], { env, stdio: 'ignore' });
+  // the app starts with the default sphere and swaps in the autosave once IndexedDB has read it
+  const restored = await run2.page.waitForFunction((k) => {
+    const p = window.__glina.mesh.pos; let s = 0;
+    for (let i = 0; i < p.length; i++) s += p[i] * ((i % 7) + 1);
+    return s === k;
+  }, kept, { timeout: 10000 }).then(() => true, () => false);
+  check('autosave (IndexedDB, file://) restores the model after restart', restored);
+  const second = spawn(exe, [...appArgs, ...sandboxArgs, ...gpuArgs, ...profileArgs], { env, stdio: 'ignore' });
   const code = await Promise.race([new Promise((r) => second.on('exit', (c) => r(c))), sleep(15000).then(() => 'still running')]);
   if (code === 'still running') second.kill();
   const count = await run2.app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows().length);

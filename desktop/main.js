@@ -18,6 +18,9 @@ const ICON = path.join(__dirname, 'app', 'icon.png');
 // WebGL is required: if the GPU is blocklisted or missing (old drivers, virtual machines), allow Chromium's
 // software renderer. It is called "unsafe" because of untrusted web pages; this window only shows our own file.
 app.commandLine.appendSwitch('enable-unsafe-swiftshader');
+// No proxy. With the system settings Chromium would look up "wpad" at every start on Windows (proxy
+// auto-detect is on by default there) and could download and run a PAC script, outside webRequest.
+app.commandLine.appendSwitch('no-proxy-server');
 // Windows groups taskbar buttons by this id; the installer's shortcuts carry the same one (build.appId)
 if (process.platform === 'win32') app.setAppUserModelId('bg.glina.sculpt');
 
