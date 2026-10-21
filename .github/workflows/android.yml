@@ -130,16 +130,21 @@ jobs:
         run: |
           mkdir -p out
           outputs=android/android/app/build/outputs
-          cp "$outputs/apk/debug/app-debug.apk" "out/Glina-$VERSION-debug.apk"
+          find "$outputs" -type f \( -name '*.apk' -o -name '*.aab' \) | sort
+          debug=$(find "$outputs/apk" -type f -name '*debug*.apk' | head -n 1)
+          if [ -z "$debug" ]; then echo "::error::no debug APK under $outputs"; exit 1; fi
+          cp "$debug" "out/Glina-$VERSION-debug.apk"
           if [ "$HAS_RELEASE_KEY" = "true" ]; then
-            cp "$outputs/apk/release/app-release.apk" "out/Glina-$VERSION.apk"
-            cp "$outputs/bundle/release/app-release.aab" "out/Glina-$VERSION.aab"
+            cp "$(find "$outputs/apk" -type f -name '*release*.apk' | head -n 1)" "out/Glina-$VERSION.apk"
+            cp "$(find "$outputs/bundle" -type f -name '*release*.aab' | head -n 1)" "out/Glina-$VERSION.aab"
           fi
-          tools="$ANDROID_HOME/build-tools/$(ls "$ANDROID_HOME/build-tools" | sort -V | tail -1)"
+          # a short report, also as notices (they show on the run page)
+          bt="$ANDROID_HOME/build-tools"
+          tools="$bt/$(ls "$bt" | sort -V | tail -n 1)"
           for apk in out/*.apk; do
-            echo "== $apk"
-            "$tools/apksigner" verify --print-certs "$apk" | grep -E 'Signer #1 certificate (DN|SHA-256)'
-            "$tools/aapt2" dump badging "$apk" | grep -E "^package:|^application-label:|^sdkVersion:|^targetSdkVersion:"
+            echo "::notice title=$(basename "$apk")::$(stat -c %s "$apk") bytes"
+            "$tools/apksigner" verify --print-certs "$apk" 2>&1 | grep -E 'Signer #1 certificate (DN|SHA-256)' | while read -r line; do echo "::notice title=$(basename "$apk") signer::$line"; done || true
+            "$tools/aapt2" dump badging "$apk" 2>&1 | grep -E "^package:|^application-label:|^sdkVersion:|^targetSdkVersion:" | while read -r line; do echo "::notice title=$(basename "$apk")::$line"; done || true
           done
           ls -l out
 
