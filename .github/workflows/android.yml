@@ -150,8 +150,12 @@ jobs:
           if [ -z "$want" ] || [ "$got" != "$want" ]; then echo "::error title=Debug key::the debug APK is signed with $got, expected $want (glina-debug.keystore)"; exit 1; fi
           ls -l out
 
+      # the files are only kept for a release (1 day: the release has them after that); pushes to main
+      # just build and test, so the private repository's 500 MB of artifact storage does not fill up
       - uses: actions/upload-artifact@v4
+        if: github.ref != 'refs/heads/main' || github.event_name == 'workflow_dispatch'
         with:
+          retention-days: 1
           name: glina-android
           path: out/*
 
