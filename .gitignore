@@ -1,5 +1,5 @@
 # dependencies and build output (GitHub Actions rebuilds everything)
-node_modules/
+node_modules
 dist/
 build/.tmp/
 desktop/out/

@@ -92,6 +92,7 @@ button, input, select { font: inherit; color: inherit; }
 #view { grid-area: view; position: relative; min-width: 0; overflow: hidden;
   background: radial-gradient(ellipse at 50% 38%, #2b3139 0%, #1a1e24 55%, #111317 100%); }
 #gl { position: absolute; inset: 0; width: 100%; height: 100%; display: block; touch-action: none; outline: none; }
+#maskRect { position: absolute; border: 1.5px dashed #7ea6ff; background: rgba(126,166,255,.12); pointer-events: none; }
 #cursor2d { position: absolute; left: 0; top: 0; border-radius: 50%; border: 1.5px solid rgba(255,255,255,.55); pointer-events: none; transform: translate(-50%,-50%); box-shadow: 0 0 0 1px rgba(0,0,0,.35); }
 #hud {
   position: absolute; left: 12px; bottom: calc(12px + env(safe-area-inset-bottom, 0px)); display: flex; gap: 14px; align-items: center; flex-wrap: wrap;
@@ -145,6 +146,29 @@ input[type=range] { width: 100%; height: 26px; accent-color: var(--wax); backgro
 .toggle input:checked::after { transform: translateX(14px); background: var(--wax-ink); }
 .toggle input:focus-visible { outline: 2px solid var(--wax); outline-offset: 2px; }
 .swatches { display: flex; flex-wrap: wrap; gap: 8px; }
+.lab { margin-bottom: 6px; }
+.lab small { color: var(--muted); }
+.grp { display: grid; gap: 10px; }
+.field { display: grid; grid-template-columns: auto 1fr; gap: 10px; align-items: center; }
+.field input[type=text], .field select {
+  min-width: 0; height: 30px; padding: 0 8px; border-radius: 6px; border: 1px solid var(--line);
+  background: var(--panel-2); color: var(--fg); font: inherit;
+}
+#brushEdit { display: grid; gap: 10px; }
+#brushEdit > summary { cursor: pointer; color: var(--wax); list-style: none; padding: 2px 0; }
+#brushEdit > summary::-webkit-details-marker { display: none; }
+#brushEdit > summary::before { content: "▸ "; }
+#brushEdit[open] > summary::before { content: "▾ "; }
+#brushEdit[open] { padding-bottom: 2px; }
+#brushEdit .grp + .grp, #brushEdit > .grp { margin-top: 10px; }
+#curveEd { width: 100%; height: 120px; display: block; border-radius: 8px; background: var(--bg); border: 1px solid var(--line); touch-action: none; cursor: crosshair; }
+.alphas { display: grid; grid-template-columns: repeat(5, 1fr); gap: 6px; }
+.alpha { aspect-ratio: 1; padding: 0; border-radius: 6px; border: 2px solid var(--line); background: #000; cursor: pointer; overflow: hidden; position: relative; }
+.alpha img { width: 100%; height: 100%; display: block; }
+.alpha span { position: absolute; inset: 0; display: grid; place-items: center; font-size: 10px; color: var(--muted); }
+.alpha[aria-pressed="true"] { border-color: var(--wax); }
+.tool.mine::after { content: ""; position: absolute; left: 5px; top: 5px; width: 5px; height: 5px; border-radius: 50%; background: var(--wax); }
+.tool.add { color: var(--muted); }
 .swatch { width: 38px; height: 38px; border-radius: 50%; border: 2px solid transparent; padding: 0; cursor: pointer; background: none; overflow: hidden; }
 .swatch img { width: 100%; height: 100%; display: block; }
 .swatch[aria-pressed="true"] { border-color: var(--wax); }
@@ -191,8 +215,9 @@ input[type=range] { width: 100%; height: 26px; accent-color: var(--wax); backgro
   <main id="view">
     <canvas id="gl" tabindex="0"></canvas>
     <div id="cursor2d" hidden></div>
+    <div id="maskRect" hidden></div>
     <div id="hint">
-      <p><b>Стилус или мишка по модела</b> скулптира. Влачене по празното място или десен бутон върти, среден бутон или два пръста местят, колелцето приближава. <b>Shift</b> изглажда, <b>Ctrl/Alt</b> обръща посоката, <b>D</b> включва динамичната топология.</p>
+      <p><b>Стилус или мишка по модела</b> скулптира. Влачене по празното място или десен бутон върти, среден бутон или два пръста местят, колелцето приближава. <b>Shift</b> изглажда, <b>Alt</b> обръща посоката, <b>Ctrl</b> рисува маска, <b>D</b> включва динамичната топология.</p>
       <button id="hintClose" aria-label="Скрий подсказката">×</button>
     </div>
     <div id="hud">
@@ -215,11 +240,38 @@ input[type=range] { width: 100%; height: 26px; accent-color: var(--wax); backgro
       <h2>Четка <em id="brushName">Рисуване</em></h2>
       <div class="row"><label for="sRadius">Радиус</label><output id="oRadius"></output><input type="range" id="sRadius" min="4" max="320" step="1"></div>
       <div class="row"><label for="sStrength">Сила</label><output id="oStrength"></output><input type="range" id="sStrength" min="0.01" max="1" step="0.01"></div>
-      <div>
-        <div class="note" style="margin-bottom:6px">Падане към ръба</div>
-        <div class="chips" id="falloffChips"></div>
-      </div>
-      <label class="toggle">Обърната посока <input type="checkbox" id="tInvert"></label>
+      <label class="toggle">Обърната посока (Alt) <input type="checkbox" id="tInvert"></label>
+      <details id="brushEdit">
+        <summary>Форма и щрих на четката</summary>
+        <div class="field"><label for="bName">Име</label><input type="text" id="bName" maxlength="40" autocomplete="off"></div>
+        <div class="field"><label for="bBase">Действие</label><select id="bBase"></select></div>
+        <div class="grp" id="dirGrp"><div class="note lab">Посока</div><div class="chips" id="dirChips"></div></div>
+        <div class="grp" id="curveGrp">
+          <div class="note">Падане към ръба <small>(влачете точките; щракване добавя точка, двойно щракване я маха)</small></div>
+          <canvas id="curveEd" aria-label="Крива на падането"></canvas>
+          <div class="chips" id="curveChips"></div>
+          <div class="row"><label for="sFocal">Фокус (Focal Shift)</label><output id="oFocal"></output><input type="range" id="sFocal" min="-1" max="1" step="0.05"></div>
+        </div>
+        <div class="grp" id="tipGrp"><div class="note lab">Връх</div><div class="chips" id="tipChips"></div></div>
+        <div class="grp" id="alphaGrp">
+          <div class="note">Отпечатък (alpha) <small>— своя картинка с „+“</small></div>
+          <div class="alphas" id="alphaGrid"></div>
+          <div class="row"><label for="sMid">Неутрално сиво (MidValue)</label><output id="oMid"></output><input type="range" id="sMid" min="0" max="1" step="0.05"></div>
+          <div class="note lab">Завъртане</div><div class="chips" id="rotChips"></div>
+          <div class="row"><label for="sAngle">Ъгъл</label><output id="oAngle"></output><input type="range" id="sAngle" min="0" max="360" step="5"></div>
+        </div>
+        <div class="grp" id="strokeGrp">
+          <div class="note lab">Щрих</div><div class="chips" id="strokeChips"></div>
+          <div class="row"><label for="sSpacing">Стъпка между отпечатъците</label><output id="oSpacing"></output><input type="range" id="sSpacing" min="0.03" max="0.6" step="0.01"></div>
+        </div>
+        <div class="row" id="modRow"><label for="sMod">Притискане ↔ надуване (Brush Mod)</label><output id="oMod"></output><input type="range" id="sMod" min="-1" max="1" step="0.05"></div>
+        <label class="toggle" id="frontRow">Само видимата страна <input type="checkbox" id="tFront"></label>
+        <label class="toggle" id="topoRow">Само свързаната повърхност <input type="checkbox" id="tTopo"></label>
+        <div class="grp" id="grabGrp"><div class="note lab">Хващане</div><div class="chips" id="grabChips"></div></div>
+        <div class="row" id="volRow"><label for="sVolume">Запазване на обема</label><output id="oVolume"></output><input type="range" id="sVolume" min="0" max="0.49" step="0.01"></div>
+        <div class="two"><button class="btn wide" id="bBrushNew">Нова от тази</button><button class="btn wide" id="bBrushReset">Нулирай</button></div>
+        <div class="two"><button class="btn wide" id="bBrushExport">Изнеси</button><button class="btn wide" id="bBrushImport">Внеси</button></div>
+      </details>
     </section>
 
     <section class="sec">
@@ -228,7 +280,6 @@ input[type=range] { width: 100%; height: 26px; accent-color: var(--wax); backgro
       <label class="toggle">Натискът променя силата <input type="checkbox" id="tPrStrength" checked></label>
       <div class="row"><label for="sCurve">Крива на натиска</label><output id="oCurve"></output><input type="range" id="sCurve" min="0.3" max="3" step="0.05"></div>
       <div class="row"><label for="sStab">Стабилизация на линията</label><output id="oStab"></output><input type="range" id="sStab" min="0" max="0.95" step="0.05"></div>
-      <div class="row"><label for="sSpacing">Стъпка между отпечатъците</label><output id="oSpacing"></output><input type="range" id="sSpacing" min="0.05" max="0.6" step="0.01"></div>
       <div>
         <div class="note" style="margin-bottom:6px">Пръст по екрана</div>
         <div class="chips" id="fingerChips"></div>
@@ -243,8 +294,11 @@ input[type=range] { width: 100%; height: 26px; accent-color: var(--wax); backgro
 
     <section class="sec">
       <h2>Маска</h2>
-      <p class="note">Маскираните зони са по-тъмни и не се променят. Ctrl с маска я изтрива.</p>
+      <p class="note">Маскираните зони са по-тъмни и не се променят. <b>Ctrl</b> рисува маска, <b>Ctrl+Alt</b> я трие. Ctrl+щракване по модела я размазва, по празното място я обръща. Ctrl+влачене по празното маскира правоъгълник; празен правоъгълник я изчиства.</p>
       <div class="two"><button class="btn wide" id="bMaskClear">Изчисти</button><button class="btn wide" id="bMaskInvert">Обърни</button></div>
+      <div class="two"><button class="btn wide" id="bMaskBlur">Размажи</button><button class="btn wide" id="bMaskSharpen">Изостри</button></div>
+      <div class="two"><button class="btn wide" id="bMaskGrow">Разшири</button><button class="btn wide" id="bMaskShrink">Свий</button></div>
+      <button class="btn wide" id="bMaskCavity" title="Маскира вдлъбнатините: гънки, пори, бръчки">Маска по вдлъбнатините</button>
     </section>
 
     <section class="sec">
@@ -263,7 +317,9 @@ input[type=range] { width: 100%; height: 26px; accent-color: var(--wax); backgro
       <button class="btn wide" id="bSubdiv" title="Раздели (Ctrl+D)">Раздели ×4 детайл</button>
       <label class="toggle">Изглаждане при разделяне <input type="checkbox" id="tLoop" checked></label>
       <button class="btn wide" id="bSmoothAll">Изглади целия модел</button>
-      <label class="toggle">Само видимата страна <input type="checkbox" id="tFront" checked></label>
+      <div class="row"><label for="sVoxel">Плътност на преизграждането</label><output id="oVoxel"></output><input type="range" id="sVoxel" min="48" max="256" step="8"></div>
+      <button class="btn wide" id="bRemesh" title="DynaMesh: нова равна мрежа по формата на модела">Преизгради мрежата (DynaMesh)</button>
+      <p class="note">Прави нови еднакви триъгълници по цялата форма: оправя разтегнатите места след дълго дърпане и слива частите, които се застъпват. Цветът и маската се запазват; по-фините детайли от плътността изчезват.</p>
     </section>
 
     <section class="sec">
@@ -274,6 +330,8 @@ input[type=range] { width: 100%; height: 26px; accent-color: var(--wax); backgro
   </aside>
 </div>
 <input type="file" id="fileIn" accept=".obj,.stl" hidden>
+<input type="file" id="brushIn" accept=".json,application/json" hidden>
+<input type="file" id="alphaIn" accept="image/*" hidden>
 
 <script type="importmap">
 { "imports": {
@@ -293,48 +351,80 @@ const $ = (id) => document.getElementById(id);
 const ICON = {
   draw: '<path d="M3 17c3 0 4-8 9-8s6 8 9 8"/><path d="M3 20h18" opacity=".45"/>',
   clay: '<path d="M3 18h18"/><path d="M5 15h14M7 12h10" /><path d="M9 9h6" opacity=".6"/>',
+  claystrips: '<path d="M3 19h18"/><rect x="5" y="13" width="14" height="3" rx=".5"/><rect x="7" y="8" width="10" height="3" rx=".5" opacity=".6"/>',
   smooth: '<path d="M3 14c3-5 6 3 9-2s6 3 9-2"/><path d="M3 19h18" opacity=".45"/>',
   inflate: '<circle cx="12" cy="12" r="4"/><path d="M12 2v4M12 18v4M2 12h4M18 12h4"/>',
   flatten: '<path d="M3 12h18"/><path d="M8 5l4 4 4-4M8 19l4-4 4 4"/>',
+  scrape: '<path d="M3 15h18"/><path d="M5 15c1-4 3-6 5-6h4c2 0 4 2 5 6" opacity=".45"/><path d="M14 4l4 4"/>',
   pinch: '<path d="M3 12h5M16 12h5"/><path d="M6 9l3 3-3 3M18 9l-3 3 3 3"/><path d="M12 5v14" opacity=".45"/>',
   crease: '<path d="M3 8h6l3 9 3-9h6"/>',
+  dam: '<path d="M3 8h7l2 11 2-11h7"/><path d="M12 19V8" opacity=".45"/>',
   grab: '<path d="M12 3v18M3 12h18"/><path d="M9 6l3-3 3 3M9 18l3 3 3-3M6 9l-3 3 3 3M18 9l3 3-3 3"/>',
+  elastic: '<path d="M4 18c3 0 4-3 8-3s5-9 8-11"/><path d="M17 4h3v3"/><path d="M4 21h16" opacity=".45"/>',
+  grabtopo: '<path d="M12 3v12M6 9l6-6 6 6"/><circle cx="7" cy="19" r="2.5" opacity=".45"/><circle cx="17" cy="19" r="2.5"/>',
   snake: '<path d="M4 19c4 0 3-7 7-7s4-6 8-8"/><circle cx="19" cy="4" r="1.6"/>',
   mask: '<circle cx="12" cy="12" r="8"/><path d="M12 4a8 8 0 010 16z" fill="currentColor"/>',
   paint: '<path d="M12 3c4 5 6 8 6 11a6 6 0 01-12 0c0-3 2-6 6-11z"/>',
 };
-const BRUSHES = [
-  { id: 'draw',    name: 'Рисуване',   short: 'Рис.',   key: 'x', radius: 50, strength: 0.5 },
-  { id: 'clay',    name: 'Глина',      short: 'Глина',  key: 'c', radius: 55, strength: 0.45 },
-  { id: 'smooth',  name: 'Изглаждане', short: 'Глад.',  key: 's', radius: 60, strength: 0.6 },
-  { id: 'inflate', name: 'Надуване',   short: 'Над.',   key: 'i', radius: 50, strength: 0.4 },
-  { id: 'flatten', name: 'Изравняване', short: 'Равно', key: 't', radius: 60, strength: 0.5 },
-  { id: 'pinch',   name: 'Притискане', short: 'Прит.',  key: 'p', radius: 40, strength: 0.5 },
-  { id: 'crease',  name: 'Гънка',      short: 'Гънка',  key: 'k', radius: 30, strength: 0.5 },
-  { id: 'grab',    name: 'Хващане',    short: 'Хвани',  key: 'g', radius: 90, strength: 1 },
-  { id: 'snake',   name: 'Издърпване', short: 'Дърпай', key: 'h', radius: 45, strength: 0.8 },
-  { id: 'mask',    name: 'Маска',      short: 'Маска',  key: 'm', radius: 45, strength: 0.8 },
-  { id: 'paint',   name: 'Боя',        short: 'Боя',    key: 'v', radius: 40, strength: 0.6 },
+// Falloff curves: points [distance from the centre 0…1, strength 0…1], joined by a monotone cubic.
+const CURVES = [
+  { id: 'smooth', name: 'Мек', pts: [[0, 1], [0.25, 0.84], [0.5, 0.5], [0.75, 0.16], [1, 0]] },
+  { id: 'sharp', name: 'Остър', pts: [[0, 1], [0.15, 0.61], [0.35, 0.27], [0.6, 0.06], [1, 0]] },
+  { id: 'flat', name: 'Плосък', pts: [[0, 1], [0.7, 1], [0.86, 0.55], [1, 0]] },
+  { id: 'dome', name: 'Купол', pts: [[0, 1], [0.5, 0.87], [0.8, 0.6], [0.95, 0.31], [1, 0]] },
+  { id: 'cone', name: 'Конус', pts: [[0, 1], [1, 0]] },
+  // no flat top: a long pull tapers like a limb instead of carrying a round cap on a thin neck
+  { id: 'move', name: 'Без плато', pts: [[0, 1], [0.3, 0.7], [0.62, 0.27], [1, 0]] },
 ];
-const FALLOFFS = [
-  { id: 'smooth', name: 'Мек', fn: (t) => { const u = 1 - t; return u * u * (3 - 2 * u); } },
-  { id: 'sharp', name: 'Остър', fn: (t) => { const u = 1 - t; return u * u * u; } },
-  { id: 'flat', name: 'Плосък', fn: (t) => (t < 0.8 ? 1 : 1 - (t - 0.8) / 0.2) },
+const curvePts = (id) => CURVES.find((c) => c.id === id).pts.map((p) => p.slice());
+// What each base brush does is in applyBrush / processStroke; a brush preset adds the shape and the stroke.
+const BASES = [
+  { id: 'draw', name: 'Рисуване (Standard)' }, { id: 'clay', name: 'Глина (Clay)' }, { id: 'claystrips', name: 'Глина на ивици (ClayBuildup)' },
+  { id: 'inflate', name: 'Надуване (Inflate)' }, { id: 'flatten', name: 'Изравняване (hPolish)' }, { id: 'scrape', name: 'Подрязване (TrimDynamic)' },
+  { id: 'pinch', name: 'Притискане (Pinch)' }, { id: 'crease', name: 'Гънка' }, { id: 'smooth', name: 'Изглаждане (Smooth)' },
+  { id: 'grab', name: 'Хващане (Move)' }, { id: 'snake', name: 'Издърпване (SnakeHook)' }, { id: 'mask', name: 'Маска' }, { id: 'paint', name: 'Боя' },
 ];
+// a complete brush; presets only list what differs
+const BRUSH_DEFAULTS = {
+  base: 'draw', radius: 50, strength: 0.5, dir: 1, curve: 'smooth', focal: 0, tip: 'round',
+  alpha: 'none', alphaMid: 0, alphaRot: 'fixed', alphaAngle: 0,
+  stroke: 'dots', spacing: 0.15, mod: 0, front: true, topo: false, grab: 'soft', volume: 0.4,
+};
+const PRESETS = [
+  { id: 'draw', name: 'Рисуване', short: 'Рис.', key: 'x', zb: 'Standard' },
+  { id: 'clay', name: 'Глина', short: 'Глина', key: 'c', base: 'clay', radius: 55, strength: 0.45, zb: 'Clay' },
+  { id: 'claybuild', name: 'Глина на ивици', short: 'Ивици', key: 'b', base: 'claystrips', icon: 'claystrips', radius: 45, strength: 0.45, tip: 'square', alphaRot: 'stroke', curve: 'dome', spacing: 0.1, zb: 'ClayBuildup' },
+  { id: 'dam', name: 'Остър разрез', short: 'Разрез', key: 'n', icon: 'dam', radius: 16, strength: 0.6, dir: -1, curve: 'sharp', focal: 0.3, mod: 0.6, spacing: 0.08, zb: 'Dam_Standard' },
+  { id: 'inflate', name: 'Надуване', short: 'Над.', key: 'i', base: 'inflate', strength: 0.4, zb: 'Inflat' },
+  { id: 'pinch', name: 'Притискане', short: 'Прит.', key: 'p', base: 'pinch', radius: 40, zb: 'Pinch' },
+  { id: 'crease', name: 'Гънка', short: 'Гънка', key: 'k', base: 'crease', radius: 30 },
+  { id: 'flatten', name: 'Изравняване', short: 'Равно', key: 't', base: 'flatten', radius: 60, tip: 'square', curve: 'dome', zb: 'hPolish' },
+  { id: 'trim', name: 'Подрязване', short: 'Подр.', key: 'r', base: 'scrape', icon: 'scrape', radius: 55, strength: 0.5, curve: 'flat', zb: 'TrimDynamic' },
+  { id: 'smooth', name: 'Изглаждане', short: 'Глад.', key: 's', base: 'smooth', radius: 60, strength: 0.6, front: false, zb: 'Smooth' },
+  { id: 'grab', name: 'Хващане', short: 'Хвани', key: 'g', base: 'grab', radius: 90, strength: 1, curve: 'move', front: false, zb: 'Move' },
+  { id: 'elastic', name: 'Еластично хващане', short: 'Еласт.', key: 'e', base: 'grab', icon: 'elastic', grab: 'elastic', radius: 90, strength: 1, front: false, zb: 'Move Elastic' },
+  { id: 'grabtopo', name: 'Хващане на част', short: 'Част', key: 'o', base: 'grab', icon: 'grabtopo', topo: true, radius: 90, strength: 1, curve: 'move', front: false, zb: 'Move Topological' },
+  { id: 'snake', name: 'Издърпване', short: 'Дърпай', key: 'h', base: 'snake', radius: 45, strength: 0.8, front: false, zb: 'SnakeHook' },
+  { id: 'mask', name: 'Маска', short: 'Маска', key: 'm', base: 'mask', radius: 45, strength: 0.8, zb: 'MaskPen' },
+  { id: 'paint', name: 'Боя', short: 'Боя', key: 'v', base: 'paint', radius: 40, strength: 0.6, front: true },
+];
+const BRUSH_KEYS = Object.keys(BRUSH_DEFAULTS);
+function presetBrush(p) {
+  const b = { ...BRUSH_DEFAULTS, ...p, builtin: true };
+  if (typeof b.curve === 'string') b.curve = curvePts(b.curve);
+  return b;
+}
 
 const S = {
   tool: 'draw',
-  perBrush: {},
-  falloff: 'smooth',
+  brushes: [],         // every brush: the presets (with the user's changes) and the user's own
   invert: false,
   prRadius: false,
   prStrength: true,
   curve: 1,
   stab: 0.3,
-  spacing: 0.15,
   finger: 'auto',      // auto | draw | navigate
   sym: true,
-  front: true,
   loop: true,
   wire: false,
   flat: false,
@@ -344,19 +434,188 @@ const S = {
   dyntopo: false,
   detail: 12,          // dyntopo edge length in screen pixels
   decimate: true,
+  voxel: 96,           // voxel remesh resolution along the longest side
 };
-for (const b of BRUSHES) S.perBrush[b.id] = { radius: b.radius, strength: b.strength };
-try {
-  const saved = JSON.parse(localStorage.getItem('glina.settings') || 'null');
-  if (saved) for (const k of Object.keys(saved)) if (k in S && k !== 'penSeen') S[k] = saved[k];
-  for (const b of BRUSHES) if (!S.perBrush[b.id]) S.perBrush[b.id] = { radius: b.radius, strength: b.strength };
-} catch (e) { /* storage unavailable */ }
+let savedSettings = null;
+try { savedSettings = JSON.parse(localStorage.getItem('glina.settings') || 'null'); } catch (e) { /* storage unavailable */ }
+if (savedSettings) for (const k of Object.keys(savedSettings)) if (k in S && k !== 'penSeen' && k !== 'brushes') S[k] = savedSettings[k];
+// one brush field from settings or a file: right type and range, or undefined
+const ENUMS = { tip: ['round', 'square'], alphaRot: ['fixed', 'stroke', 'random'], stroke: ['dots', 'dragrect', 'dragdot', 'spray'], grab: ['soft', 'elastic'] };
+const RANGES = { radius: [4, 320], strength: [0.01, 1], focal: [-1, 1], alphaMid: [0, 1], alphaAngle: [0, 360], spacing: [0.03, 0.6], mod: [-1, 1], volume: [0, 0.49] };
+function brushField(k, v) {
+  if (k === 'curve') return Array.isArray(v) && v.length >= 2 && v.length <= 32 && v.every((p) => Array.isArray(p) && p.length === 2 && p.every((x) => Number.isFinite(x) && x >= 0 && x <= 1)) ? v.map((p) => p.slice()) : undefined;
+  if (k === 'base') return BASES.some((x) => x.id === v) ? v : undefined;
+  if (k === 'dir') return v === 1 || v === -1 ? v : undefined;
+  if (k === 'alpha') return typeof v === 'string' && (ALPHAS.some((a) => a.id === v) || v.length < 200000 && /^data:image\/(png|jpeg|webp);base64,[A-Za-z0-9+/=]+$/.test(v)) ? v : undefined;
+  if (ENUMS[k]) return ENUMS[k].includes(v) ? v : undefined;
+  if (RANGES[k]) return Number.isFinite(v) ? Math.min(RANGES[k][1], Math.max(RANGES[k][0], v)) : undefined;
+  if (typeof BRUSH_DEFAULTS[k] === 'boolean') return typeof v === 'boolean' ? v : undefined;
+  return undefined;
+}
+// brushes: presets first (keeping the user's changes to them), then the user's own, in their order
+function loadBrushes(saved) {
+  const list = Array.isArray(saved) ? saved : [];
+  const byId = new Map(list.filter((b) => b && b.id).map((b) => [b.id, b]));
+  const out = PRESETS.map((p) => {
+    const b = presetBrush(p), mine = byId.get(p.id);
+    if (mine) for (const k of BRUSH_KEYS) { const v = brushField(k, mine[k]); if (v !== undefined) b[k] = v; }
+    return b;
+  });
+  for (const b of list) if (b && b.id && !PRESETS.some((p) => p.id === b.id)) out.push(sanitizeBrush(b, true));
+  return out;
+}
+// a brush of the user's (from settings or a file): known fields only, the rest from the defaults
+function sanitizeBrush(src, keepId = false) {
+  const b = { ...BRUSH_DEFAULTS, curve: curvePts('smooth'), builtin: false, icon: null, key: '' };
+  for (const k of BRUSH_KEYS) { const v = brushField(k, src[k]); if (v !== undefined) b[k] = v; }
+  b.id = keepId && typeof src.id === 'string' && /^u[\w-]{1,40}$/.test(src.id) ? src.id : 'u' + Date.now().toString(36) + Math.floor(Math.random() * 1e4);
+  b.name = String(src.name || 'Моя четка').slice(0, 40);
+  b.short = String(src.short || b.name).slice(0, 7);
+  return b;
+}
 let saveSettingsT = 0;
 function saveSettings() {
   clearTimeout(saveSettingsT);
-  saveSettingsT = setTimeout(() => { try { localStorage.setItem('glina.settings', JSON.stringify(S)); } catch (e) {} }, 300);
+  saveSettingsT = setTimeout(() => {
+    try { localStorage.setItem('glina.settings', JSON.stringify(S)); }
+    catch (e) { if (!saveSettings.warned) { saveSettings.warned = true; toast('Настройките не се запазиха: мястото е пълно. Изтрийте някоя своя четка с картинка.'); } }
+  }, 300);
 }
-const brush = () => S.perBrush[S.tool];
+const brushById = (id) => S.brushes.find((b) => b.id === id);
+const brush = () => brushById(S.tool);
+
+/* ---------- brush shape: falloff curve (+ focal shift) as a lookup table ---------- */
+// monotone cubic (Fritsch–Carlson): no overshoot between the points, so the curve never bulges
+function curveLUT(pts, focal) {
+  const P = pts.slice().sort((a, b) => a[0] - b[0]);
+  if (P[0][0] > 0) P.unshift([0, P[0][1]]);
+  if (P[P.length - 1][0] < 1) P.push([1, P[P.length - 1][1]]);
+  const n = P.length, d = [], m = new Array(n).fill(0);
+  for (let i = 0; i < n - 1; i++) d.push((P[i + 1][1] - P[i][1]) / Math.max(1e-6, P[i + 1][0] - P[i][0]));
+  m[0] = d[0]; m[n - 1] = d[n - 2];
+  for (let i = 1; i < n - 1; i++) m[i] = d[i - 1] * d[i] <= 0 ? 0 : (d[i - 1] + d[i]) / 2;
+  for (let i = 0; i < n - 1; i++) {
+    if (d[i] === 0) { m[i] = m[i + 1] = 0; continue; }
+    const a = m[i] / d[i], b = m[i + 1] / d[i], h = a * a + b * b;
+    if (h > 9) { const t = 3 / Math.sqrt(h); m[i] = t * a * d[i]; m[i + 1] = t * b * d[i]; }
+  }
+  // focal shift: + pulls the strength toward the centre, − spreads it to the edge (ZBrush)
+  const pw = Math.pow(2, -focal * 1.6);
+  const L = new Float32Array(258);
+  let seg = 0;
+  for (let k = 0; k <= 256; k++) {
+    const x = Math.pow(k / 256, pw);
+    while (seg < n - 2 && x > P[seg + 1][0]) seg++;
+    const x0 = P[seg][0], x1 = P[seg + 1][0], h = Math.max(1e-6, x1 - x0), t = Math.min(1, Math.max(0, (x - x0) / h));
+    const t2 = t * t, t3 = t2 * t;
+    const y = (2 * t3 - 3 * t2 + 1) * P[seg][1] + (t3 - 2 * t2 + t) * h * m[seg] + (-2 * t3 + 3 * t2) * P[seg + 1][1] + (t3 - t2) * h * m[seg + 1];
+    L[k] = Math.min(1, Math.max(0, y));
+  }
+  L[256] = 0; L[257] = 0;     // nothing at the rim
+  return L;
+}
+const lutCache = new Map();
+function brushLUT(b) {
+  const key = JSON.stringify(b.curve) + '|' + b.focal;
+  let L = lutCache.get(key);
+  if (!L) { L = curveLUT(b.curve, b.focal); if (lutCache.size > 64) lutCache.clear(); lutCache.set(key, L); }
+  return L;
+}
+function lut(L, t) { const x = t * 256, i = x | 0; return i >= 256 ? 0 : L[i] + (L[i + 1] - L[i]) * (x - i); }
+let curLUT = curveLUT(curvePts('smooth'), 0);   // the falloff gather() uses: the active stroke's brush
+let curFront = true;                            // only surfaces facing the brush (ZBrush: BackfaceMask)
+
+/* ---------- alphas: grayscale stamps, 128×128 ---------- */
+const ALPHA_N = 128;
+function hash2(x, y, s) { let h = (x * 374761393 + y * 668265263 + s * 2147483647) | 0; h = (h ^ (h >>> 13)) * 1274126177; return ((h ^ (h >>> 16)) >>> 0) / 4294967296; }
+function valueNoise(x, y, s) {
+  const xi = Math.floor(x), yi = Math.floor(y), xf = x - xi, yf = y - yi;
+  const u = xf * xf * (3 - 2 * xf), v = yf * yf * (3 - 2 * yf), W = 8;   // tiles every 8 cells
+  const h = (a, b) => hash2(((a % W) + W) % W, ((b % W) + W) % W, s);
+  return (h(xi, yi) * (1 - u) + h(xi + 1, yi) * u) * (1 - v) + (h(xi, yi + 1) * (1 - u) + h(xi + 1, yi + 1) * u) * v;
+}
+function worley(x, y, s, cells) {   // distance to the nearest feature point, 0…~1
+  const xi = Math.floor(x), yi = Math.floor(y); let d1 = 9, d2 = 9;
+  for (let j = -1; j <= 1; j++) for (let i = -1; i <= 1; i++) {
+    const cx = xi + i, cy = yi + j, wx = ((cx % cells) + cells) % cells, wy = ((cy % cells) + cells) % cells;
+    const px = cx + hash2(wx, wy, s), py = cy + hash2(wx, wy, s + 7);
+    const d = Math.hypot(px - x, py - y);
+    if (d < d1) { d2 = d1; d1 = d; } else if (d < d2) d2 = d;
+  }
+  return [d1, d2];
+}
+const ALPHAS = [
+  { id: 'none', name: 'Без' },
+  { id: 'square', name: 'Квадрат', fn: (x, y) => { const e = Math.max(Math.abs(x), Math.abs(y)); return e < 0.75 ? 1 : Math.max(0, 1 - (e - 0.75) / 0.2); } },
+  { id: 'noise', name: 'Шум', fn: (x, y) => { let v = 0, a = 0.5, f = 3; for (let o = 0; o < 4; o++) { v += a * valueNoise((x + 1) * f, (y + 1) * f, o); a *= 0.5; f *= 2; } return v / 0.94; } },
+  { id: 'pores', name: 'Пори', fn: (x, y) => { const [d] = worley((x + 1) * 6, (y + 1) * 6, 3, 12); return Math.min(1, d * 1.6); } },
+  { id: 'cracks', name: 'Пукнатини', fn: (x, y) => { const [d1, d2] = worley((x + 1) * 3, (y + 1) * 3, 11, 6); return Math.min(1, (d2 - d1) * 4); } },
+  { id: 'scales', name: 'Люспи', fn: (x, y) => { const sx = (x + 1) * 5, sy = (y + 1) * 5, row = Math.floor(sy), ox = row % 2 ? 0.5 : 0; const fx = sx + ox - Math.floor(sx + ox) - 0.5, fy = sy - row; return Math.max(0, 1 - Math.hypot(fx, fy * 0.9)) ; } },
+  { id: 'stripes', name: 'Ивици', fn: (x, y) => 0.5 + 0.5 * Math.cos((y + 1) * Math.PI * 6) },
+  { id: 'rings', name: 'Кръгове', fn: (x, y) => 0.5 + 0.5 * Math.cos(Math.hypot(x, y) * Math.PI * 7) },
+];
+const alphaCache = new Map();   // alpha id or image data URL -> Float32Array(128²)
+function alphaData(id, cb) {
+  if (!id || id === 'none') return null;
+  if (alphaCache.has(id)) return alphaCache.get(id);
+  const def = ALPHAS.find((a) => a.id === id);
+  if (def) {
+    const A = new Float32Array(ALPHA_N * ALPHA_N);
+    for (let j = 0; j < ALPHA_N; j++) for (let i = 0; i < ALPHA_N; i++) A[j * ALPHA_N + i] = def.fn((i + 0.5) / ALPHA_N * 2 - 1, (j + 0.5) / ALPHA_N * 2 - 1);
+    alphaCache.set(id, A);
+    return A;
+  }
+  if (id.startsWith('data:image/')) {
+    alphaCache.set(id, null);   // decoding: the brush works without its alpha for these few milliseconds
+    const img = new Image();
+    img.onload = () => { alphaCache.set(id, imageToAlpha(img)); cb && cb(); };
+    img.src = id;
+  }
+  return null;
+}
+function imageToAlpha(img) {
+  const c = document.createElement('canvas'); c.width = c.height = ALPHA_N;
+  const g = c.getContext('2d');
+  const s = Math.min(img.width, img.height);
+  g.drawImage(img, (img.width - s) / 2, (img.height - s) / 2, s, s, 0, 0, ALPHA_N, ALPHA_N);
+  const d = g.getImageData(0, 0, ALPHA_N, ALPHA_N).data, A = new Float32Array(ALPHA_N * ALPHA_N);
+  for (let k = 0; k < A.length; k++) A[k] = ((0.299 * d[k * 4] + 0.587 * d[k * 4 + 1] + 0.114 * d[k * 4 + 2]) / 255) * (d[k * 4 + 3] / 255);
+  return A;
+}
+// bilinear sample at brush-plane coordinates u, v in −1…1 (outside: 0)
+function sampleAlpha(A, u, v) {
+  const x = (u + 1) * 0.5 * ALPHA_N - 0.5, y = (v + 1) * 0.5 * ALPHA_N - 0.5;
+  if (x < 0 || y < 0 || x > ALPHA_N - 1 || y > ALPHA_N - 1) return 0;
+  const xi = x | 0, yi = y | 0, fx = x - xi, fy = y - yi, o = yi * ALPHA_N + xi;
+  const x1 = xi < ALPHA_N - 1 ? 1 : 0, y1 = yi < ALPHA_N - 1 ? ALPHA_N : 0;
+  return (A[o] * (1 - fx) + A[o + x1] * fx) * (1 - fy) + (A[o + y1] * (1 - fx) + A[o + y1 + x1] * fx) * fy;
+}
+function alphaThumb(A) {
+  const c = document.createElement('canvas'); c.width = c.height = 48;
+  const g = c.getContext('2d'), im = g.createImageData(48, 48);
+  for (let j = 0; j < 48; j++) for (let i = 0; i < 48; i++) {
+    const v = A ? Math.round(255 * Math.min(1, Math.max(0, sampleAlpha(A, (i + 0.5) / 24 - 1, (j + 0.5) / 24 - 1)))) : 0;
+    const o = (j * 48 + i) * 4; im.data[o] = im.data[o + 1] = im.data[o + 2] = v; im.data[o + 3] = 255;
+  }
+  g.putImageData(im, 0, 0);
+  return c.toDataURL();
+}
+
+// the saved brushes need ALPHAS (above) to check their alpha
+S.brushes = loadBrushes(savedSettings && savedSettings.brushes);
+// settings from 1.0: radius and strength per brush, one falloff and one spacing for all
+if (savedSettings && savedSettings.perBrush) {
+  for (const b of S.brushes) {
+    const o = savedSettings.perBrush[b.id];
+    if (o) { if (o.radius) b.radius = o.radius; if (o.strength) b.strength = o.strength; }
+    if (savedSettings.spacing && b.stroke === 'dots' && b.builtin && b.spacing === 0.15) b.spacing = savedSettings.spacing;
+    // one falloff and one "visible side only" for all brushes in 1.0: kept on the brushes that had the default
+    if (savedSettings.falloff && savedSettings.falloff !== 'smooth' && CURVES.some((c) => c.id === savedSettings.falloff)
+        && JSON.stringify(b.curve) === JSON.stringify(curvePts('smooth'))) b.curve = curvePts(savedSettings.falloff);
+    if (savedSettings.front === false && b.front) b.front = false;
+  }
+}
+if (!S.brushes.some((b) => b.id === S.tool)) S.tool = 'draw';
 
 /* =====================================================================
    Sculpt mesh: typed arrays + adjacency (CSR)
@@ -914,6 +1173,216 @@ const MATCAPS = [
   { name: 'Нефрит', base: [0.30, 0.58, 0.46], amb: 0.18, kd: 0.75, ks: 0.6, sh: 60, rim: [0.25, 0.5, 0.42], rimP: 2.4 },
   { name: 'Хром', chrome: true },
 ];
+/* ---------- voxel remesh (ZBrush: DynaMesh, Blender: Voxel Remesh) ----------
+   1. inside/outside on a grid: winding number along z columns (overlapping closed parts fuse into one)
+   2. distance to the surface near it (a band of ~2 voxels), signed by 1.
+   3. Surface Nets: one vertex per cell the surface passes through, a quad per crossed grid edge
+   4. one relaxing pass, then every vertex goes back onto the old surface and takes its colour and mask
+   Even triangles everywhere, whatever the pulls and stretches did before. */
+function voxelRemesh(src, res) {
+  const P = src.pos, I = src.idx, nT = I.length / 3;
+  let x0 = Infinity, y0 = Infinity, z0 = Infinity, x1 = -Infinity, y1 = -Infinity, z1 = -Infinity;
+  for (let q = 0; q < I.length; q++) {   // only vertices that faces use: stray ones would waste the grid
+    const i = I[q] * 3, x = P[i], y = P[i + 1], z = P[i + 2];
+    if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y; if (z < z0) z0 = z; if (z > z1) z1 = z;
+  }
+  const ext = Math.max(x1 - x0, y1 - y0, z1 - z0);
+  // the grids take 13 bytes a cell: keep them under ~260 MB (phones have far less to spare)
+  const cells = (r) => ((x1 - x0) / ext * r + 8) * ((y1 - y0) / ext * r + 8) * ((z1 - z0) / ext * r + 8);
+  while (res > 32 && cells(res) * 13 > 260e6) res = Math.floor(res * 0.9);
+  const h = ext / res;
+  // a fractional offset keeps flat faces and extreme points off the grid planes
+  const ox = x0 - 3.31 * h, oy = y0 - 3.27 * h, oz = z0 - 3.41 * h;
+  const nx = Math.ceil((x1 - x0) / h) + 7, ny = Math.ceil((y1 - y0) / h) + 7, nz = Math.ceil((z1 - z0) / h) + 7;
+  const sxy = nx * ny, N = sxy * nz;
+  const at = (i, j, k) => i + j * nx + k * sxy;
+
+  // 1. winding number per z column; column centres are nudged off the grid so no ray hits an edge exactly
+  const inside = new Uint8Array(N);
+  const cols = new Map();
+  const ex = h * 1.37e-4, ey = h * 2.71e-4;
+  for (let t = 0; t < nT; t++) {
+    const a = I[t * 3] * 3, b = I[t * 3 + 1] * 3, c = I[t * 3 + 2] * 3;
+    const ax = P[a], ay = P[a + 1], bx = P[b], by = P[b + 1], cx = P[c], cy = P[c + 1];
+    const area = (bx - ax) * (cy - ay) - (cx - ax) * (by - ay);
+    if (Math.abs(area) < 1e-20) continue;
+    const i0 = Math.max(0, Math.ceil((Math.min(ax, bx, cx) - ox - ex) / h)), i1 = Math.min(nx - 1, Math.floor((Math.max(ax, bx, cx) - ox - ex) / h));
+    const j0 = Math.max(0, Math.ceil((Math.min(ay, by, cy) - oy - ey) / h)), j1 = Math.min(ny - 1, Math.floor((Math.max(ay, by, cy) - oy - ey) / h));
+    for (let j = j0; j <= j1; j++) for (let i = i0; i <= i1; i++) {
+      const px = ox + i * h + ex, py = oy + j * h + ey;
+      const w0 = ((bx - px) * (cy - py) - (cx - px) * (by - py)) / area;
+      const w1 = ((cx - px) * (ay - py) - (ax - px) * (cy - py)) / area;
+      const w2 = 1 - w0 - w1;
+      if (w0 < 0 || w1 < 0 || w2 < 0) continue;
+      const z = w0 * P[a + 2] + w1 * P[b + 2] + w2 * P[c + 2];
+      const key = i + j * nx;
+      let L = cols.get(key); if (!L) cols.set(key, (L = []));
+      L.push(z, area > 0 ? -1 : 1);   // a face seen from below (normal down) is where the ray enters
+    }
+  }
+  for (const [key, L] of cols) {
+    const n = L.length / 2, order = Array.from({ length: n }, (_, q) => q).sort((p, q) => L[p * 2] - L[q * 2]);
+    let wind = 0, q = 0;
+    for (let k = 0; k < nz; k++) {
+      const z = oz + k * h;
+      while (q < n && L[order[q] * 2] < z) { wind += L[order[q] * 2 + 1]; q++; }
+      if (wind !== 0) inside[key + k * sxy] = 1;   // nonzero: a shell wound the other way is still solid
+    }
+  }
+
+  // 2. unsigned distance in a band around every triangle, and which triangle is the closest
+  const D = new Float32Array(N).fill(Infinity), T = new Int32Array(N).fill(-1);
+  const band = 1.8 * h, cp = [0, 0, 0];
+  for (let t = 0; t < nT; t++) {
+    const a = I[t * 3] * 3, b = I[t * 3 + 1] * 3, c = I[t * 3 + 2] * 3;
+    const i0 = Math.max(0, Math.ceil((Math.min(P[a], P[b], P[c]) - band - ox) / h)), i1 = Math.min(nx - 1, Math.floor((Math.max(P[a], P[b], P[c]) + band - ox) / h));
+    const j0 = Math.max(0, Math.ceil((Math.min(P[a + 1], P[b + 1], P[c + 1]) - band - oy) / h)), j1 = Math.min(ny - 1, Math.floor((Math.max(P[a + 1], P[b + 1], P[c + 1]) + band - oy) / h));
+    const k0 = Math.max(0, Math.ceil((Math.min(P[a + 2], P[b + 2], P[c + 2]) - band - oz) / h)), k1 = Math.min(nz - 1, Math.floor((Math.max(P[a + 2], P[b + 2], P[c + 2]) + band - oz) / h));
+    for (let k = k0; k <= k1; k++) for (let j = j0; j <= j1; j++) for (let i = i0; i <= i1; i++) {
+      const g = at(i, j, k);
+      const d = closestOnTri(P, a, b, c, ox + i * h, oy + j * h, oz + k * h, cp);
+      if (d < D[g]) { D[g] = d; T[g] = t; }
+    }
+  }
+  const sdf = (g) => { const d = Math.sqrt(Math.min(D[g], 1e30)); return inside[g] ? -d : d; };
+
+  // 3. Surface Nets
+  const vid = new Int32Array(N).fill(-1);
+  const V = [];
+  const corner = [0, 1, nx, nx + 1, sxy, sxy + 1, sxy + nx, sxy + nx + 1];
+  const cOff = [[0, 0, 0], [1, 0, 0], [0, 1, 0], [1, 1, 0], [0, 0, 1], [1, 0, 1], [0, 1, 1], [1, 1, 1]];
+  const EDGES = [[0, 1], [2, 3], [4, 5], [6, 7], [0, 2], [1, 3], [4, 6], [5, 7], [0, 4], [1, 5], [2, 6], [3, 7]];
+  const val = new Float64Array(8);
+  for (let k = 0; k < nz - 1; k++) for (let j = 0; j < ny - 1; j++) for (let i = 0; i < nx - 1; i++) {
+    const g = at(i, j, k);
+    let ins = 0;
+    for (let q = 0; q < 8; q++) ins += inside[g + corner[q]];
+    if (ins === 0 || ins === 8) continue;
+    for (let q = 0; q < 8; q++) val[q] = sdf(g + corner[q]);
+    let sx = 0, sy = 0, sz = 0, cnt = 0;
+    for (const [p, q] of EDGES) {
+      // crossings come from the same inside flags as the cell test (a distance of exactly 0 has no sign)
+      if (inside[g + corner[p]] === inside[g + corner[q]]) continue;
+      const dp = Math.abs(val[p]), dq = Math.abs(val[q]);
+      let t = dp + dq > 0 ? dp / (dp + dq) : 0.5;
+      if (!Number.isFinite(t)) t = 0.5;
+      t = Math.min(1, Math.max(0, t));
+      sx += cOff[p][0] + (cOff[q][0] - cOff[p][0]) * t; sy += cOff[p][1] + (cOff[q][1] - cOff[p][1]) * t; sz += cOff[p][2] + (cOff[q][2] - cOff[p][2]) * t; cnt++;
+    }
+    vid[g] = V.length / 3;
+    if (!cnt) { V.push(ox + (i + 0.5) * h, oy + (j + 0.5) * h, oz + (k + 0.5) * h); continue; }
+    V.push(ox + (i + sx / cnt) * h, oy + (j + sy / cnt) * h, oz + (k + sz / cnt) * h);
+  }
+  const F = [];
+  const quad = (a, b, c, d, flip) => {
+    if (a < 0 || b < 0 || c < 0 || d < 0) return;
+    if (flip) F.push(a, c, b, a, d, c); else F.push(a, b, c, a, c, d);
+  };
+  for (let k = 1; k < nz - 1; k++) for (let j = 1; j < ny - 1; j++) for (let i = 1; i < nx - 1; i++) {
+    const g = at(i, j, k), s0 = inside[g];
+    // edge along x to (i+1, j, k): shared by the cells at (i, j-1..j, k-1..k)
+    if (inside[g + 1] !== s0) quad(vid[g - nx - sxy], vid[g - sxy], vid[g], vid[g - nx], !s0);
+    if (inside[g + nx] !== s0) quad(vid[g - 1 - sxy], vid[g - 1], vid[g], vid[g - sxy], !s0);
+    if (inside[g + sxy] !== s0) quad(vid[g - 1 - nx], vid[g - nx], vid[g], vid[g - 1], !s0);
+  }
+  const nV = V.length / 3;
+  const pos = Float32Array.from(V), idx = Uint32Array.from(F);
+  // faces point outward by construction; the signed volume makes sure of it
+  let vol = 0;
+  for (let f = 0; f < idx.length; f += 3) {
+    const a = idx[f] * 3, b = idx[f + 1] * 3, c = idx[f + 2] * 3;
+    vol += pos[a] * (pos[b + 1] * pos[c + 2] - pos[b + 2] * pos[c + 1]) - pos[a + 1] * (pos[b] * pos[c + 2] - pos[b + 2] * pos[c]) + pos[a + 2] * (pos[b] * pos[c + 1] - pos[b + 1] * pos[c]);
+  }
+  if (vol < 0) for (let f = 0; f < idx.length; f += 3) { const t = idx[f + 1]; idx[f + 1] = idx[f + 2]; idx[f + 2] = t; }
+
+  // 4. relax once (uniform Laplacian, half way), then project onto the old surface and copy colour / mask
+  const nb = new Float64Array(nV * 3), nc = new Uint16Array(nV);
+  for (let f = 0; f < idx.length; f += 3) for (let e = 0; e < 3; e++) {
+    const u = idx[f + e], v = idx[f + (e + 1) % 3];
+    nb[u * 3] += pos[v * 3]; nb[u * 3 + 1] += pos[v * 3 + 1]; nb[u * 3 + 2] += pos[v * 3 + 2]; nc[u]++;
+    nb[v * 3] += pos[u * 3]; nb[v * 3 + 1] += pos[u * 3 + 1]; nb[v * 3 + 2] += pos[u * 3 + 2]; nc[v]++;
+  }
+  for (let v = 0; v < nV; v++) if (nc[v]) for (let q = 0; q < 3; q++) pos[v * 3 + q] += (nb[v * 3 + q] / nc[v] - pos[v * 3 + q]) * 0.5;
+  const col = new Float32Array(nV * 3), mask = new Float32Array(nV);
+  const SC = src.col, SM = src.mask, bary = [0, 0, 0];
+  for (let v = 0; v < nV; v++) {
+    const px = pos[v * 3], py = pos[v * 3 + 1], pz = pos[v * 3 + 2];
+    const ci = Math.min(nx - 2, Math.max(0, Math.floor((px - ox) / h))), cj = Math.min(ny - 2, Math.max(0, Math.floor((py - oy) / h))), ck = Math.min(nz - 2, Math.max(0, Math.floor((pz - oz) / h)));
+    const g = at(ci, cj, ck);
+    let best = Infinity, bt = -1, bx = px, by = py, bz = pz;
+    // candidates: the closest triangles of the cell's corners (each is within the band of its corner)
+    for (let q = 0; q < 8; q++) {
+      const t = T[g + corner[q]]; if (t < 0) continue;
+      const a = I[t * 3] * 3, b = I[t * 3 + 1] * 3, c = I[t * 3 + 2] * 3;
+      const d = closestOnTri(P, a, b, c, px, py, pz, cp);
+      if (d < best) { best = d; bt = t; bx = cp[0]; by = cp[1]; bz = cp[2]; }
+    }
+    if (bt < 0) { col[v * 3] = col[v * 3 + 1] = col[v * 3 + 2] = 1; continue; }
+    pos[v * 3] = bx; pos[v * 3 + 1] = by; pos[v * 3 + 2] = bz;
+    const a = I[bt * 3], b = I[bt * 3 + 1], c = I[bt * 3 + 2];
+    baryOf(P, a * 3, b * 3, c * 3, bx, by, bz, bary);
+    for (let q = 0; q < 3; q++) col[v * 3 + q] = SC[a * 3 + q] * bary[0] + SC[b * 3 + q] * bary[1] + SC[c * 3 + q] * bary[2];
+    mask[v] = SM[a] * bary[0] + SM[b] * bary[1] + SM[c] * bary[2];
+  }
+  return { pos, idx, col, mask, res };
+}
+// squared distance from p to triangle (a, b, c) (offsets into P); the closest point goes to out
+function closestOnTri(P, a, b, c, px, py, pz, out) {
+  const ax = P[a], ay = P[a + 1], az = P[a + 2];
+  const abx = P[b] - ax, aby = P[b + 1] - ay, abz = P[b + 2] - az, acx = P[c] - ax, acy = P[c + 1] - ay, acz = P[c + 2] - az;
+  const apx = px - ax, apy = py - ay, apz = pz - az;
+  const d1 = abx * apx + aby * apy + abz * apz, d2 = acx * apx + acy * apy + acz * apz;
+  let u, v;   // closest = a + u·ab + v·ac (Ericson, Real-Time Collision Detection 5.1.5)
+  if (d1 <= 0 && d2 <= 0) { u = 0; v = 0; }
+  else {
+    const bpx = px - P[b], bpy = py - P[b + 1], bpz = pz - P[b + 2];
+    const d3 = abx * bpx + aby * bpy + abz * bpz, d4 = acx * bpx + acy * bpy + acz * bpz;
+    if (d3 >= 0 && d4 <= d3) { u = 1; v = 0; }
+    else {
+      const vc = d1 * d4 - d3 * d2;
+      if (vc <= 0 && d1 >= 0 && d3 <= 0) { u = d1 / (d1 - d3); v = 0; }
+      else {
+        const cpx = px - P[c], cpy = py - P[c + 1], cpz = pz - P[c + 2];
+        const d5 = abx * cpx + aby * cpy + abz * cpz, d6 = acx * cpx + acy * cpy + acz * cpz;
+        if (d6 >= 0 && d5 <= d6) { u = 0; v = 1; }
+        else {
+          const vb = d5 * d2 - d1 * d6;
+          if (vb <= 0 && d2 >= 0 && d6 <= 0) { u = 0; v = d2 / (d2 - d6); }
+          else {
+            const va = d3 * d6 - d5 * d4;
+            if (va <= 0 && d4 - d3 >= 0 && d5 - d6 >= 0) { const w = (d4 - d3) / ((d4 - d3) + (d5 - d6)); u = 1 - w; v = w; }
+            else { const den = 1 / (va + vb + vc); u = vb * den; v = vc * den; }
+          }
+        }
+      }
+    }
+  }
+  const qx = ax + abx * u + acx * v, qy = ay + aby * u + acy * v, qz = az + abz * u + acz * v;
+  out[0] = qx; out[1] = qy; out[2] = qz;
+  return (px - qx) ** 2 + (py - qy) ** 2 + (pz - qz) ** 2;
+}
+function baryOf(P, a, b, c, px, py, pz, out) {
+  const v0x = P[b] - P[a], v0y = P[b + 1] - P[a + 1], v0z = P[b + 2] - P[a + 2];
+  const v1x = P[c] - P[a], v1y = P[c + 1] - P[a + 1], v1z = P[c + 2] - P[a + 2];
+  const v2x = px - P[a], v2y = py - P[a + 1], v2z = pz - P[a + 2];
+  const d00 = v0x * v0x + v0y * v0y + v0z * v0z, d01 = v0x * v1x + v0y * v1y + v0z * v1z, d11 = v1x * v1x + v1y * v1y + v1z * v1z;
+  const d20 = v2x * v0x + v2y * v0y + v2z * v0z, d21 = v2x * v1x + v2y * v1y + v2z * v1z;
+  const den = d00 * d11 - d01 * d01;
+  if (Math.abs(den) < 1e-30) { out[0] = 1; out[1] = out[2] = 0; return; }
+  const v = (d11 * d20 - d01 * d21) / den, w = (d00 * d21 - d01 * d20) / den;
+  out[0] = 1 - v - w; out[1] = v; out[2] = w;
+}
+// edges with an odd number of faces: an open model (a plane, a cut) has no inside for the voxel remesh
+function hasOpenEdges(idx) {
+  const seen = new Map();
+  for (let f = 0; f < idx.length; f += 3) for (let e = 0; e < 3; e++) {
+    const a = idx[f + e], b = idx[f + (e + 1) % 3], k = a < b ? a * 4294967296 + b : b * 4294967296 + a;
+    seen.set(k, (seen.get(k) || 0) + 1);
+  }
+  for (const c of seen.values()) if (c % 2) return true;   // 1 face, or 3 (an inner wall): no clean inside
+  return false;
+}
+
 function makeMatcap(m, size = 256) {
   const cv = document.createElement('canvas'); cv.width = cv.height = size;
   const ctx = cv.getContext('2d'); const img = ctx.createImageData(size, size); const d = img.data;
@@ -1268,7 +1737,7 @@ function touchVert(i) {
 
 function gather(cx, cy, cz, r, nx, ny, nz, frontOnly) {
   const m = mesh, p = m.pos, nr = m.nrm, out = m.gIdx, fall = m.gFall;
-  const r2 = r * r, fo = FALLOFFS.find((f) => f.id === S.falloff).fn;
+  const r2 = r * r, FL = curLUT;   // (not L: the dynamic branch below has its own L)
   let c = 0;
   if (m.dyn && m.gFaces) {
     // only cells whose box meets the sphere; every vertex inside it belongs to a face in such a cell
@@ -1290,7 +1759,7 @@ function gather(cx, cy, cz, r, nx, ny, nz, frontOnly) {
           const d2 = dx * dx + dy * dy + dz * dz;
           if (d2 >= r2) continue;
           if (frontOnly && nr[i * 3] * nx + nr[i * 3 + 1] * ny + nr[i * 3 + 2] * nz < -0.1) continue;
-          out[c] = i; fall[c] = fo(Math.sqrt(d2) / r); c++;
+          out[c] = i; fall[c] = lut(FL, Math.sqrt(d2) / r); c++;
         }
       }
     }
@@ -1304,7 +1773,7 @@ function gather(cx, cy, cz, r, nx, ny, nz, frontOnly) {
     const d2 = dx * dx + dy * dy + dz * dz;
     if (d2 >= r2) continue;
     if (frontOnly && nr[i * 3] * nx + nr[i * 3 + 1] * ny + nr[i * 3 + 2] * nz < -0.1) continue;
-    out[c] = i; fall[c] = fo(Math.sqrt(d2) / r); c++;
+    out[c] = i; fall[c] = lut(FL, Math.sqrt(d2) / r); c++;
   }
   m.gCount = c;
   return c;
@@ -1394,7 +1863,7 @@ function hasHalfEdge(m, from, to) {
 }
 // L = target edge length (world units). Edges longer than L are split, shorter than 0.4·L collapsed.
 // `front` limits the region to vertices facing like the hit normal (the brush's own filter).
-function dynRemesh(cx, cy, cz, r, L, nx, ny, nz, all = false, front = S.front) {
+function dynRemesh(cx, cy, cz, r, L, nx, ny, nz, all = false, front = curFront) {
   const m = mesh;
   dynHitCap = false;
   const atCap = m.f + 8 > DYN_MAX_TRIS;
@@ -1470,10 +1939,64 @@ function dynRemesh(cx, cy, cz, r, L, nx, ny, nz, all = false, front = S.front) {
   return changed;
 }
 
-function applyBrush(tool, c, n, r, s, sign) {
-  const m = mesh;
-  const front = S.front && tool !== 'smooth';
-  const count = gather(c.x, c.y, c.z, r, n.x, n.y, n.z, front);
+/* ---------- elastic grab: regularized Kelvinlets (de Goes & James 2017), bi-scale as in Blender ----------
+   The displacement of an infinite elastic solid pulled at one point, smoothed over a radius ε.
+   The difference of two of them (ε and 1.1ε) fades fast enough to stay local; normalised so the
+   grabbed point follows the pen exactly. Material along the pull follows more than material beside
+   it, and the sides draw in (more with a higher Poisson ratio), which is what real clay does. */
+const KEL_EPS = 0.8;      // ε as a share of the brush radius: the ring shows where the pull is still ~10%
+const KEL_REACH = 3.5;
+const KEL_GROW = +(globalThis.__kelGrow ?? 0.5);    // elastic pull: radius growth per unit pulled    // vertices up to 3.5ε move; the last ε fades out, so there is no visible edge
+function kelvinlet(eps, nu) {
+  const a = 1 / (4 * Math.PI), b = a / (4 * (1 - Math.min(0.49, Math.max(0, nu))));
+  const e1 = eps, e2 = eps * 1.1, e1s = e1 * e1, e2s = e2 * e2;
+  const raw0 = (e) => (a - b) / e + a / (2 * e);
+  const norm = 1 / (raw0(e1) - raw0(e2));
+  const fadeIn = eps * (KEL_REACH - 1), fadeOut = eps * KEL_REACH;
+  const K = { u: [0, 0, 0] };
+  K.apply = (rx, ry, rz, fx, fy, fz) => {
+    const r2 = rx * rx + ry * ry + rz * rz, rf = rx * fx + ry * fy + rz * fz;
+    const q1 = Math.sqrt(r2 + e1s), q2 = Math.sqrt(r2 + e2s), q13 = q1 * q1 * q1, q23 = q2 * q2 * q2;
+    let A = (a - b) * (1 / q1 - 1 / q2) + (a / 2) * (e1s / q13 - e2s / q23);
+    let B = b * (1 / q13 - 1 / q23);
+    let w = norm;
+    const d = Math.sqrt(r2);
+    if (d > fadeIn) { const t = Math.min(1, (d - fadeIn) / (fadeOut - fadeIn)); w *= 1 - t * t * (3 - 2 * t); }
+    A *= w; B *= w * rf;
+    K.u[0] = A * fx + B * rx; K.u[1] = A * fy + B * ry; K.u[2] = A * fz + B * rz;
+  };
+  return K;
+}
+// vertices within r of pt that are connected to the surface under pt (ZBrush: Move Topological);
+// the other lip of a mouth or a neighbouring finger stays where it is
+function gatherConnected(pt, r) {
+  const m = mesh, cnt = gather(pt.x, pt.y, pt.z, r, 0, 0, 0, false);
+  if (!cnt) return 0;
+  const G = m.gIdx, F = m.gFall, P = m.pos, inside = new Map();
+  let seed = -1, best = Infinity;
+  for (let k = 0; k < cnt; k++) {
+    inside.set(G[k], F[k]);
+    const d = dist2(P, G[k], pt.x, pt.y, pt.z);
+    if (d < best) { best = d; seed = G[k]; }
+  }
+  const order = [seed], seen = new Set([seed]);
+  for (let h = 0; h < order.length; h++) {
+    const v = order[h];
+    const visit = (u) => { if (!seen.has(u) && inside.has(u)) { seen.add(u); order.push(u); } };
+    if (m.dyn) { const L = m.vfA[v], I = m.idx; for (let j = 0; j < L.length; j++) for (let q = 0; q < 3; q++) visit(I[L[j] * 3 + q]); }
+    else for (let j = m.vvOff[v]; j < m.vvOff[v + 1]; j++) visit(m.vv[j]);
+  }
+  for (let k = 0; k < order.length; k++) { G[k] = order[k]; F[k] = inside.get(order[k]); }
+  m.gCount = order.length;
+  return order.length;
+}
+
+function applyBrush(tool, c, n, r, s, sign, dab = {}) {
+  const m = mesh, b = dab.b || BRUSH_DEFAULTS;
+  const front = curFront && tool !== 'smooth';
+  const square = b.tip === 'square';
+  // a square tip reaches into the corners of its square, √2 times the radius
+  const count = gather(c.x, c.y, c.z, square ? r * 1.4143 : r, n.x, n.y, n.z, front);
   if (!count) return;
   const P = m.pos, NR = m.nrm, MK = m.mask, CL = m.col, G = m.gIdx, F = m.gFall;
   // area normal / centre
@@ -1488,31 +2011,75 @@ function applyBrush(tool, c, n, r, s, sign) {
   ax /= al; ay /= al; az /= al;
   if (wsum > 0) { px /= wsum; py /= wsum; pz /= wsum; } else { px = c.x; py = c.y; pz = c.z; }
 
+  // brush plane: u along the stroke (or the screen's x), v across, both tangent to the area normal
+  let ux = 0, uy = 0, uz = 0, vx = 0, vy = 0, vz = 0;
+  const A = alphaData(b.alpha, requestRender);
+  if (square || A || b.mod) {
+    let dx = 1, dy = 0, dz = 0;
+    if (b.alphaRot === 'stroke' && dab.dir) { dx = dab.dir.x; dy = dab.dir.y; dz = dab.dir.z; }
+    else { const cx = _camX.set(1, 0, 0).applyQuaternion(camera.quaternion); dx = cx.x; dy = cx.y; dz = cx.z; }
+    const along = dx * ax + dy * ay + dz * az; dx -= ax * along; dy -= ay * along; dz -= az * along;
+    let dl = Math.hypot(dx, dy, dz);
+    if (dl < 1e-6) { const t = Math.abs(ax) < 0.9 ? [1, 0, 0] : [0, 1, 0]; dx = t[0]; dy = t[1]; dz = t[2]; const al2 = dx * ax + dy * ay + dz * az; dx -= ax * al2; dy -= ay * al2; dz -= az * al2; dl = Math.hypot(dx, dy, dz); }
+    dx /= dl; dy /= dl; dz /= dl;
+    const wx = ay * dz - az * dy, wy = az * dx - ax * dz, wz = ax * dy - ay * dx;   // n × d
+    const ang = (dab.angle || 0) + (b.alphaAngle || 0) * Math.PI / 180, ca = Math.cos(ang), sa = Math.sin(ang);
+    ux = dx * ca + wx * sa; uy = dy * ca + wy * sa; uz = dz * ca + wz * sa;
+    vx = ay * uz - az * uy; vy = az * ux - ax * uz; vz = ax * uy - ay * ux;
+    if (square || A) {
+      const L = curLUT, mid = b.alphaMid, inv = 1 / r, keepSign = tool !== 'mask' && tool !== 'paint';
+      for (let k = 0; k < count; k++) {
+        const i = G[k], ox = P[i * 3] - c.x, oy = P[i * 3 + 1] - c.y, oz = P[i * 3 + 2] - c.z;
+        const lu = (ox * ux + oy * uy + oz * uz) * inv, lv = (ox * vx + oy * vy + oz * vz) * inv;
+        if (square) { const t = Math.max(Math.abs(lu), Math.abs(lv)); F[k] = t >= 1 ? 0 : lut(L, t); }
+        if (A) {
+          let a = sampleAlpha(A, lu, lv);
+          // MidValue: the grey level that does nothing; darker pushes the other way (ZBrush)
+          if (mid > 0 && keepSign) a = a >= mid ? (a - mid) / Math.max(1e-3, 1 - mid) : (a - mid) / mid;
+          F[k] *= a;
+        }
+      }
+    }
+  }
+
   switch (tool) {
     case 'draw': {
       const d = r * 0.12 * s * sign;
+      // Brush Mod: + pinches toward the stroke line (a sharp crease, as Dam_Standard), − inflates
+      const kp = b.mod > 0 ? b.mod * 0.3 * s : 0, ki = b.mod < 0 ? -b.mod * r * 0.06 * s * sign : 0;
       for (let k = 0; k < count; k++) {
-        const i = G[k], w = F[k] * (1 - MK[i]); if (w <= 0) continue; touchVert(i);
+        const i = G[k], w = F[k] * (1 - MK[i]); if (w === 0) continue; touchVert(i);
         P[i * 3] += ax * d * w; P[i * 3 + 1] += ay * d * w; P[i * 3 + 2] += az * d * w;
+        if (kp) {
+          // toward the line through the centre along the stroke: only the part across it (v) counts
+          const ox = c.x - P[i * 3], oy = c.y - P[i * 3 + 1], oz = c.z - P[i * 3 + 2];
+          const across = ox * vx + oy * vy + oz * vz, ww = Math.abs(w);
+          P[i * 3] += vx * across * kp * ww; P[i * 3 + 1] += vy * across * kp * ww; P[i * 3 + 2] += vz * across * kp * ww;
+        }
+        if (ki) { P[i * 3] += NR[i * 3] * ki * w; P[i * 3 + 1] += NR[i * 3 + 1] * ki * w; P[i * 3 + 2] += NR[i * 3 + 2] * ki * w; }
       }
       break;
     }
     case 'inflate': {
       const d = r * 0.08 * s * sign;
       for (let k = 0; k < count; k++) {
-        const i = G[k], w = F[k] * (1 - MK[i]); if (w <= 0) continue; touchVert(i);
+        const i = G[k], w = F[k] * (1 - MK[i]); if (w === 0) continue; touchVert(i);
         P[i * 3] += NR[i * 3] * d * w; P[i * 3 + 1] += NR[i * 3 + 1] * d * w; P[i * 3 + 2] += NR[i * 3 + 2] * d * w;
       }
       break;
     }
-    case 'clay': case 'flatten': {
-      const off = tool === 'clay' ? r * 0.18 * sign : 0;
+    case 'clay': case 'claystrips': case 'flatten': case 'scrape': {
+      // clay: a plane above the surface, only what is below it rises to it (strips: square, along the stroke)
+      // scrape (TrimDynamic): the surface's own plane, only what sticks out is cut down to it
+      const fill = tool === 'clay' || tool === 'claystrips';
+      const off = fill ? r * (tool === 'claystrips' ? 0.12 : 0.18) * sign : 0;
       const qx = px + ax * off, qy = py + ay * off, qz = pz + az * off;
-      const k0 = tool === 'clay' ? s * 0.5 : s * 0.35;
+      const k0 = fill ? s * 0.5 : tool === 'scrape' ? s * 0.6 : s * 0.35;
       for (let k = 0; k < count; k++) {
         const i = G[k], w = F[k] * (1 - MK[i]); if (w <= 0) continue;
         const d = (P[i * 3] - qx) * ax + (P[i * 3 + 1] - qy) * ay + (P[i * 3 + 2] - qz) * az;
-        if (tool === 'clay' && d * sign > 0) continue;
+        if (fill && d * sign > 0) continue;
+        if (tool === 'scrape' && d * sign < 0) continue;
         touchVert(i);
         const t = d * w * k0 * (tool === 'flatten' && sign < 0 ? -1 : 1);
         P[i * 3] -= ax * t; P[i * 3 + 1] -= ay * t; P[i * 3 + 2] -= az * t;
@@ -1536,7 +2103,7 @@ function applyBrush(tool, c, n, r, s, sign) {
     case 'mask': {
       const d = s * 0.6 * sign;
       for (let k = 0; k < count; k++) {
-        const i = G[k]; touchVert(i);
+        const i = G[k]; if (F[k] <= 0) continue; touchVert(i);
         MK[i] = Math.min(1, Math.max(0, MK[i] + d * F[k]));
       }
       frame_.masks = true;
@@ -1584,28 +2151,52 @@ function smoothVerts(G, F, count, s) {
 }
 
 function pressureOf(p) { return Math.pow(Math.min(1, Math.max(0, p)), S.curve); }
-function radiusPxFor(pr) { return brush().radius * (S.prRadius ? 0.12 + 0.88 * pr : 1); }
+function radiusPxFor(pr, b = (stroke && stroke.b) || brush()) { return b.radius * (S.prRadius ? 0.12 + 0.88 * pr : 1); }
+// DragRect / DragDot place one stamp that follows the pen until it lifts; topology stays as it is meanwhile
+const isDragStroke = (b) => b.stroke === 'dragrect' || b.stroke === 'dragdot';
 
-function beginStroke(e, x, y, tool, sign) {
+function beginStroke(e, x, y, b, sign) {
+  const tool = b.base, drag = isDragStroke(b) && tool !== 'grab' && tool !== 'snake';
+  curLUT = brushLUT(b); curFront = b.front;
   stroke = {
-    pointerId: e.pointerId, pointerType: e.pointerType, tool, sign, uCount: 0, changed: false,
-    snap: mesh.dyn && DYN_TOOLS.has(tool) ? snapshot() : null,
+    pointerId: e.pointerId, pointerType: e.pointerType, tool, b, sign, uCount: 0, changed: false, drag,
+    snap: mesh.dyn && !drag && (DYN_TOOLS.has(tool) || tool === 'grab') ? snapshot() : null,
     raw: { x, y }, sm: { x, y }, last: null, pressure: readPressure(e), queue: [{ x, y, p: readPressure(e) }],
+    prevHit: null, dir: null,
   };
   strokeId++;
   frame_.tag++;
+  if (drag) {
+    const hit = pick(x, y);
+    if (!hit) { stroke = null; return false; }
+    stroke.anchor = { x, y, p: readPressure(e), hit: { point: hit.point.clone(), normal: hit.normal.clone() } };
+  }
   if (tool === 'grab' || tool === 'snake') {
     const hit = pick(x, y);
     if (!hit) { stroke = null; return false; }
-    const r = brush().radius * worldPerPx(hit.point);
-    stroke.grab = { point: hit.point.clone(), r, normal: hit.normal.clone(), sets: [] };
+    const r = b.radius * worldPerPx(hit.point);
+    stroke.grab = { point: hit.point.clone(), r, normal: hit.normal.clone(), sets: [], strength: b.strength };
     if (tool === 'grab') {
-      const mk = (pt, nn) => { const cnt = gather(pt.x, pt.y, pt.z, r, nn.x, nn.y, nn.z, false); return { idx: mesh.gIdx.slice(0, cnt), fall: mesh.gFall.slice(0, cnt) }; };
-      stroke.grab.sets.push({ ...mk(hit.point, hit.normal), mirror: false });
-      if (S.sym) {
+      // every grabbed vertex keeps its position from the start of the stroke; each frame sets
+      // position = start + displacement(total pull), so the result does not depend on the frame rate
+      const elastic = b.grab === 'elastic';
+      const reach = elastic ? r * KEL_EPS * KEL_REACH : r;
+      const mk = (pt, nn) => {
+        const cnt = b.topo ? gatherConnected(pt, reach) : gather(pt.x, pt.y, pt.z, reach, nn.x, nn.y, nn.z, false);
+        const idx = mesh.gIdx.slice(0, cnt), P = mesh.pos, orig = new Float32Array(cnt * 3);
+        for (let k = 0; k < cnt; k++) { const i = idx[k]; orig[k * 3] = P[i * 3]; orig[k * 3 + 1] = P[i * 3 + 1]; orig[k * 3 + 2] = P[i * 3 + 2]; }
+        return { idx, orig, fall: elastic ? null : mesh.gFall.slice(0, cnt), center: pt.clone() };
+      };
+      stroke.grab.elastic = elastic ? kelvinlet(r * KEL_EPS, b.volume) : null;
+      stroke.grab.cur = hit.point.clone();
+      stroke.grab.pulled = 0; stroke.grab.volume = b.volume;
+      stroke.grab.topo = b.topo;
+      if (!elastic) stroke.grab.sets.push({ ...mk(hit.point, hit.normal), mirror: false });
+      if (S.sym && !elastic) {
         const mp = hit.point.clone(); mp.x = -mp.x; const mn = hit.normal.clone(); mn.x = -mn.x;
         stroke.grab.sets.push({ ...mk(mp, mn), mirror: true });
       }
+      stroke.grab.start = hit.point.clone();
     }
     stroke.grab.last = hit.point.clone();
     stroke.grab.camN = new THREE.Vector3(0, 0, 1).applyQuaternion(camera.quaternion);
@@ -1613,6 +2204,19 @@ function beginStroke(e, x, y, tool, sign) {
   }
   requestRender();
   return true;
+}
+
+// put back every vertex this stroke has changed (DragRect / DragDot redraw their stamp each move)
+function revertStroke() {
+  const m = mesh, n = stroke.uCount;
+  for (let k = 0; k < n; k++) {
+    const i = m.uIdx[k];
+    m.pos[i * 3] = m.uPos[k * 3]; m.pos[i * 3 + 1] = m.uPos[k * 3 + 1]; m.pos[i * 3 + 2] = m.uPos[k * 3 + 2];
+    m.col[i * 3] = m.uCol[k * 3]; m.col[i * 3 + 1] = m.uCol[k * 3 + 1]; m.col[i * 3 + 2] = m.uCol[k * 3 + 2];
+    m.mask[i] = m.uMask[k];
+    frameMark(i);
+  }
+  if (n) { frame_.positions = true; frame_.colors = frame_.colors || stroke.tool === 'paint'; frame_.masks = frame_.masks || stroke.tool === 'mask'; }
 }
 
 function processStroke() {
@@ -1631,7 +2235,7 @@ function processStroke() {
     }
     if (stroke.tool === 'snake') {
       // snake hook: re-gathers under the moving point, so the pulled tip keeps growing
-      const st = S.perBrush.snake.strength;
+      const st = g.strength;
       const doSet = (pt, d, nn) => {
         const cnt = gather(pt.x, pt.y, pt.z, g.r, nn.x, nn.y, nn.z, false);
         const P = mesh.pos, MK = mesh.mask, G = mesh.gIdx, F = mesh.gFall;
@@ -1645,13 +2249,44 @@ function processStroke() {
       // light relax keeps the pulled strand from collapsing into spikes
       const cnt = gather(hitPlane.x, hitPlane.y, hitPlane.z, g.r * 1.2, 0, 0, 0, false);
       smoothVerts(mesh.gIdx, mesh.gFall, cnt, 0.15);
+    } else if (g.elastic) {
+      // elastic: the pull is applied in small steps to the current shape, each step a Kelvinlet around
+      // where the grabbed point is now. One big linear step from the start folds the sides when the pull
+      // is several radii long; small steps make a smooth flow (de Goes & James: time integration).
+      // The radius grows with the distance pulled so far, so a long pull keeps a broad, tapering base
+      // instead of thinning into a strand (only the material at the tip would follow otherwise).
+      const P = mesh.pos, MK = mesh.mask, st = g.strength, e0 = g.r * KEL_EPS;
+      const total = delta.length() * st, nSub = Math.min(32, Math.max(1, Math.ceil(total / (e0 * 0.2))));
+      const fx = delta.x * st / nSub, fy = delta.y * st / nSub, fz = delta.z * st / nSub;
+      for (let sub = 0; sub < nSub; sub++) {
+        const eps = e0 + KEL_GROW * g.pulled, K = kelvinlet(eps, g.volume), reach = eps * KEL_REACH;
+        g.pulled += Math.hypot(fx, fy, fz);
+        for (const mirror of S.sym ? [false, true] : [false]) {
+          const c = g.cur, cx = mirror ? -c.x : c.x, sx = mirror ? -fx : fx;
+          const cnt = g.topo ? gatherConnected(new THREE.Vector3(cx, c.y, c.z), reach) : gather(cx, c.y, c.z, reach, 0, 0, 0, false);
+          const G = mesh.gIdx;
+          for (let k = 0; k < cnt; k++) {
+            const i = G[k], free = 1 - MK[i];
+            if (free <= 0) continue;
+            touchVert(i);
+            K.apply(P[i * 3] - cx, P[i * 3 + 1] - c.y, P[i * 3 + 2] - c.z, sx, fy, fz);
+            P[i * 3] += K.u[0] * free; P[i * 3 + 1] += K.u[1] * free; P[i * 3 + 2] += K.u[2] * free;
+          }
+          if (mesh.dyn) gridFollowBrush();   // the next step gathers through the grid: it must see the moved faces
+        }
+        g.cur.x += fx; g.cur.y += fy; g.cur.z += fz;
+      }
     } else {
-      const P = mesh.pos, MK = mesh.mask;
+      const P = mesh.pos, MK = mesh.mask, st = g.strength;
+      const tx = (hitPlane.x - g.start.x) * st, ty = (hitPlane.y - g.start.y) * st, tz = (hitPlane.z - g.start.z) * st;
       for (const set of g.sets) {
-        const dx = set.mirror ? -delta.x : delta.x;
+        const fx = set.mirror ? -tx : tx, O = set.orig;
         for (let k = 0; k < set.idx.length; k++) {
-          const i = set.idx[k], w = set.fall[k] * (1 - MK[i]); if (w <= 0) continue; touchVert(i);
-          P[i * 3] += dx * w; P[i * 3 + 1] += delta.y * w; P[i * 3 + 2] += delta.z * w;
+          const i = set.idx[k], free = 1 - MK[i];
+          if (free <= 0) continue;
+          touchVert(i);
+          const ox = O[k * 3], oy = O[k * 3 + 1], oz = O[k * 3 + 2], w = set.fall[k] * free;
+          P[i * 3] = ox + fx * w; P[i * 3 + 1] = oy + ty * w; P[i * 3 + 2] = oz + tz * w;
         }
       }
     }
@@ -1660,13 +2295,33 @@ function processStroke() {
     frame_.positions = true;
     return;
   }
-  const spacingK = S.spacing;
+  const b = stroke.b;
+  if (stroke.drag) {
+    // DragRect: the stamp sits where the pen went down; its size is the drag length, its angle the
+    // drag direction. DragDot: a stamp of the brush's size that slides with the pen.
+    const s = q[q.length - 1]; q.length = 0;
+    const A = stroke.anchor;
+    revertStroke();
+    if (b.stroke === 'dragrect') {
+      const dx = s.x - A.x, dy = s.y - A.y, len = Math.hypot(dx, dy);
+      if (len < 3) return;
+      const angle = Math.atan2(dy, dx);
+      // screen angle -> rotation about the normal: measured from the screen's x axis
+      dab(A.x, A.y, A.p, { hit: A.hit, rpx: len, angle: -angle, single: true });
+    } else {
+      dab(s.x, s.y, s.p, { single: true });
+    }
+    bvhDirty = true;
+    return;
+  }
+  const spray = b.stroke === 'spray';
+  const spacingK = spray ? Math.max(b.spacing, 0.3) : b.spacing;
   for (const s of q) {
     // lazy stabiliser
     const k = 1 - S.stab;
     stroke.sm.x += (s.x - stroke.sm.x) * k; stroke.sm.y += (s.y - stroke.sm.y) * k;
     const pt = { x: stroke.sm.x, y: stroke.sm.y, p: s.p };
-    if (!stroke.last) { dab(pt.x, pt.y, pt.p); stroke.last = { ...pt }; continue; }
+    if (!stroke.last) { sprayDab(pt.x, pt.y, pt.p, spray); stroke.last = { ...pt }; continue; }
     const L = stroke.last;
     const dist = Math.hypot(pt.x - L.x, pt.y - L.y);
     const step = Math.max(1.5, radiusPxFor(pressureOf(pt.p)) * spacingK);
@@ -1674,38 +2329,77 @@ function processStroke() {
     const nSteps = Math.min(64, Math.floor(dist / step));
     for (let j = 1; j <= nSteps; j++) {
       const t = (j * step) / dist;
-      dab(L.x + (pt.x - L.x) * t, L.y + (pt.y - L.y) * t, L.p + (pt.p - L.p) * t);
+      sprayDab(L.x + (pt.x - L.x) * t, L.y + (pt.y - L.y) * t, L.p + (pt.p - L.p) * t, spray);
     }
     const t = (nSteps * step) / dist;
     stroke.last = { x: L.x + (pt.x - L.x) * t, y: L.y + (pt.y - L.y) * t, p: L.p + (pt.p - L.p) * t };
   }
   q.length = 0;
 }
+// Spray: each dab lands somewhere inside the brush, a bit bigger or smaller, turned at random
+function sprayDab(x, y, p, spray) {
+  if (!spray) { dab(x, y, p); return; }
+  const rpx = radiusPxFor(pressureOf(p)), a = Math.random() * Math.PI * 2, d = Math.sqrt(Math.random()) * rpx * 0.7;
+  dab(x + Math.cos(a) * d, y + Math.sin(a) * d, p, { rscale: 0.45 + Math.random() * 0.7, sscale: 0.6 + Math.random() * 0.4, angle: Math.random() * Math.PI * 2 });
+}
 
-function dab(x, y, p) {
-  const hit = pick(x, y, true);
+function dab(x, y, p, o = {}) {
+  const hit = o.hit || pick(x, y, true);
   if (!hit) return;
+  const b = stroke.b;
   const pr = pressureOf(p);
-  const rpx = radiusPxFor(pr);
+  const rpx = (o.rpx || radiusPxFor(pr)) * (o.rscale || 1);
   const wpp = worldPerPx(hit.point);
   const r = rpx * wpp;
   const tool = stroke.tool;
-  let s = brush().strength * (S.prStrength ? pr : 1);
-  if (tool === 'smooth' && tool !== S.tool) s = S.perBrush.smooth.strength * (S.prStrength ? pr : 1);
+  const s = b.strength * (S.prStrength ? pr : 1) * (o.sscale || 1);
+  // stroke direction on the surface, for alphas and tips that follow the stroke (ZBrush: Roll)
+  if (stroke.prevHit) {
+    const dx = hit.point.x - stroke.prevHit.x, dy = hit.point.y - stroke.prevHit.y, dz = hit.point.z - stroke.prevHit.z;
+    const dl = Math.hypot(dx, dy, dz);
+    if (dl > r * 0.05) { stroke.dir = (stroke.dir || new THREE.Vector3()).set(dx / dl, dy / dl, dz / dl); stroke.prevHit.copy(hit.point); }
+  } else stroke.prevHit = hit.point.clone();
+  let angle = o.angle || 0;
+  if (b.alphaRot === 'random' && o.angle === undefined) angle = Math.random() * Math.PI * 2;
+  const info = { b, dir: b.alphaRot === 'stroke' ? stroke.dir : null, angle };
   const mp = hit.point.clone(); mp.x = -mp.x;
   const mn = hit.normal.clone(); mn.x = -mn.x;
-  if (mesh.dyn && DYN_TOOLS.has(tool)) {
+  if (mesh.dyn && stroke.snap && DYN_TOOLS.has(tool)) {
     const L = S.detail * wpp;
     if (dynRemesh(hit.point.x, hit.point.y, hit.point.z, r, L, hit.normal.x, hit.normal.y, hit.normal.z)) stroke.changed = true;
     if (S.sym && dynRemesh(mp.x, mp.y, mp.z, r, L, mn.x, mn.y, mn.z)) stroke.changed = true;
   }
   // keep the picking structure in step with what this dab moved (mask and paint move nothing)
   const moves = tool !== 'mask' && tool !== 'paint';
-  applyBrush(tool, hit.point, hit.normal, r, s, stroke.sign);
+  applyBrush(tool, hit.point, hit.normal, r, s, stroke.sign, info);
   if (mesh.dyn && moves) gridFollowBrush();
-  if (S.sym) { applyBrush(tool, mp, mn, r, s, stroke.sign); if (mesh.dyn && moves) gridFollowBrush(); }
-  if (!mesh.dyn && moves) { refitAround(hit.point, S.sym ? mp : null, r); frame_.bvhKept = true; }
+  if (S.sym) {
+    const md = info.dir ? info.dir.clone() : null; if (md) md.x = -md.x;
+    applyBrush(tool, mp, mn, r, s, stroke.sign, { b, dir: md, angle: -angle });
+    if (mesh.dyn && moves) gridFollowBrush();
+  }
+  if (!mesh.dyn && moves && !o.single) { refitAround(hit.point, S.sym ? mp : null, r); frame_.bvhKept = true; }
   placeRing(hit.point, hit.normal, r);
+}
+
+// Dynamic topology after a grab: the pulled part is stretched, so split its long edges (and merge
+// short ones) along the whole pull, the way Sculptris Pro or DynaMesh would after a Move.
+function refineAfterGrab() {
+  const g = stroke.grab, a = g.start, b = g.last;
+  const L = S.detail * worldPerPx(b), reach = g.r * 1.6;
+  const n = Math.min(48, Math.ceil(a.distanceTo(b) / (g.r * 0.5)));
+  for (let pass = 0; pass < 6; pass++) {
+    let any = false;
+    for (let j = 0; j <= n; j++) {
+      const t = n ? j / n : 0;
+      const x = a.x + (b.x - a.x) * t, y = a.y + (b.y - a.y) * t, z = a.z + (b.z - a.z) * t;
+      dynSplitsLeft = DYN_FRAME_SPLITS; dynCollapsesLeft = DYN_FRAME_COLLAPSES;
+      if (dynRemesh(x, y, z, reach, L, 0, 0, 0, false, false)) any = true;
+      if (S.sym && dynRemesh(-x, y, z, reach, L, 0, 0, 0, false, false)) any = true;
+      if (dynHitCap) return;
+    }
+    if (!any) return;
+  }
 }
 
 // Grow the grid cells of faces the brush just moved, so the next dab in this frame can still hit them.
@@ -1720,6 +2414,7 @@ function gridFollowBrush() {
 function endStroke(commit = true) {
   if (!stroke) return;
   processStroke(); flushFrame();
+  if (commit && stroke.tool === 'grab' && mesh.dyn && stroke.changed) { refineAfterGrab(); flushFrame(); }
   if (stroke.snap) {
     const { snap, changed } = stroke;
     stroke = null;
@@ -1845,6 +2540,7 @@ function replaceMesh(newMesh, { frame = false } = {}) {
 const pointers = new Map();     // active touch pointers
 let nav = null;                 // { mode:'orbit'|'pan'|'zoom'|'pinch', x, y }
 let tempSmooth = false, tempInvert = false;
+let gesture = null;   // Ctrl + press: becomes a mask stroke, a mask click or a mask rectangle
 let hoverXY = null;
 let lastPressure = 0;
 
@@ -1887,19 +2583,24 @@ canvas.addEventListener('pointerdown', (e) => {
   } else {
     capture(e);
   }
-  if (stroke || nav) return;
+  if (stroke || nav || gesture) return;
   const barrel = e.pointerType === 'pen' && (e.buttons & 2);
   if (e.button === 2 || barrel) { nav = { mode: e.shiftKey ? 'pan' : (e.ctrlKey ? 'zoom' : 'orbit'), x, y, id: e.pointerId }; return; }
   if (e.button === 1) { nav = { mode: 'pan', x, y, id: e.pointerId }; e.preventDefault(); return; }
   if (e.button !== 0) return;
 
   const hit = pick(x, y);
-  if (!hit) { nav = { mode: (e.altKey || e.ctrlKey) ? 'pan' : 'orbit', x, y, id: e.pointerId }; hideRing(); return; }
-  let tool = S.tool;
-  if (e.shiftKey || tempSmooth) tool = 'smooth';
+  const ctrl = e.ctrlKey || e.metaKey;
+  // ZBrush: Ctrl masks. On the model a click blurs the mask (Ctrl+Alt sharpens) and a drag paints it;
+  // on empty space a click inverts it and a drag draws a rectangle to mask (Alt: unmask, empty: clear).
+  if (ctrl) { gesture = { kind: hit ? 'maskpaint' : 'maskrect', x0: x, y0: y, x, y, alt: e.altKey, e, id: e.pointerId }; hideRing(); return; }
+  if (!hit) { nav = { mode: e.altKey ? 'pan' : 'orbit', x, y, id: e.pointerId }; hideRing(); return; }
+  let b = brush();
+  if (e.shiftKey || tempSmooth) b = { ...brushById('smooth'), base: 'smooth' };   // Shift always smooths
   const eraser = e.pointerType === 'pen' && (e.buttons & 32);
-  let sign = (S.invert !== (e.ctrlKey || e.altKey || tempInvert || !!eraser)) ? -1 : 1;
-  beginStroke(e, x, y, tool, sign);
+  // Alt (or the pen's eraser end, or ⇅) reverses the brush's own direction
+  const sign = b.dir * ((S.invert !== (e.altKey || tempInvert || !!eraser)) ? -1 : 1);
+  beginStroke(e, x, y, b, sign);
 });
 
 canvas.addEventListener('pointermove', (e) => {
@@ -1907,6 +2608,16 @@ canvas.addEventListener('pointermove', (e) => {
   if (e.pointerType === 'pen' || e.pointerType === 'mouse') showPressure(e.pointerType === 'pen' ? e.pressure : null);
   const tp = e.pointerType === 'touch' && pointers.get(e.pointerId);
   if (tp) { tp.x = x; tp.y = y; }
+  if (gesture && e.pointerId === gesture.id) {
+    gesture.x = x; gesture.y = y;
+    const moved = Math.hypot(x - gesture.x0, y - gesture.y0) > 4;
+    if (gesture.kind === 'maskpaint' && moved) {
+      // turn into a mask stroke from the press point
+      const g = gesture; gesture = null;
+      if (beginStroke(g.e, g.x0, g.y0, { ...brushById('mask'), base: 'mask', stroke: 'dots' }, g.alt ? -1 : 1)) stroke.queue.push({ x, y, p: readPressure(e) });
+    } else if (gesture.kind === 'maskrect') showMaskRect(moved);
+    return;
+  }
   if (nav) {
     if (nav.mode === 'pinch') {
       if (pointers.size < 2) return;
@@ -1937,6 +2648,16 @@ canvas.addEventListener('pointermove', (e) => {
 
 function endPointer(e) {
   if (e.pointerType === 'touch') pointers.delete(e.pointerId);
+  if (gesture && e.pointerId === gesture.id) {
+    const g = gesture; gesture = null; showMaskRect(false);
+    const moved = Math.hypot(g.x - g.x0, g.y - g.y0) > 4;
+    if (e.type === 'pointercancel') return;
+    if (g.kind === 'maskpaint') maskOp(g.alt ? 'sharpen' : 'blur');
+    else if (!moved) maskOp('invert');
+    else maskRect(g);
+    requestRender();
+    return;
+  }
   if (stroke && e.pointerId === stroke.pointerId) endStroke(true);
   if (nav) {
     if (nav.mode === 'pinch') { if (pointers.size < 2) nav = null; }
@@ -1967,12 +2688,12 @@ function showPressure(p) {
 }
 
 /* ---------- brush ring ---------- */
-const _q = new THREE.Quaternion(), _z = new THREE.Vector3(0, 0, 1);
+const _q = new THREE.Quaternion(), _z = new THREE.Vector3(0, 0, 1), _camX = new THREE.Vector3();
 function placeRing(point, normal, r) {
   ring.position.copy(point).addScaledVector(normal, r * 0.02);
   ring.quaternion.copy(_q.setFromUnitVectors(_z, normal));
   ring.scale.setScalar(r); ring.visible = true;
-  ringMat.color.set(S.tool === 'mask' ? 0x7ea6ff : (stroke && stroke.sign < 0 ? 0x9fd0ff : 0xffffff));
+  ringMat.color.set((stroke ? stroke.tool : brush().base) === 'mask' ? 0x7ea6ff : (stroke && stroke.sign < 0 ? 0x9fd0ff : 0xffffff));
   if (S.sym) {
     ringSym.position.set(-ring.position.x, ring.position.y, ring.position.z);
     const mn = normal.clone(); mn.x = -mn.x;
@@ -2009,6 +2730,7 @@ function frame() {
    ===================================================================== */
 window.addEventListener('keydown', (e) => {
   if (e.target instanceof HTMLInputElement && (e.target.type === 'text' || e.target.type === 'number')) return;
+  if (e.target instanceof HTMLSelectElement || e.target instanceof HTMLTextAreaElement || e.target.isContentEditable) return;
   const k = e.key.toLowerCase();
   if ((e.ctrlKey || e.metaKey) && k === 'z') { e.preventDefault(); e.shiftKey ? redo() : undo(); return; }
   if ((e.ctrlKey || e.metaKey) && k === 'y') { e.preventDefault(); redo(); return; }
@@ -2018,7 +2740,7 @@ window.addEventListener('keydown', (e) => {
   if (k === 'w') { toggleWire(); return; }
   if (k === 'f') { frameView(); return; }
   if (k === 'd') { setDyntopo(!S.dyntopo); return; }
-  const b = BRUSHES.find((x) => x.key === k);
+  const b = S.brushes.find((x) => x.key === k);
   if (b) selectTool(b.id);
 });
 
@@ -2039,6 +2761,22 @@ function subdivide() {
     toast(`Ниво ${mesh.level}: ${fmt(mesh.f)} триъгълника.` + (paused ? ' ' + DYN_PAUSED_MSG : ''));
   }, 30);
 }
+function remesh() {
+  if (stroke) return;
+  const src = mesh.dyn ? mesh.arrays() : mesh;
+  if (hasOpenEdges(src.idx.subarray ? src.idx.subarray(0, mesh.f * 3) : src.idx)) { toast('Преизграждането работи само със затворен модел (без отвори, например не с равнината).'); return; }
+  busy(true);
+  setTimeout(() => {
+    const t0 = performance.now();
+    let r;
+    try { r = voxelRemesh({ pos: src.pos.subarray(0, mesh.n * 3), idx: src.idx.subarray(0, mesh.f * 3), col: src.col, mask: src.mask }, S.voxel); }
+    catch (e) { busy(false); toast('Преизграждането не успя: ' + e.message); return; }
+    if (r.idx.length < 12) { busy(false); toast('Моделът е твърде тънък за тази плътност. Увеличете плътността.'); return; }
+    const paused = replaceMesh(new SculptMesh(r.pos, r.idx, r.col, r.mask, 0));
+    busy(false);
+    toast(`Нова мрежа: ${fmt(mesh.f)} триъгълника за ${((performance.now() - t0) / 1000).toFixed(1)} с.` + (r.res < S.voxel ? ` Плътността е намалена до ${r.res}, за да стигне паметта.` : '') + (paused ? ' ' + DYN_PAUSED_MSG : ''));
+  }, 30);
+}
 function smoothAll() {
   if (stroke) return;
   const m = mesh;
@@ -2054,19 +2792,87 @@ function smoothAll() {
   for (const a of ['position', 'normal']) uploadAll(geo.attributes[a]);
   bvhDirty = true; requestRender(); scheduleAutosave();
 }
+// neighbours of vertex i (each once in static mode; in dynamic mode an edge's neighbour may repeat,
+// which only weights averages a little toward vertices with two shared faces)
+function forNeighbors(m, i, fn) {
+  if (m.dyn) { const L = m.vfA[i], I = m.idx; for (let j = 0; j < L.length; j++) { const o = L[j] * 3; for (let q = 0; q < 3; q++) { const u = I[o + q]; if (u !== i) fn(u); } } }
+  else for (let j = m.vvOff[i]; j < m.vvOff[i + 1]; j++) fn(m.vv[j]);
+}
+// whole-mask operations (Masking menu in ZBrush): one undo step each
 function maskOp(kind) {
   if (stroke) return;
-  const m = mesh;
-  stroke = { uCount: 0, tool: 'mask' }; strokeId++; frame_.tag++;
-  for (let i = 0; i < m.n; i++) {
-    const v = kind === 'clear' ? 0 : 1 - m.mask[i];
-    if (v !== m.mask[i]) { touchVert(i); m.mask[i] = v; }
+  const m = mesh, n = m.n, M = m.mask;
+  let next;
+  if (kind === 'clear') next = new Float32Array(n);
+  else if (kind === 'invert') { next = new Float32Array(n); for (let i = 0; i < n; i++) next[i] = 1 - M[i]; }
+  else if (kind === 'blur' || kind === 'sharpen' || kind === 'grow' || kind === 'shrink') {
+    next = new Float32Array(n);
+    for (let i = 0; i < n; i++) {
+      if (m.dyn && !m.vfA[i].length) { next[i] = M[i]; continue; }
+      let sum = M[i], cnt = 1, mx = M[i], mn = M[i];
+      forNeighbors(m, i, (u) => { const v = M[u]; sum += v; cnt++; if (v > mx) mx = v; if (v < mn) mn = v; });
+      next[i] = kind === 'grow' ? mx : kind === 'shrink' ? mn : sum / cnt;
+    }
+    // sharpen: blur away the noise, then push every value away from 0.5
+    if (kind === 'sharpen') for (let i = 0; i < n; i++) next[i] = Math.min(1, Math.max(0, 0.5 + (next[i] - 0.5) * 2.2));
+  } else if (kind === 'cavity') {
+    // concave places (creases, pores) get the mask: how far a vertex sits below its neighbours' average,
+    // relative to the edge length around it (ZBrush: Mask By Cavity)
+    const P = m.pos, NR = m.nrm, c = new Float32Array(n);
+    let total = 0, cntAll = 0;
+    for (let i = 0; i < n; i++) {
+      if (m.dyn && !m.vfA[i].length) continue;
+      let x = 0, y = 0, z = 0, len = 0, k = 0;
+      forNeighbors(m, i, (u) => { x += P[u * 3]; y += P[u * 3 + 1]; z += P[u * 3 + 2]; len += Math.sqrt(edgeLen2(P, i, u)); k++; });
+      if (!k) continue;
+      x = x / k - P[i * 3]; y = y / k - P[i * 3 + 1]; z = z / k - P[i * 3 + 2];
+      c[i] = (x * NR[i * 3] + y * NR[i * 3 + 1] + z * NR[i * 3 + 2]) / (len / k);
+      if (c[i] > 0) { total += c[i]; cntAll++; }
+    }
+    const ref = cntAll ? (total / cntAll) * 2.5 : 1;
+    next = new Float32Array(n);
+    for (let i = 0; i < n; i++) { const t = Math.min(1, Math.max(0, c[i] / ref)); next[i] = t * t * (3 - 2 * t); }
   }
+  if (!next) return;
+  setMaskUndoable(next);
+}
+function setMaskUndoable(next) {
+  const m = mesh, M = m.mask;
+  stroke = { uCount: 0, tool: 'mask' }; strokeId++; frame_.tag++;
+  for (let i = 0; i < m.n; i++) if (Math.abs(next[i] - M[i]) > 1e-6) { touchVert(i); M[i] = next[i]; }
   const n = stroke.uCount;
   if (n) pushUndo({ type: 'verts', idx: m.uIdx.slice(0, n), pos: m.uPos.slice(0, n * 3), col: m.uCol.slice(0, n * 3), mask: m.uMask.slice(0, n) });
   resetFrame();
   stroke = null;
   uploadAll(geo.attributes.aMask); requestRender(); scheduleAutosave();
+}
+function showMaskRect(on) {
+  const el = $('maskRect');
+  if (!on || !gesture) { el.hidden = true; return; }
+  const x = Math.min(gesture.x0, gesture.x), y = Math.min(gesture.y0, gesture.y);
+  Object.assign(el.style, { left: x + 'px', top: y + 'px', width: Math.abs(gesture.x - gesture.x0) + 'px', height: Math.abs(gesture.y - gesture.y0) + 'px' });
+  el.style.borderColor = gesture.alt ? '#ff9f7e' : '#7ea6ff';
+  el.hidden = false;
+}
+// mask everything that lies inside the rectangle on screen, front and back (ZBrush: MaskRect);
+// an empty rectangle clears the mask
+function maskRect(g) {
+  const m = mesh, P = m.pos, M = m.mask;
+  const x0 = Math.min(g.x0, g.x), x1 = Math.max(g.x0, g.x), y0 = Math.min(g.y0, g.y), y1 = Math.max(g.y0, g.y);
+  camera.updateMatrixWorld();
+  const e = new THREE.Matrix4().multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse).elements;
+  const next = Float32Array.from(M.subarray(0, m.n));
+  let inside = 0;
+  for (let i = 0; i < m.n; i++) {
+    if (m.dyn && !m.vfA[i].length) continue;
+    const x = P[i * 3], y = P[i * 3 + 1], z = P[i * 3 + 2];
+    const w = e[3] * x + e[7] * y + e[11] * z + e[15]; if (w <= 0) continue;
+    const sx = ((e[0] * x + e[4] * y + e[8] * z + e[12]) / w * 0.5 + 0.5) * viewport.w;
+    const sy = (0.5 - (e[1] * x + e[5] * y + e[9] * z + e[13]) / w * 0.5) * viewport.h;
+    if (sx >= x0 && sx <= x1 && sy >= y0 && sy <= y1) { next[i] = g.alt ? 0 : 1; inside++; }
+  }
+  if (!inside) { next.fill(0); toast('Маската е изчистена.'); }
+  setMaskUndoable(next);
 }
 
 /* ---------- dynamic topology controls ---------- */
@@ -2309,19 +3115,31 @@ function updateStats() {
 }
 
 const rail = $('rail');
-for (const b of BRUSHES) {
-  const el = document.createElement('button');
-  el.className = 'tool' + (b.id === 'mask' ? ' mask' : '');
-  el.dataset.tool = b.id; el.title = `${b.name} (${b.key.toUpperCase()})`;
-  el.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">${ICON[b.id]}</svg><span>${b.short}</span><kbd>${b.key.toUpperCase()}</kbd>`;
-  el.onclick = () => selectTool(b.id);
-  rail.appendChild(el);
+function renderRail() {
+  rail.textContent = '';
+  for (const b of S.brushes) {
+    const el = document.createElement('button');
+    el.className = 'tool' + (b.base === 'mask' ? ' mask' : '') + (b.builtin ? '' : ' mine');
+    el.dataset.tool = b.id; el.title = `${b.name}${b.zb ? ' · ' + b.zb : ''}${b.key ? ` (${b.key.toUpperCase()})` : ''}`;
+    el.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">${ICON[b.icon] || ICON[b.id] || ICON[b.base]}</svg><span></span>${b.key ? `<kbd>${b.key.toUpperCase()}</kbd>` : ''}`;
+    el.querySelector('span').textContent = b.short;
+    el.setAttribute('aria-pressed', b.id === S.tool);
+    el.onclick = () => selectTool(b.id);
+    rail.appendChild(el);
+  }
+  const add = document.createElement('button');
+  add.className = 'tool add'; add.title = 'Нова четка от текущата';
+  add.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="M12 6v12M6 12h12"/></svg><span>Нова</span>';
+  add.onclick = newBrush;
+  rail.appendChild(add);
 }
 function selectTool(id) {
+  if (!brushById(id)) id = 'draw';
   S.tool = id;
-  for (const el of rail.children) el.setAttribute('aria-pressed', el.dataset.tool === id);
-  $('brushName').textContent = BRUSHES.find((b) => b.id === id).name;
-  $('paintSec').style.outline = id === 'paint' ? '1px solid var(--wax)' : '';
+  for (const el of rail.children) if (el.dataset.tool) el.setAttribute('aria-pressed', el.dataset.tool === id);
+  const b = brush();
+  $('brushName').textContent = b.name;
+  $('paintSec').style.outline = b.base === 'paint' ? '1px solid var(--wax)' : '';
   syncBrushUI(); saveSettings(); requestRender();
 }
 function bindRange(id, out, get, set, fmtv) {
@@ -2331,13 +3149,221 @@ function bindRange(id, out, get, set, fmtv) {
   el.addEventListener('input', () => { set(+el.value); upd(); saveSettings(); requestRender(); });
   return () => { el.value = get(); upd(); };
 }
+const pct = (v) => Math.round(v * 100) + '%';
 const syncRadius = bindRange('sRadius', 'oRadius', () => brush().radius, (v) => (brush().radius = v), (v) => v + ' px');
-const syncStrength = bindRange('sStrength', 'oStrength', () => brush().strength, (v) => (brush().strength = v), (v) => Math.round(v * 100) + '%');
+const syncStrength = bindRange('sStrength', 'oStrength', () => brush().strength, (v) => (brush().strength = v), pct);
 bindRange('sCurve', 'oCurve', () => S.curve, (v) => (S.curve = v), (v) => (v < 1 ? 'мека ' : v > 1 ? 'твърда ' : 'права ') + v.toFixed(2));
-bindRange('sStab', 'oStab', () => S.stab, (v) => (S.stab = v), (v) => Math.round(v * 100) + '%');
+bindRange('sStab', 'oStab', () => S.stab, (v) => (S.stab = v), pct);
 bindRange('sDetail', 'oDetail', () => S.detail, (v) => { S.detail = v; syncDynUI(); }, (v) => v + ' px');
-bindRange('sSpacing', 'oSpacing', () => S.spacing, (v) => (S.spacing = v), (v) => Math.round(v * 100) + '%');
-function syncBrushUI() { syncRadius(); syncStrength(); }
+const brushSyncs = [
+  bindRange('sFocal', 'oFocal', () => brush().focal, (v) => { brush().focal = v; drawCurve(); }, (v) => (v > 0 ? '+' : '') + Math.round(v * 100)),
+  bindRange('sMid', 'oMid', () => brush().alphaMid, (v) => (brush().alphaMid = v), pct),
+  bindRange('sAngle', 'oAngle', () => brush().alphaAngle, (v) => (brush().alphaAngle = v), (v) => v + '°'),
+  bindRange('sSpacing', 'oSpacing', () => brush().spacing, (v) => (brush().spacing = v), pct),
+  bindRange('sMod', 'oMod', () => brush().mod, (v) => (brush().mod = v), (v) => (v > 0 ? 'притиска ' : v < 0 ? 'надува ' : '') + Math.round(Math.abs(v) * 100) + '%'),
+  bindRange('sVolume', 'oVolume', () => brush().volume, (v) => (brush().volume = v), (v) => Math.round(v / 0.49 * 100) + '%'),
+];
+// chips whose value lives on the current brush
+function brushChips(containerId, items, key, after) {
+  const c = $(containerId);
+  for (const it of items) {
+    const el = document.createElement('button'); el.className = 'chip'; el.dataset.id = String(it.id); el.textContent = it.name;
+    if (it.title) el.title = it.title;
+    el.onclick = () => { brush()[key] = it.id; syncBrushUI(); saveSettings(); after && after(); requestRender(); };
+    c.appendChild(el);
+  }
+  return () => { for (const el of c.children) el.setAttribute('aria-pressed', el.dataset.id === String(brush()[key])); };
+}
+brushSyncs.push(
+  brushChips('dirChips', [{ id: 1, name: 'Навън (ZAdd)' }, { id: -1, name: 'Навътре (ZSub)' }], 'dir'),
+  brushChips('tipChips', [{ id: 'round', name: 'Кръгъл' }, { id: 'square', name: 'Квадратен' }], 'tip'),
+  brushChips('rotChips', [{ id: 'fixed', name: 'Неподвижно' }, { id: 'stroke', name: 'По щриха', title: 'Roll: отпечатъкът се обръща по посоката на щриха' }, { id: 'random', name: 'Случайно' }], 'alphaRot'),
+  brushChips('strokeChips', [
+    { id: 'dots', name: 'Точки', title: 'Dots: отпечатъци един след друг' },
+    { id: 'dragrect', name: 'Опъване', title: 'DragRect: един отпечатък; влаченето му дава размер и посока' },
+    { id: 'dragdot', name: 'Местене', title: 'DragDot: един отпечатък, който местите, докато вдигнете писалката' },
+    { id: 'spray', name: 'Спрей', title: 'Spray: разпръснати отпечатъци с различен размер и ъгъл' },
+  ], 'stroke'),
+  brushChips('grabChips', [{ id: 'soft', name: 'Меко (Move)' }, { id: 'elastic', name: 'Еластично (Move Elastic)' }], 'grab'),
+);
+// falloff presets
+for (const c of CURVES) {
+  const el = document.createElement('button'); el.className = 'chip'; el.textContent = c.name;
+  el.onclick = () => { brush().curve = curvePts(c.id); brush().focal = 0; syncBrushUI(); saveSettings(); };
+  $('curveChips').appendChild(el);
+}
+// base action
+for (const x of BASES) { const o = document.createElement('option'); o.value = x.id; o.textContent = x.name; $('bBase').appendChild(o); }
+$('bBase').addEventListener('change', () => { brush().base = $('bBase').value; renderRail(); syncBrushUI(); saveSettings(); });
+$('bName').addEventListener('input', () => {
+  const b = brush(); if (b.builtin) return;
+  b.name = $('bName').value.trim() || 'Моя четка'; b.short = b.name.slice(0, 7);
+  $('brushName').textContent = b.name; renderRail(); saveSettings();
+});
+function syncBrushUI() {
+  syncRadius(); syncStrength();
+  const b = brush(), base = b.base;
+  const moves = base === 'grab' || base === 'snake';
+  $('bName').value = b.name; $('bName').disabled = b.builtin;
+  $('bName').title = b.builtin ? 'Готовите четки не се преименуват; „Нова от тази“ прави ваше копие' : '';
+  $('bBase').value = base;
+  $('dirGrp').hidden = moves || base === 'smooth' || base === 'paint';
+  $('tipGrp').hidden = $('alphaGrp').hidden = moves;
+  $('strokeGrp').hidden = moves;
+  $('modRow').hidden = base !== 'draw';
+  $('topoRow').hidden = base !== 'grab';
+  $('grabGrp').hidden = base !== 'grab';
+  $('volRow').hidden = !(base === 'grab' && b.grab === 'elastic');
+  $('curveGrp').hidden = base === 'grab' && b.grab === 'elastic';
+  $('sAngle').closest('.row').hidden = b.alphaRot === 'random';
+  $('bBrushReset').textContent = b.builtin ? 'Нулирай' : 'Изтрий';
+  for (const f of brushSyncs) f();
+  $('tFront').checked = b.front; $('tTopo').checked = b.topo;
+  renderAlphas(); drawCurve();
+}
+$('tFront').addEventListener('change', () => { brush().front = $('tFront').checked; saveSettings(); });
+$('tTopo').addEventListener('change', () => { brush().topo = $('tTopo').checked; saveSettings(); });
+
+/* ---------- alpha picker ---------- */
+const thumbCache = new Map();
+function renderAlphas() {
+  const grid = $('alphaGrid'), b = brush();
+  const items = ALPHAS.map((a) => a.id);
+  if (b.alpha.startsWith('data:image/')) items.push(b.alpha);
+  grid.textContent = '';
+  for (const id of items) {
+    const el = document.createElement('button'); el.className = 'alpha';
+    el.setAttribute('aria-pressed', b.alpha === id);
+    const def = ALPHAS.find((a) => a.id === id);
+    el.title = def ? def.name : 'Ваша картинка';
+    if (id === 'none') el.innerHTML = '<span>без</span>';
+    else {
+      const A = alphaData(id, renderAlphas);
+      if (A) { if (!thumbCache.has(id)) thumbCache.set(id, alphaThumb(A)); const img = document.createElement('img'); img.alt = ''; img.src = thumbCache.get(id); el.appendChild(img); }
+    }
+    el.onclick = () => { brush().alpha = id; renderAlphas(); saveSettings(); };
+    grid.appendChild(el);
+  }
+  const add = document.createElement('button'); add.className = 'alpha'; add.title = 'Своя картинка (тъмно = нищо, светло = пълна сила)';
+  add.innerHTML = '<span style="font-size:18px">+</span>';
+  add.onclick = () => $('alphaIn').click();
+  grid.appendChild(add);
+}
+$('alphaIn').addEventListener('change', () => {
+  const f = $('alphaIn').files[0]; $('alphaIn').value = '';
+  if (!f) return;
+  const url = URL.createObjectURL(f), img = new Image();
+  img.onload = () => {
+    URL.revokeObjectURL(url);
+    // stored small and grey, so the brush (and its file) stays light
+    const A = imageToAlpha(img), c = document.createElement('canvas'); c.width = c.height = ALPHA_N;
+    const g = c.getContext('2d'), im = g.createImageData(ALPHA_N, ALPHA_N);
+    for (let k = 0; k < A.length; k++) { const v = Math.round(A[k] * 255); im.data[k * 4] = im.data[k * 4 + 1] = im.data[k * 4 + 2] = v; im.data[k * 4 + 3] = 255; }
+    g.putImageData(im, 0, 0);
+    const data = c.toDataURL('image/png');
+    alphaCache.set(data, A);
+    brush().alpha = data; renderAlphas(); saveSettings();
+  };
+  img.onerror = () => { URL.revokeObjectURL(url); toast('Картинката не може да се отвори.'); };
+  img.src = url;
+});
+
+/* ---------- falloff curve editor ---------- */
+const curveEd = $('curveEd');
+let curveDrag = -1;
+function curveXY(e) { const r = curveEd.getBoundingClientRect(); return [Math.min(1, Math.max(0, (e.clientX - r.left - 8) / (r.width - 16))), Math.min(1, Math.max(0, 1 - (e.clientY - r.top - 8) / (r.height - 16)))]; }
+function drawCurve() {
+  const b = brush(), dpr = Math.min(2, window.devicePixelRatio || 1);
+  const w = curveEd.clientWidth, h = curveEd.clientHeight; if (!w) return;
+  if (curveEd.width !== Math.round(w * dpr)) { curveEd.width = Math.round(w * dpr); curveEd.height = Math.round(h * dpr); }
+  const g = curveEd.getContext('2d'); g.setTransform(dpr, 0, 0, dpr, 0, 0); g.clearRect(0, 0, w, h);
+  const X = (x) => 8 + x * (w - 16), Y = (y) => 8 + (1 - y) * (h - 16);
+  g.strokeStyle = '#2e353f'; g.lineWidth = 1;
+  for (let k = 0; k <= 4; k++) { g.beginPath(); g.moveTo(X(k / 4), Y(0)); g.lineTo(X(k / 4), Y(1)); g.stroke(); g.beginPath(); g.moveTo(X(0), Y(k / 4)); g.lineTo(X(1), Y(k / 4)); g.stroke(); }
+  const L = brushLUT(b);
+  g.beginPath();
+  for (let k = 0; k <= 64; k++) { const t = k / 64; k ? g.lineTo(X(t), Y(lut(L, t))) : g.moveTo(X(t), Y(lut(L, t))); }
+  g.lineTo(X(1), Y(0)); g.lineTo(X(0), Y(0)); g.closePath();
+  g.fillStyle = 'rgba(231,173,75,.14)'; g.fill();
+  g.strokeStyle = '#e7ad4b'; g.lineWidth = 2; g.beginPath();
+  for (let k = 0; k <= 64; k++) { const t = k / 64; k ? g.lineTo(X(t), Y(lut(L, t))) : g.moveTo(X(t), Y(lut(L, t))); }
+  g.stroke();
+  g.fillStyle = '#e4e8ee';
+  for (const [x, y] of b.curve) { g.beginPath(); g.arc(X(x), Y(y), 4.5, 0, Math.PI * 2); g.fill(); }
+  g.fillStyle = '#8a94a1'; g.font = '10px system-ui'; g.fillText('център', 10, h - 10); g.textAlign = 'right'; g.fillText('ръб', w - 10, h - 10); g.textAlign = 'left';
+}
+curveEd.addEventListener('pointerdown', (e) => {
+  if (e.button !== 0) return;
+  const b = brush(), [x, y] = curveXY(e), r = curveEd.getBoundingClientRect();
+  const near = b.curve.findIndex(([px, py]) => Math.hypot((px - x) * (r.width - 16), (py - y) * (r.height - 16)) < 10);
+  if (near >= 0) curveDrag = near;
+  else {
+    if (b.curve.length >= 24) { toast('Кривата има най-много 24 точки.'); return; }
+    // a new point goes between the two ends, never past them
+    const nx = Math.min(0.99, Math.max(0.01, x));
+    const at = b.curve.findIndex((p) => p[0] > nx);
+    const k = at < 0 ? b.curve.length - 1 : Math.max(1, at);
+    b.curve.splice(k, 0, [nx, y]); curveDrag = k;
+  }
+  curveEd.setPointerCapture(e.pointerId); drawCurve();
+});
+curveEd.addEventListener('pointermove', (e) => {
+  if (curveDrag < 0) return;
+  const b = brush(), [x, y] = curveXY(e), P = b.curve;
+  // the first and last points stay at the centre and at the rim; the others keep their order
+  const lo = curveDrag === 0 ? 0 : P[curveDrag - 1][0] + 0.01, hi = curveDrag === P.length - 1 ? 1 : P[curveDrag + 1][0] - 0.01;
+  P[curveDrag] = [curveDrag === 0 ? 0 : curveDrag === P.length - 1 ? 1 : Math.min(hi, Math.max(lo, x)), y];
+  drawCurve();
+});
+const endCurveDrag = () => { if (curveDrag >= 0) { curveDrag = -1; saveSettings(); } };
+curveEd.addEventListener('pointerup', endCurveDrag);
+curveEd.addEventListener('pointercancel', endCurveDrag);
+curveEd.addEventListener('dblclick', (e) => {
+  const b = brush(), [x, y] = curveXY(e), r = curveEd.getBoundingClientRect();
+  const k = b.curve.findIndex(([px, py]) => Math.hypot((px - x) * (r.width - 16), (py - y) * (r.height - 16)) < 10);
+  if (k > 0 && k < b.curve.length - 1) { b.curve.splice(k, 1); drawCurve(); saveSettings(); }
+});
+$('brushEdit').addEventListener('toggle', () => requestAnimationFrame(drawCurve));
+
+/* ---------- own brushes: copy, reset / delete, export, import ---------- */
+function newBrush() {
+  const src = brush(), b = sanitizeBrush({ ...src, name: src.name + ' (моя)' });
+  b.short = (src.short || src.name).slice(0, 5) + '*';
+  S.brushes.push(b); renderRail(); selectTool(b.id);
+  $('brushEdit').open = true; $('bName').focus(); $('bName').select();
+  toast('Нова четка: „' + b.name + '“. Променете я по желание, пази се сама.');
+}
+$('bBrushNew').onclick = newBrush;
+$('bBrushReset').onclick = () => {
+  const b = brush();
+  if (b.builtin) {
+    const fresh = presetBrush(PRESETS.find((p) => p.id === b.id));
+    Object.assign(b, fresh); toast('„' + b.name + '“ е както в началото.');
+  } else {
+    if (!confirm('Да се изтрие ли четката „' + b.name + '“?')) return;
+    S.brushes.splice(S.brushes.indexOf(b), 1); S.tool = 'draw'; renderRail();
+  }
+  selectTool(S.tool);
+};
+$('bBrushExport').onclick = () => {
+  const b = brush(), out = { glinaBrush: 1 };
+  for (const k of ['name', 'short', ...BRUSH_KEYS]) out[k] = b[k];
+  const name = (b.name || 'brush').replace(/[^\p{L}\p{N}_-]+/gu, '-').replace(/^-+|-+$/g, '') || 'brush';
+  offerFile(name + '.glina-brush.json', new TextEncoder().encode(JSON.stringify(out, null, 1)));
+};
+$('bBrushImport').onclick = () => $('brushIn').click();
+$('brushIn').addEventListener('change', async () => {
+  const f = $('brushIn').files[0]; $('brushIn').value = '';
+  if (!f) return;
+  try {
+    if (f.size > 2e6) throw new Error('файлът е твърде голям за четка');
+    const src = JSON.parse(await f.text());
+    if (!src || typeof src !== 'object' || !src.glinaBrush) throw new Error('това не е файл с четка на Глина');
+    const b = sanitizeBrush(src);
+    S.brushes.push(b); renderRail(); selectTool(b.id); saveSettings();
+    toast('Внесена е четката „' + b.name + '“.');
+  } catch (err) { toast('Четката не може да се внесе: ' + err.message); }
+});
 
 function chips(containerId, items, get, set) {
   const c = $(containerId);
@@ -2349,7 +3375,6 @@ function chips(containerId, items, get, set) {
   }
   render();
 }
-chips('falloffChips', FALLOFFS, () => S.falloff, (v) => (S.falloff = v));
 chips('fingerChips', [{ id: 'auto', name: 'Авто' }, { id: 'draw', name: 'Рисува' }, { id: 'navigate', name: 'Само изглед' }], () => S.finger, (v) => (S.finger = v));
 
 function bindToggle(id, key, after) {
@@ -2371,7 +3396,6 @@ function syncDynUI() {
 $('tDyn').addEventListener('change', () => setDyntopo($('tDyn').checked));
 $('bDyn').onclick = () => setDyntopo(!S.dyntopo);
 $('bFlood').onclick = floodDetail;
-bindToggle('tFront', 'front');
 bindToggle('tFlat', 'flat', () => (material.uniforms.flatShade.value = S.flat ? 1 : 0));
 material.uniforms.flatShade.value = S.flat ? 1 : 0;
 
@@ -2390,8 +3414,15 @@ $('bFrame').onclick = () => frameView();
 $('bUndo').onclick = undo; $('qUndo').onclick = undo; $('bRedo').onclick = redo;
 $('bSubdiv').onclick = subdivide;
 $('bSmoothAll').onclick = smoothAll;
+$('bRemesh').onclick = remesh;
+bindRange('sVoxel', 'oVoxel', () => S.voxel, (v) => (S.voxel = v), (v) => String(v));
 $('bMaskClear').onclick = () => maskOp('clear');
 $('bMaskInvert').onclick = () => maskOp('invert');
+$('bMaskBlur').onclick = () => maskOp('blur');
+$('bMaskSharpen').onclick = () => maskOp('sharpen');
+$('bMaskGrow').onclick = () => maskOp('grow');
+$('bMaskShrink').onclick = () => maskOp('shrink');
+$('bMaskCavity').onclick = () => maskOp('cavity');
 $('hintClose').onclick = () => { $('hint').hidden = true; try { localStorage.setItem('glina.hint', '1'); } catch (e) {} };
 try { if (localStorage.getItem('glina.hint')) $('hint').hidden = true; } catch (e) {}
 setPressed('qInv', S.invert);
@@ -2426,7 +3457,7 @@ const rgb2hex = (c) => '#' + c.map((v) => Math.round(v * 255).toString(16).padSt
 $('cPaint').value = rgb2hex(S.paint);
 for (const h of PAINT) {
   const d = document.createElement('button'); d.className = 'dot'; d.style.background = h; d.title = h; d.setAttribute('aria-label', 'Цвят ' + h);
-  d.onclick = () => { S.paint = hex2rgb(h); $('cPaint').value = h; saveSettings(); if (S.tool !== 'paint') selectTool('paint'); };
+  d.onclick = () => { S.paint = hex2rgb(h); $('cPaint').value = h; saveSettings(); if (brush().base !== 'paint') selectTool('paint'); };
   $('paintRow').appendChild(d);
 }
 $('cPaint').addEventListener('input', () => { S.paint = hex2rgb($('cPaint').value); saveSettings(); });
@@ -2463,6 +3494,7 @@ $('bExport').onclick = () => openMenu($('bExport'), [
 /* =====================================================================
    Boot
    ===================================================================== */
+renderRail();
 selectTool(S.tool);
 setMesh(makeSphere(6), { frame: true });
 resize();
@@ -2472,5 +3504,5 @@ loadAutosave().then((d) => {
     toast('Продължавате последния модел. „Нов“ започва отначало.');
   }
 });
-window.__glina = { get mesh() { return mesh; }, camera, pick, undo, redo, subdivide, setDyntopo, floodDetail, S, get undoStack() { return undoStack; } };
+window.__glina = { get mesh() { return mesh; }, camera, orbit, pick, selectTool, brush, brushById, maskOp, remesh, undo, redo, subdivide, setDyntopo, floodDetail, S, get undoStack() { return undoStack; } };
 </script>
