@@ -275,6 +275,14 @@ input[type=range] { width: 100%; height: 26px; accent-color: var(--wax); backgro
     </section>
 
     <section class="sec">
+      <h2>Симетрия</h2>
+      <div class="chips" id="symChips"></div>
+      <div class="row"><label for="sRadial">Кръгова: копия около оста</label><output id="oRadial"></output><input type="range" id="sRadial" min="1" max="24" step="1"></div>
+      <div><div class="note lab">Ос на кръговата симетрия</div><div class="chips" id="radialAxisChips"></div></div>
+      <p class="note">Огледално по X, Y и Z (и заедно), и кръгово: четката работи и на всички копия. Огледалата са през центъра на модела.</p>
+    </section>
+
+    <section class="sec">
       <h2>Стилус и таблет</h2>
       <label class="toggle">Натискът променя радиуса <input type="checkbox" id="tPrRadius"></label>
       <label class="toggle">Натискът променя силата <input type="checkbox" id="tPrStrength" checked></label>
@@ -313,8 +321,11 @@ input[type=range] { width: 100%; height: 26px; accent-color: var(--wax); backgro
 
     <section class="sec">
       <h2>Геометрия</h2>
-      <dl class="kv"><dt>Върхове</dt><dd id="gVerts">0</dd><dt>Триъгълници</dt><dd id="gTris">0</dd><dt>Ниво</dt><dd id="gLevel">0</dd></dl>
-      <button class="btn wide" id="bSubdiv" title="Раздели (Ctrl+D)">Раздели ×4 детайл</button>
+      <dl class="kv"><dt>Върхове</dt><dd id="gVerts">0</dd><dt>Триъгълници</dt><dd id="gTris">0</dd><dt>Ниво на разделяне</dt><dd id="gLevel">0</dd></dl>
+      <button class="btn wide" id="bSubdiv" title="Раздели (Ctrl+D)">Раздели ×4 детайл (Ctrl+D)</button>
+      <div class="two"><button class="btn wide" id="bLvDown" title="По-ниско ниво (Shift+D)">◀ По-ниско</button><button class="btn wide" id="bLvUp" title="По-високо ниво (Ctrl+D)">По-високо ▶</button></div>
+      <div class="two"><button class="btn wide" id="bDelLower" title="Текущото ниво става основа">Изтрий по-ниските</button><button class="btn wide" id="bDelHigher">Изтрий по-високите</button></div>
+      <p class="note">Всяко разделяне пази предишните нива. На ниско ниво местите голямата форма, на високо добавяте детайл; детайлът следва формата, когато се върнете горе.</p>
       <label class="toggle">Изглаждане при разделяне <input type="checkbox" id="tLoop" checked></label>
       <button class="btn wide" id="bSmoothAll">Изглади целия модел</button>
       <div class="row"><label for="sVoxel">Плътност на преизграждането</label><output id="oVoxel"></output><input type="range" id="sVoxel" min="48" max="256" step="8"></div>
@@ -363,6 +374,7 @@ const ICON = {
   elastic: '<path d="M4 18c3 0 4-3 8-3s5-9 8-11"/><path d="M17 4h3v3"/><path d="M4 21h16" opacity=".45"/>',
   grabtopo: '<path d="M12 3v12M6 9l6-6 6 6"/><circle cx="7" cy="19" r="2.5" opacity=".45"/><circle cx="17" cy="19" r="2.5"/>',
   snake: '<path d="M4 19c4 0 3-7 7-7s4-6 8-8"/><circle cx="19" cy="4" r="1.6"/>',
+  pose: '<path d="M4 20l7-7"/><path d="M11 13l6-8"/><circle cx="11" cy="13" r="2"/><path d="M14 4h4v4" opacity=".6"/>',
   mask: '<circle cx="12" cy="12" r="8"/><path d="M12 4a8 8 0 010 16z" fill="currentColor"/>',
   paint: '<path d="M12 3c4 5 6 8 6 11a6 6 0 01-12 0c0-3 2-6 6-11z"/>',
 };
@@ -382,7 +394,7 @@ const BASES = [
   { id: 'draw', name: 'Рисуване (Standard)' }, { id: 'clay', name: 'Глина (Clay)' }, { id: 'claystrips', name: 'Глина на ивици (ClayBuildup)' },
   { id: 'inflate', name: 'Надуване (Inflate)' }, { id: 'flatten', name: 'Изравняване (hPolish)' }, { id: 'scrape', name: 'Подрязване (TrimDynamic)' },
   { id: 'pinch', name: 'Притискане (Pinch)' }, { id: 'crease', name: 'Гънка' }, { id: 'smooth', name: 'Изглаждане (Smooth)' },
-  { id: 'grab', name: 'Хващане (Move)' }, { id: 'snake', name: 'Издърпване (SnakeHook)' }, { id: 'mask', name: 'Маска' }, { id: 'paint', name: 'Боя' },
+  { id: 'grab', name: 'Хващане (Move)' }, { id: 'snake', name: 'Издърпване (SnakeHook)' }, { id: 'pose', name: 'Поза (Pose)' }, { id: 'mask', name: 'Маска' }, { id: 'paint', name: 'Боя' },
 ];
 // a complete brush; presets only list what differs
 const BRUSH_DEFAULTS = {
@@ -405,6 +417,7 @@ const PRESETS = [
   { id: 'elastic', name: 'Еластично хващане', short: 'Еласт.', key: 'e', base: 'grab', icon: 'elastic', grab: 'elastic', radius: 90, strength: 1, front: false, zb: 'Move Elastic' },
   { id: 'grabtopo', name: 'Хващане на част', short: 'Част', key: 'o', base: 'grab', icon: 'grabtopo', topo: true, radius: 90, strength: 1, curve: 'move', front: false, zb: 'Move Topological' },
   { id: 'snake', name: 'Издърпване', short: 'Дърпай', key: 'h', base: 'snake', radius: 45, strength: 0.8, front: false, zb: 'SnakeHook' },
+  { id: 'pose', name: 'Поза', short: 'Поза', key: 'q', base: 'pose', radius: 70, strength: 1, front: false, zb: 'Transpose / Pose' },
   { id: 'mask', name: 'Маска', short: 'Маска', key: 'm', base: 'mask', radius: 45, strength: 0.8, zb: 'MaskPen' },
   { id: 'paint', name: 'Боя', short: 'Боя', key: 'v', base: 'paint', radius: 40, strength: 0.6, front: true },
 ];
@@ -424,7 +437,11 @@ const S = {
   curve: 1,
   stab: 0.3,
   finger: 'auto',      // auto | draw | navigate
-  sym: true,
+  sym: true,           // mirror across X (the yz plane)
+  symY: false,         // … across Y
+  symZ: false,         // … across Z
+  radial: 0,           // radial symmetry: copies around the axis (0 = off)
+  radialAxis: 'y',
   loop: true,
   wire: false,
   flat: false,
@@ -1108,6 +1125,9 @@ function subdivideArrays(pos, idx, col, mask, smooth) {
   const tmp = new SculptMesh(pos, idx, col, mask);
   tmp.buildAdjacency();
   const { vvOff, vv, boundary } = tmp;
+  // neighbours in index order: edges (and so the new vertices) are numbered the same whatever the
+  // order of the triangles (the BVH reorders them), which subdivision levels rely on
+  for (let a = 0; a < n; a++) vv.subarray(vvOff[a], vvOff[a + 1]).sort();
   const edgeId = new Int32Array(vv.length).fill(-1);
   let ne = 0;
   for (let a = 0; a < n; a++) for (let j = vvOff[a]; j < vvOff[a + 1]; j++) if (vv[j] > a) edgeId[j] = ne++;
@@ -1474,8 +1494,13 @@ const ringGeo = new THREE.BufferGeometry();
 { const pts = []; for (let i = 0; i <= 64; i++) { const a = (i / 64) * Math.PI * 2; pts.push(Math.cos(a), Math.sin(a), 0); } ringGeo.setAttribute('position', new THREE.Float32BufferAttribute(pts, 3)); }
 const ringMat = new THREE.LineBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.8, depthTest: false });
 const ring = new THREE.Line(ringGeo, ringMat); ring.renderOrder = 10; ring.visible = false;
-const ringSym = new THREE.Line(ringGeo, ringMat.clone()); ringSym.material.opacity = 0.35; ringSym.renderOrder = 10; ringSym.visible = false;
-scene.add(ring, ringSym);
+scene.add(ring);
+// fainter rings where the symmetric copies of the brush are; made as needed
+const symRings = [], symRingMat = ringMat.clone(); symRingMat.opacity = 0.35;
+function symRing(k) {
+  while (symRings.length <= k) { const r = new THREE.Line(ringGeo, symRingMat); r.renderOrder = 10; r.visible = false; scene.add(r); symRings.push(r); }
+  return symRings[k];
+}
 
 const DYN_MAX_TRIS = 2_000_000;
 const DYN_PAUSED_MSG = 'Динамичната топология е на пауза: моделът е над 2 млн. триъгълника.';
@@ -1617,10 +1642,10 @@ function refitBVH() { if (bvhDirty && geo && geo.boundsTree) { geo.boundsTree.re
 // After a dab, refit just the nodes whose (old) bounds meet the brush spheres: every moved vertex was
 // inside one of them, so the next dab in the same frame picks against current geometry.
 const _rs = [new THREE.Sphere(), new THREE.Sphere()];
-function refitAround(c1, c2, r) {
-  const bvh = geo.boundsTree, nodes = new Set();
-  _rs[0].set(c1, r * 1.01); if (c2) _rs[1].set(c2, r * 1.01);
-  const n = c2 ? 2 : 1;
+function refitAround(centres, r) {
+  const bvh = geo.boundsTree, nodes = new Set(), n = centres.length;
+  while (_rs.length < n) _rs.push(new THREE.Sphere());
+  for (let k = 0; k < n; k++) _rs[k].set(centres[k], r * 1.01);
   bvh.shapecast({
     intersectsBounds: (box, isLeaf, score, depth, nodeIndex) => {
       for (let k = 0; k < n; k++) if (_rs[k].intersectsBox(box)) { nodes.add(nodeIndex); return INTERSECTED; }
@@ -1968,6 +1993,45 @@ function kelvinlet(eps, nu) {
   };
   return K;
 }
+// Pose (Blender's Pose brush, ZBrush's Transpose in one gesture): the connected surface within r of
+// the press point is the part that turns; the first ring of vertices outside r is the joint, and its
+// average the pivot. Weights are 1 on the part and fade over two rings beyond it (4 smoothing passes).
+function poseRegion(pt, r) {
+  const m = mesh, P = m.pos, r2 = r * r;
+  const cnt = gather(pt.x, pt.y, pt.z, r, 0, 0, 0, false);
+  if (!cnt) return { idx: [], w: [], origin: pt.clone() };
+  let seed = -1, bd = Infinity;
+  for (let k = 0; k < cnt; k++) { const d = dist2(P, m.gIdx[k], pt.x, pt.y, pt.z); if (d < bd) { bd = d; seed = m.gIdx[k]; } }
+  const region = [seed], inR = new Set([seed]), ring = new Set();
+  for (let h = 0; h < region.length; h++) {
+    forNeighbors(m, region[h], (u) => {
+      if (inR.has(u) || ring.has(u)) return;
+      if (dist2(P, u, pt.x, pt.y, pt.z) <= r2) { inR.add(u); region.push(u); } else ring.add(u);
+    });
+  }
+  const origin = new THREE.Vector3();
+  if (ring.size) { for (const u of ring) origin.x += P[u * 3], origin.y += P[u * 3 + 1], origin.z += P[u * 3 + 2]; origin.multiplyScalar(1 / ring.size); }
+  else { for (const u of region) origin.x += P[u * 3], origin.y += P[u * 3 + 1], origin.z += P[u * 3 + 2]; origin.multiplyScalar(1 / region.length); }
+  // two more rings outside for a soft joint
+  const all = region.slice(), inAll = new Set(region);
+  let front = [...ring];
+  for (let step = 0; step < 2; step++) {
+    const next = [];
+    for (const u of front) { if (inAll.has(u)) continue; inAll.add(u); all.push(u); forNeighbors(m, u, (q) => { if (!inAll.has(q)) next.push(q); }); }
+    front = next;
+  }
+  const at = new Map(all.map((v, k) => [v, k]));
+  let w = Float32Array.from(all, (v) => (inR.has(v) ? 1 : 0)), nw = new Float32Array(all.length);
+  for (let it = 0; it < 4; it++) {
+    for (let k = 0; k < all.length; k++) {
+      let s = w[k], c = 1;
+      forNeighbors(m, all[k], (q) => { const j = at.get(q); s += j === undefined ? 0 : w[j]; c++; });
+      nw[k] = s / c;
+    }
+    [w, nw] = [nw, w];
+  }
+  return { idx: all, w, origin };
+}
 // vertices within r of pt that are connected to the surface under pt (ZBrush: Move Topological);
 // the other lip of a mouth or a neighbouring finger stays where it is
 function gatherConnected(pt, r) {
@@ -1991,6 +2055,34 @@ function gatherConnected(pt, r) {
   m.gCount = order.length;
   return order.length;
 }
+
+/* ---------- symmetry (ZBrush: Transform > Symmetry X/Y/Z and (R) radial) ----------
+   Every brush also works at the images of the brush point under these transforms: the mirrors that are
+   on (and their combinations, e.g. X and Y gives 3 more), each turned N-fold around the radial axis.
+   A transform is a 3×3 matrix; points, normals and directions all go through the same matrix. */
+let SYM = [];   // the transforms other than the identity: { m: Float64Array(9) }
+function symUpdate() {
+  const flips = [[1, 1, 1]];
+  for (const [on, ax] of [[S.sym, 0], [S.symY, 1], [S.symZ, 2]]) if (on) for (const f of flips.slice()) { const g = f.slice(); g[ax] = -1; flips.push(g); }
+  const rots = [];
+  const N = S.radial >= 2 ? Math.min(32, S.radial) : 1, ax = 'xyz'.indexOf(S.radialAxis);
+  for (let k = 0; k < N; k++) {
+    const a = (2 * Math.PI * k) / N, c = Math.cos(a), si = Math.sin(a);
+    // rotation about one axis, row-major
+    rots.push(ax === 0 ? [1, 0, 0, 0, c, -si, 0, si, c] : ax === 1 ? [c, 0, si, 0, 1, 0, -si, 0, c] : [c, -si, 0, si, c, 0, 0, 0, 1]);
+  }
+  const out = [], seen = new Set(['1,0,0,0,1,0,0,0,1']);
+  for (const r of rots) for (const f of flips) {
+    const m = new Float64Array(9);
+    for (let i = 0; i < 3; i++) for (let j = 0; j < 3; j++) m[i * 3 + j] = r[i * 3 + j] * f[j];
+    const key = Array.from(m, (x) => Math.round(x * 1e6) / 1e6 + 0).join(',');
+    if (!seen.has(key)) { seen.add(key); out.push({ m }); }
+  }
+  SYM = out;
+}
+const symV = (m, v) => new THREE.Vector3(m[0] * v.x + m[1] * v.y + m[2] * v.z, m[3] * v.x + m[4] * v.y + m[5] * v.z, m[6] * v.x + m[7] * v.y + m[8] * v.z);
+const symA = (m, a) => [m[0] * a[0] + m[1] * a[1] + m[2] * a[2], m[3] * a[0] + m[4] * a[1] + m[5] * a[2], m[6] * a[0] + m[7] * a[1] + m[8] * a[2]];
+const IDENT = new Float64Array([1, 0, 0, 0, 1, 0, 0, 0, 1]);
 
 const lastFrame = { u: [1, 0, 0], v: [0, 1, 0] };   // the brush plane of the last dab, mirrored for symmetry
 function applyBrush(tool, c, n, r, s, sign, dab = {}) {
@@ -2185,6 +2277,29 @@ function beginStroke(e, x, y, b, sign) {
     if (!hit) { stroke = null; return false; }
     stroke.anchor = { x, y, p: readPressure(e), hit: { point: hit.point.clone(), normal: hit.normal.clone() } };
   }
+  if (tool === 'pose') {
+    const hit = pick(x, y);
+    if (!hit) { stroke = null; return false; }
+    const r = b.radius * worldPerPx(hit.point);
+    const parts = [hit.point, ...SYM.map(({ m }) => symV(m, hit.point))].map((c, k) => ({ m: k ? SYM[k - 1].m : IDENT, ...poseRegion(c, r) }));
+    // where copies overlap (a part on the symmetry plane), each vertex follows the copy that weighs it most
+    const best = new Map();
+    parts.forEach((pt, k) => pt.idx.forEach((v, j) => { const w = pt.w[j]; const o = best.get(v); if (!o || w > o.w) best.set(v, { k, w }); }));
+    const P = mesh.pos;
+    stroke.pose = {
+      start: hit.point.clone(), camN: new THREE.Vector3(0, 0, 1).applyQuaternion(camera.quaternion), r, strength: b.strength,
+      parts: parts.map((pt, k) => {
+        const idx = [], w = [];
+        pt.idx.forEach((v, j) => { if (best.get(v).k === k) { idx.push(v); w.push(pt.w[j]); } });
+        const orig = new Float32Array(idx.length * 3);
+        idx.forEach((v, j) => { orig[j * 3] = P[v * 3]; orig[j * 3 + 1] = P[v * 3 + 1]; orig[j * 3 + 2] = P[v * 3 + 2]; });
+        return { m: pt.m, origin: pt.origin, idx: Uint32Array.from(idx), w: Float32Array.from(w), orig };
+      }),
+    };
+    stroke.queue.length = 0;
+    placeRing(hit.point, hit.normal, r);
+    return true;
+  }
   if (tool === 'grab' || tool === 'snake') {
     const hit = pick(x, y);
     if (!hit) { stroke = null; return false; }
@@ -2205,19 +2320,21 @@ function beginStroke(e, x, y, b, sign) {
       stroke.grab.pulled = 0; stroke.grab.volume = b.volume;
       stroke.grab.topo = b.topo;
       if (!elastic) {
-        // both sides in one list: each vertex keeps its weight from this side (w1) and the mirror side (w2)
-        const main = mk(hit.point, hit.normal), idx = Array.from(main.idx), w1 = Array.from(main.fall), w2 = new Array(idx.length).fill(0);
-        if (S.sym) {
-          const mp = hit.point.clone(); mp.x = -mp.x; const mn = hit.normal.clone(); mn.x = -mn.x;
-          const mir = mk(mp, mn), at = new Map(idx.map((v, k) => [v, k]));
-          for (let k = 0; k < mir.idx.length; k++) {
-            const v = mir.idx[k], j = at.get(v);
-            if (j !== undefined) w2[j] = mir.fall[k]; else { idx.push(v); w1.push(0); w2.push(mir.fall[k]); }
+        // every symmetric copy in one list: each vertex keeps one weight per transform (identity first)
+        const Ms = [IDENT, ...SYM.map((t) => t.m)], T = Ms.length;
+        const idx = [], W = [], at = new Map();
+        Ms.forEach((m, t) => {
+          const set = mk(symV(m, hit.point), symV(m, hit.normal));
+          for (let k = 0; k < set.idx.length; k++) {
+            const v = set.idx[k];
+            let j = at.get(v);
+            if (j === undefined) { j = idx.length; at.set(v, j); idx.push(v); for (let q = 0; q < T; q++) W.push(0); }
+            W[j * T + t] = set.fall[k];
           }
-        }
+        });
         const P = mesh.pos, orig = new Float32Array(idx.length * 3);
         for (let k = 0; k < idx.length; k++) { const i = idx[k]; orig[k * 3] = P[i * 3]; orig[k * 3 + 1] = P[i * 3 + 1]; orig[k * 3 + 2] = P[i * 3 + 2]; }
-        stroke.grab.soft = { idx: Uint32Array.from(idx), orig, w1: Float32Array.from(w1), w2: Float32Array.from(w2) };
+        stroke.grab.soft = { idx: Uint32Array.from(idx), orig, W: Float32Array.from(W), Ms };
       }
       stroke.grab.start = hit.point.clone();
     }
@@ -2245,6 +2362,36 @@ function revertStroke() {
 function processStroke() {
   if (!stroke) return;
   const q = stroke.queue; if (!q.length) return;
+  if (stroke.tool === 'pose') {
+    // turn each part about its joint so that the grabbed point points at the pen
+    const s = q[q.length - 1]; q.length = 0;
+    const g = stroke.pose, main = g.parts[0];
+    const to = screenToPlane(s.x, s.y, g.start, g.camN);
+    if (!to) return;
+    const a = g.start.clone().sub(main.origin), bv = to.clone().sub(main.origin);
+    if (a.lengthSq() < 1e-12 || bv.lengthSq() < 1e-12) return;
+    const rot = new THREE.Quaternion().setFromUnitVectors(a.normalize(), bv.normalize());
+    if (g.strength < 1) rot.slerp(new THREE.Quaternion(), 1 - g.strength);
+    const R = new THREE.Matrix3().setFromMatrix4(new THREE.Matrix4().makeRotationFromQuaternion(rot)).elements;   // column-major
+    const P = mesh.pos, MK = mesh.mask;
+    for (const part of g.parts) {
+      // the copy's rotation: M·R·Mᵀ (M is orthogonal; for a mirror this turns the other way, as it should)
+      const M = part.m, Rm = [R[0], R[3], R[6], R[1], R[4], R[7], R[2], R[5], R[8]];   // row-major R
+      const MR = new Float64Array(9), C = new Float64Array(9);
+      for (let i = 0; i < 3; i++) for (let j = 0; j < 3; j++) MR[i * 3 + j] = M[i * 3] * Rm[j] + M[i * 3 + 1] * Rm[3 + j] + M[i * 3 + 2] * Rm[6 + j];
+      for (let i = 0; i < 3; i++) for (let j = 0; j < 3; j++) C[i * 3 + j] = MR[i * 3] * M[j * 3] + MR[i * 3 + 1] * M[j * 3 + 1] + MR[i * 3 + 2] * M[j * 3 + 2];
+      const o = part.origin, O = part.orig;
+      for (let k = 0; k < part.idx.length; k++) {
+        const i = part.idx[k], w = part.w[k] * (1 - MK[i]);
+        touchVert(i);
+        const x = O[k * 3] - o.x, y = O[k * 3 + 1] - o.y, z = O[k * 3 + 2] - o.z;
+        const rx = C[0] * x + C[1] * y + C[2] * z, ry = C[3] * x + C[4] * y + C[5] * z, rz = C[6] * x + C[7] * y + C[8] * z;
+        P[i * 3] = O[k * 3] + (rx - x) * w; P[i * 3 + 1] = O[k * 3 + 1] + (ry - y) * w; P[i * 3 + 2] = O[k * 3 + 2] + (rz - z) * w;
+      }
+    }
+    frame_.positions = true;
+    return;
+  }
   if (stroke.tool === 'grab' || stroke.tool === 'snake') {
     const s = q[q.length - 1]; q.length = 0;
     const g = stroke.grab;
@@ -2254,7 +2401,7 @@ function processStroke() {
     if (stroke.tool === 'snake' && mesh.dyn) {
       const L = S.detail * worldPerPx(g.last);
       if (dynRemesh(g.last.x, g.last.y, g.last.z, g.r, L, g.normal.x, g.normal.y, g.normal.z, false, false)) stroke.changed = true;
-      if (S.sym && dynRemesh(-g.last.x, g.last.y, g.last.z, g.r, L, -g.normal.x, g.normal.y, g.normal.z, false, false)) stroke.changed = true;
+      for (const { m } of SYM) { const p = symV(m, g.last), n = symV(m, g.normal); if (dynRemesh(p.x, p.y, p.z, g.r, L, n.x, n.y, n.z, false, false)) stroke.changed = true; }
     }
     if (stroke.tool === 'snake') {
       // snake hook: re-gathers under the moving point, so the pulled tip keeps growing
@@ -2268,7 +2415,7 @@ function processStroke() {
         }
       };
       doSet(g.last, delta, g.normal);
-      if (S.sym) { const mp = g.last.clone(); mp.x = -mp.x; const md = delta.clone(); md.x = -md.x; const mn = g.normal.clone(); mn.x = -mn.x; doSet(mp, md, mn); }
+      for (const { m } of SYM) doSet(symV(m, g.last), symV(m, delta), symV(m, g.normal));
       // light relax keeps the pulled strand from collapsing into spikes
       const cnt = gather(hitPlane.x, hitPlane.y, hitPlane.z, g.r * 1.2, 0, 0, 0, false);
       smoothVerts(mesh.gIdx, mesh.gFall, cnt, 0.15);
@@ -2284,43 +2431,56 @@ function processStroke() {
       const epsAt = (pulled) => Math.min(e0 * KEL_GROW_MAX, e0 + KEL_GROW * pulled);
       // one gather per side and frame, wide enough for every substep (the centre travels `total`)
       const reachMax = epsAt(g.pulled + total) * KEL_REACH + total;
-      // near the symmetry plane both sides grab the same clay: pull once, without the sideways part
-      const seam = S.sym && Math.abs(g.cur.x) * 2 < epsAt(g.pulled);
-      const sides = !S.sym ? [false] : seam ? [null] : [false, true];
-      const lists = sides.map((mirror) => {
-        const cx = mirror ? -g.cur.x : seam ? 0 : g.cur.x;
-        const cnt = g.topo ? gatherConnected(new THREE.Vector3(cx, g.cur.y, g.cur.z), reachMax) : gather(cx, g.cur.y, g.cur.z, reachMax, 0, 0, 0, false);
-        return mesh.gIdx.slice(0, cnt);
-      });
+      // symmetric copies whose centres (nearly) meet grab the same clay: they pull once, with their pulls
+      // averaged (at a mirror plane the sideways part cancels), instead of twice as far
+      const Ms = [IDENT, ...SYM.map((t) => t.m)], near = epsAt(g.pulled);
+      const groups = [];
+      for (const m of Ms) {
+        const c = symV(m, g.cur);
+        const grp = groups.find((q) => q.c0.distanceTo(c) < near);
+        if (grp) grp.ms.push(m); else groups.push({ c0: c, ms: [m] });
+      }
+      const centre = (grp) => grp.ms.map((m) => symV(m, g.cur)).reduce((a, b) => a.add(b), new THREE.Vector3()).multiplyScalar(1 / grp.ms.length);
+      for (const grp of groups) {
+        grp.f = grp.ms.map((m) => symA(m, [fx, fy, fz])).reduce((a, b) => [a[0] + b[0], a[1] + b[1], a[2] + b[2]], [0, 0, 0]).map((v) => v / grp.ms.length);
+        const c = centre(grp);
+        const cnt = g.topo ? gatherConnected(c, reachMax) : gather(c.x, c.y, c.z, reachMax, 0, 0, 0, false);
+        grp.list = mesh.gIdx.slice(0, cnt);
+      }
+      const mainF = groups[0].f;   // the identity is always first
       for (let sub = 0; sub < nSub; sub++) {
         const eps = epsAt(g.pulled), K = kelvinlet(eps, g.volume);
         g.pulled += Math.hypot(fx, fy, fz);
-        sides.forEach((mirror, si) => {
-          const c = g.cur, cx = mirror ? -c.x : seam ? 0 : c.x, sx = mirror ? -fx : seam ? 0 : fx;
-          const G = lists[si];
+        for (const grp of groups) {
+          const c = centre(grp);   // the members' images of the current centre, averaged
+          const [sx, sy, sz] = grp.f, G = grp.list;
           for (let k = 0; k < G.length; k++) {
             const i = G[k], free = 1 - MK[i];
             if (free <= 0) continue;
             touchVert(i);
-            K.apply(P[i * 3] - cx, P[i * 3 + 1] - c.y, P[i * 3 + 2] - c.z, sx, fy, fz);
+            K.apply(P[i * 3] - c.x, P[i * 3 + 1] - c.y, P[i * 3 + 2] - c.z, sx, sy, sz);
             P[i * 3] += K.u[0] * free; P[i * 3 + 1] += K.u[1] * free; P[i * 3 + 2] += K.u[2] * free;
           }
-        });
-        g.cur.x += seam ? 0 : fx; g.cur.y += fy; g.cur.z += fz;
+        }
+        g.cur.x += mainF[0]; g.cur.y += mainF[1]; g.cur.z += mainF[2];
       }
-      if (mesh.dyn) for (const G of lists) gridFollowList(G);
+      if (mesh.dyn) for (const grp of groups) gridFollowList(grp.list);
     } else {
       const P = mesh.pos, MK = mesh.mask, st = g.strength;
       const tx = (hitPlane.x - g.start.x) * st, ty = (hitPlane.y - g.start.y) * st, tz = (hitPlane.z - g.start.z) * st;
       // where both sides grab the same clay (at the symmetry plane) the sideways pulls cancel and the
       // rest moves by the larger weight, so the seam stays on the plane and moves as far as the pen
-      const { idx, orig: O, w1, w2 } = g.soft;
+      // (sum of each copy's pull, scaled so that where copies overlap it is no stronger than the largest)
+      const { idx, orig: O, W, Ms } = g.soft, T = Ms.length;
+      const F = Ms.map((m) => symA(m, [tx, ty, tz]));
       for (let k = 0; k < idx.length; k++) {
         const i = idx[k], free = 1 - MK[i];
         if (free <= 0) continue;
         touchVert(i);
-        const wx = (w1[k] - w2[k]) * free, w = Math.max(w1[k], w2[k]) * free;
-        P[i * 3] = O[k * 3] + tx * wx; P[i * 3 + 1] = O[k * 3 + 1] + ty * w; P[i * 3 + 2] = O[k * 3 + 2] + tz * w;
+        let x = 0, y = 0, z = 0, sum = 0, mx = 0;
+        for (let t = 0; t < T; t++) { const w = W[k * T + t]; if (!w) continue; x += F[t][0] * w; y += F[t][1] * w; z += F[t][2] * w; sum += w; if (w > mx) mx = w; }
+        const sc = sum > 0 ? (mx / sum) * free : 0;
+        P[i * 3] = O[k * 3] + x * sc; P[i * 3 + 1] = O[k * 3 + 1] + y * sc; P[i * 3 + 2] = O[k * 3 + 2] + z * sc;
       }
     }
     g.last.copy(hitPlane);
@@ -2394,29 +2554,29 @@ function dab(x, y, p, o = {}) {
   let angle = o.angle || 0;
   if (b.alphaRot === 'random' && o.angle === undefined) angle = Math.random() * Math.PI * 2;
   const info = { b, dir: stroke.dir, angle };
-  const mp = hit.point.clone(); mp.x = -mp.x;
-  const mn = hit.normal.clone(); mn.x = -mn.x;
+  const copies = SYM.map(({ m }) => ({ m, p: symV(m, hit.point), n: symV(m, hit.normal) }));
   if (mesh.dyn && stroke.snap && DYN_TOOLS.has(tool)) {
     const L = S.detail * wpp;
     if (dynRemesh(hit.point.x, hit.point.y, hit.point.z, r, L, hit.normal.x, hit.normal.y, hit.normal.z)) stroke.changed = true;
-    if (S.sym && dynRemesh(mp.x, mp.y, mp.z, r, L, mn.x, mn.y, mn.z)) stroke.changed = true;
+    for (const c of copies) if (dynRemesh(c.p.x, c.p.y, c.p.z, r, L, c.n.x, c.n.y, c.n.z)) stroke.changed = true;
   }
   // keep the picking structure in step with what this dab moved (mask and paint move nothing)
   const moves = tool !== 'mask' && tool !== 'paint';
   applyBrush(tool, hit.point, hit.normal, r, s, stroke.sign, info);
   if (mesh.dyn && moves) gridFollowBrush();
-  if (S.sym) {
-    const md = info.dir ? info.dir.clone() : null; if (md) md.x = -md.x;
-    const uv = { u: [-lastFrame.u[0], lastFrame.u[1], lastFrame.u[2]], v: [-lastFrame.v[0], lastFrame.v[1], lastFrame.v[2]] };
-    applyBrush(tool, mp, mn, r, s, stroke.sign, { b, dir: md, uv: b.tip === 'square' || b.alpha !== 'none' || b.mod ? uv : null });
+  // each copy's brush plane is the transformed main one, so stamps are mirrored / turned with it
+  const frame = { u: lastFrame.u.slice(), v: lastFrame.v.slice() }, shaped = b.tip === 'square' || b.alpha !== 'none' || b.mod;
+  for (const c of copies) {
+    applyBrush(tool, c.p, c.n, r, s, stroke.sign, { b, dir: info.dir ? symV(c.m, info.dir) : null, uv: shaped ? { u: symA(c.m, frame.u), v: symA(c.m, frame.v) } : null });
     if (mesh.dyn && moves) gridFollowBrush();
   }
   if (!mesh.dyn && moves) {
     // a DragRect / DragDot stamp is redrawn each move: refit where the last one was as well
-    const R = o.single && stroke.lastStamp ? Math.max(r, stroke.lastStamp.r) : r;
-    refitAround(hit.point, S.sym ? mp : null, R * (b.tip === 'square' ? 1.42 : 1));
-    if (o.single && stroke.lastStamp && stroke.lastStamp.point.distanceToSquared(hit.point) > 0) refitAround(stroke.lastStamp.point, S.sym ? stroke.lastStamp.mp : null, R * 1.42);
-    if (o.single) stroke.lastStamp = { point: hit.point.clone(), mp: mp.clone(), r };
+    const R = (o.single && stroke.lastStamp ? Math.max(r, stroke.lastStamp.r) : r) * (b.tip === 'square' ? 1.42 : 1);
+    const centres = [hit.point, ...copies.map((c) => c.p)];
+    if (o.single && stroke.lastStamp) centres.push(...stroke.lastStamp.centres);
+    refitAround(centres, R);
+    if (o.single) stroke.lastStamp = { centres: centres.slice(0, copies.length + 1).map((c) => c.clone()), r };
     frame_.bvhKept = true;
   }
   placeRing(hit.point, hit.normal, r);
@@ -2437,7 +2597,7 @@ function refineAfterGrab() {
       const x = a.x + (b.x - a.x) * t, y = a.y + (b.y - a.y) * t, z = a.z + (b.z - a.z) * t;
       dynSplitsLeft = DYN_FRAME_SPLITS; dynCollapsesLeft = DYN_FRAME_COLLAPSES;
       if (dynRemesh(x, y, z, reach, L, 0, 0, 0, false, false)) any = true;
-      if (S.sym && dynRemesh(-x, y, z, reach, L, 0, 0, 0, false, false)) any = true;
+      for (const { m } of SYM) { const q = symV(m, { x, y, z }); if (dynRemesh(q.x, q.y, q.z, reach, L, 0, 0, 0, false, false)) any = true; }
       if (dynHitCap) return;
     }
     if (!any) return;
@@ -2550,15 +2710,18 @@ function swapVerts(rec) {
 // Static meshes are replaced wholesale, so the snapshot can keep their arrays;
 // dynamic meshes keep mutating theirs, so they are copied.
 function snapshot() {
-  if (mesh.dyn) return { type: 'mesh', ...mesh.arrays() };
-  return { type: 'mesh', pos: mesh.pos, idx: mesh.idx, col: mesh.col, mask: mesh.mask, level: mesh.level };
+  // (the subdivision levels are never changed in place, so a reference is enough)
+  if (mesh.dyn) return { type: 'mesh', ...mesh.arrays(), mr: MR };
+  return { type: 'mesh', pos: mesh.pos, idx: mesh.idx, col: mesh.col, mask: mesh.mask, level: mesh.level, mr: MR };
 }
 const UNDO_BYTES = 400 * 1024 * 1024;
-function recBytes(r) { return r.pos.byteLength + r.idx.byteLength + r.col.byteLength + r.mask.byteLength; }
+function recBytes(r) { return r.pos.byteLength + r.idx.byteLength + r.col.byteLength + r.mask.byteLength + (r.mrBytes || 0); }
 function applyRecord(rec) {
   if (rec.type === 'verts') { swapVerts(rec); return rec; }
   const cur = snapshot();
+  MR = rec.mr || null;
   setMesh(new SculptMesh(rec.pos, rec.idx, rec.col, rec.mask, rec.level));
+  syncLevelUI();
   return cur;
 }
 function pushUndo(rec) {
@@ -2578,8 +2741,9 @@ function updateUndoButtons() {
 }
 function replaceMesh(newMesh, { frame = false } = {}) {
   pushUndo(snapshot());
+  MR = null; newMesh.level = 0;   // a new model has no subdivision levels
   const paused = setMesh(newMesh, { frame, quiet: true });
-  scheduleAutosave();
+  scheduleAutosave(); syncLevelUI();
   return paused;
 }
 
@@ -2743,15 +2907,16 @@ function placeRing(point, normal, r) {
   ring.quaternion.copy(_q.setFromUnitVectors(_z, normal));
   ring.scale.setScalar(r); ring.visible = true;
   ringMat.color.set((stroke ? stroke.tool : brush().base) === 'mask' ? 0x7ea6ff : (stroke && stroke.sign < 0 ? 0x9fd0ff : 0xffffff));
-  if (S.sym) {
-    ringSym.position.set(-ring.position.x, ring.position.y, ring.position.z);
-    const mn = normal.clone(); mn.x = -mn.x;
-    ringSym.quaternion.copy(_q.setFromUnitVectors(_z, mn));
-    ringSym.scale.setScalar(r); ringSym.visible = true;
-  } else ringSym.visible = false;
+  SYM.forEach(({ m }, k) => {
+    const rr = symRing(k);
+    rr.position.copy(symV(m, ring.position));
+    rr.quaternion.copy(_q.setFromUnitVectors(_z, symV(m, normal)));
+    rr.scale.setScalar(r); rr.visible = true;
+  });
+  for (let k = SYM.length; k < symRings.length; k++) symRings[k].visible = false;
   $('cursor2d').hidden = true;
 }
-function hideRing() { ring.visible = ringSym.visible = false; $('cursor2d').hidden = true; }
+function hideRing() { ring.visible = false; for (const r of symRings) r.visible = false; $('cursor2d').hidden = true; }
 function updateHover() {
   if (!hoverXY || stroke || nav) return;
   const hit = pick(hoverXY.x, hoverXY.y);
@@ -2759,7 +2924,7 @@ function updateHover() {
     const pr = S.prRadius ? pressureOf(Math.max(lastPressure, 0.5)) : 1;
     placeRing(hit.point, hit.normal, radiusPxFor(pr) * worldPerPx(hit.point));
   } else {
-    ring.visible = ringSym.visible = false;
+    ring.visible = false; for (const r of symRings) r.visible = false;
     const c = $('cursor2d'); const d = brush().radius * 2;
     c.style.width = c.style.height = d + 'px'; c.style.left = hoverXY.x + 'px'; c.style.top = hoverXY.y + 'px'; c.hidden = false;
   }
@@ -2783,7 +2948,8 @@ window.addEventListener('keydown', (e) => {
   const k = e.key.toLowerCase();
   if ((e.ctrlKey || e.metaKey) && k === 'z') { e.preventDefault(); e.shiftKey ? redo() : undo(); return; }
   if ((e.ctrlKey || e.metaKey) && k === 'y') { e.preventDefault(); redo(); return; }
-  if ((e.ctrlKey || e.metaKey) && k === 'd') { e.preventDefault(); subdivide(); return; }
+  if ((e.ctrlKey || e.metaKey) && k === 'd') { e.preventDefault(); divide(); return; }
+  if (e.shiftKey && !e.ctrlKey && !e.metaKey && !e.altKey && k === 'd') { if (MR) setLevel(MR.cur - 1); return; }
   if (e.ctrlKey || e.metaKey || e.altKey) return;
   if (k === '[' || k === ']') { const b = brush(); b.radius = Math.max(4, Math.min(320, Math.round(b.radius * (k === ']' ? 1.15 : 0.87)))); syncBrushUI(); requestRender(); return; }
   if (k === 'w') { toggleWire(); return; }
@@ -2798,20 +2964,10 @@ window.addEventListener('keydown', (e) => {
    ===================================================================== */
 const MAX_TRIS = 3_000_000;
 function busy(on) { $('busy').hidden = !on; }
-function subdivide() {
-  if (stroke) return;
-  if (mesh.f * 4 > MAX_TRIS) { toast(`Над ${(MAX_TRIS / 1e6).toFixed(0)} млн. триъгълника таблетите стават бавни. Разделянето е спряно.`); return; }
-  busy(true);
-  setTimeout(() => {
-    const src = mesh.dyn ? mesh.arrays() : mesh;
-    const r = subdivideArrays(src.pos, src.idx, src.col, src.mask, S.loop);
-    const paused = replaceMesh(new SculptMesh(r.pos, r.idx, r.col, r.mask, mesh.level + 1));
-    busy(false);
-    toast(`Ниво ${mesh.level}: ${fmt(mesh.f)} триъгълника.` + (paused ? ' ' + DYN_PAUSED_MSG : ''));
-  }, 30);
-}
+const subdivide = () => divide();
 function remesh() {
   if (stroke) return;
+  if (!dropLevels('Преизграждането на мрежата')) return;
   const src = mesh.dyn ? mesh.arrays() : mesh;
   if (hasOpenEdges(src.idx.subarray ? src.idx.subarray(0, mesh.f * 3) : src.idx)) { toast('Преизграждането работи само със затворен модел (без отвори, например не с равнината).'); return; }
   busy(true);
@@ -2924,9 +3080,206 @@ function maskRect(g) {
   setMaskUndoable(next);
 }
 
+
+/* =====================================================================
+   Subdivision levels (ZBrush: SDiv, Blender: Multires)
+   Level 0 is the base mesh. Each higher level is the Loop subdivision of the one below plus its own
+   detail: offsets in the local frame (tangent, binormal, normal) of the subdivided surface, and colour
+   and mask offsets. The live mesh is the current level. Going up rebuilds the next level from the live
+   one plus its detail, so big changes at a low level carry the fine detail along; going down finds
+   the lower level whose subdivision passes through the live vertices (inverse Loop smoothing), so the
+   lower levels show what was sculpted above them. The state is never changed in place, only replaced,
+   so undo snapshots can keep a reference to it.
+   ===================================================================== */
+let MR = null;   // { cur, levels: [{ idx, n, smooth, d, dc, dm }] }  (level 0 has no d/dc/dm)
+const mrTop = () => (MR ? MR.levels.length - 1 : 0);
+// per vertex: normal (area weighted) and a tangent toward the lowest-numbered neighbour
+function mrFrames(pos, idx, n) {
+  const N = new Float32Array(n * 3), T = new Float32Array(n * 3), lowNb = new Int32Array(n).fill(-1);
+  for (let f = 0; f < idx.length; f += 3) {
+    const a = idx[f], b = idx[f + 1], c = idx[f + 2];
+    const ux = pos[b * 3] - pos[a * 3], uy = pos[b * 3 + 1] - pos[a * 3 + 1], uz = pos[b * 3 + 2] - pos[a * 3 + 2];
+    const vx = pos[c * 3] - pos[a * 3], vy = pos[c * 3 + 1] - pos[a * 3 + 1], vz = pos[c * 3 + 2] - pos[a * 3 + 2];
+    const nx = uy * vz - uz * vy, ny = uz * vx - ux * vz, nz = ux * vy - uy * vx;
+    for (const [v, p, q] of [[a, b, c], [b, c, a], [c, a, b]]) {
+      N[v * 3] += nx; N[v * 3 + 1] += ny; N[v * 3 + 2] += nz;
+      const m = Math.min(p, q);
+      if (lowNb[v] < 0 || m < lowNb[v]) lowNb[v] = m;
+    }
+  }
+  for (let v = 0; v < n; v++) {
+    let nx = N[v * 3], ny = N[v * 3 + 1], nz = N[v * 3 + 2], l = Math.hypot(nx, ny, nz) || 1;
+    nx /= l; ny /= l; nz /= l; N[v * 3] = nx; N[v * 3 + 1] = ny; N[v * 3 + 2] = nz;
+    const u = lowNb[v];
+    let tx = 1, ty = 0, tz = 0;
+    if (u >= 0) { tx = pos[u * 3] - pos[v * 3]; ty = pos[u * 3 + 1] - pos[v * 3 + 1]; tz = pos[u * 3 + 2] - pos[v * 3 + 2]; }
+    let d = tx * nx + ty * ny + tz * nz; tx -= nx * d; ty -= ny * d; tz -= nz * d;
+    l = Math.hypot(tx, ty, tz);
+    if (l < 1e-12) { const o = Math.abs(nx) < 0.9 ? [1, 0, 0] : [0, 1, 0]; tx = o[0]; ty = o[1]; tz = o[2]; d = tx * nx + ty * ny + tz * nz; tx -= nx * d; ty -= ny * d; tz -= nz * d; l = Math.hypot(tx, ty, tz); }
+    T[v * 3] = tx / l; T[v * 3 + 1] = ty / l; T[v * 3 + 2] = tz / l;
+  }
+  return { N, T };
+}
+// detail of `pos` over the subdivided surface `sub` (both with the same vertices), in sub's local frames
+function mrEncode(pos, sub, idx, n) {
+  const { N, T } = mrFrames(sub, idx, n), d = new Float32Array(n * 3);
+  for (let v = 0; v < n; v++) {
+    const o = v * 3, x = pos[o] - sub[o], y = pos[o + 1] - sub[o + 1], z = pos[o + 2] - sub[o + 2];
+    const nx = N[o], ny = N[o + 1], nz = N[o + 2], tx = T[o], ty = T[o + 1], tz = T[o + 2];
+    const bx = ny * tz - nz * ty, by = nz * tx - nx * tz, bz = nx * ty - ny * tx;
+    d[o] = x * tx + y * ty + z * tz; d[o + 1] = x * bx + y * by + z * bz; d[o + 2] = x * nx + y * ny + z * nz;
+  }
+  return d;
+}
+function mrDecode(sub, d, idx, n) {
+  const { N, T } = mrFrames(sub, idx, n), pos = new Float32Array(n * 3);
+  for (let v = 0; v < n; v++) {
+    const o = v * 3, nx = N[o], ny = N[o + 1], nz = N[o + 2], tx = T[o], ty = T[o + 1], tz = T[o + 2];
+    const bx = ny * tz - nz * ty, by = nz * tx - nx * tz, bz = nx * ty - ny * tx;
+    pos[o] = sub[o] + tx * d[o] + bx * d[o + 1] + nx * d[o + 2];
+    pos[o + 1] = sub[o + 1] + ty * d[o] + by * d[o + 1] + ny * d[o + 2];
+    pos[o + 2] = sub[o + 2] + tz * d[o] + bz * d[o + 1] + nz * d[o + 2];
+  }
+  return pos;
+}
+// The lower level: the higher one, smoothed a little (Taubin: no shrinking), at the vertices the two
+// share. Detail finer than the lower mesh would alias into ripples there; it stays in the higher
+// level's offsets, which are measured against the actual subdivision, so going back up is exact.
+function mrLower(high, highIdx, nHigh, nLow) {
+  const tmp = new SculptMesh(high.slice(0, nHigh * 3), highIdx); tmp.buildAdjacency();
+  const { vvOff, vv } = tmp, P = tmp.pos, Q = new Float32Array(nHigh * 3);
+  for (let it = 0; it < 4; it++) {
+    const k = it % 2 ? -0.53 : 0.5;
+    for (let v = 0; v < nHigh; v++) {
+      const a = vvOff[v], b = vvOff[v + 1], o = v * 3;
+      if (b === a || tmp.boundary[v]) { Q[o] = P[o]; Q[o + 1] = P[o + 1]; Q[o + 2] = P[o + 2]; continue; }
+      let x = 0, y = 0, z = 0;
+      for (let j = a; j < b; j++) { const u = vv[j] * 3; x += P[u]; y += P[u + 1]; z += P[u + 2]; }
+      const inv = 1 / (b - a);
+      Q[o] = P[o] + (x * inv - P[o]) * k; Q[o + 1] = P[o + 1] + (y * inv - P[o + 1]) * k; Q[o + 2] = P[o + 2] + (z * inv - P[o + 2]) * k;
+    }
+    P.set(Q);
+  }
+  return P.slice(0, nLow * 3);
+}
+const liveArrays = () => (mesh.dyn ? mesh.arrays() : { pos: mesh.pos, col: mesh.col, mask: mesh.mask });
+function mrStart() {
+  // the live mesh becomes level 0; its triangles are copied (the BVH keeps reordering the live ones)
+  if (!MR) MR = { cur: 0, levels: [{ idx: Uint32Array.from(mesh.idx.subarray(0, mesh.f * 3)), n: mesh.n }] };
+}
+// bytes of the level arrays that only `old` holds: what an undo step keeps alive by remembering it
+function mrBytesOnly(old, now) {
+  if (!old) return 0;
+  const keep = new Set();
+  for (const L of (now ? now.levels : [])) for (const a of [L.idx, L.d, L.dc, L.dm]) if (a) keep.add(a);
+  let b = 0;
+  for (const L of old.levels) for (const a of [L.idx, L.d, L.dc, L.dm]) if (a && !keep.has(a)) b += a.byteLength;
+  return b;
+}
+function mrCommit(next, live) {
+  // swap in the new state and mesh as one undo step
+  const rec = snapshot(); rec.mrBytes = mrBytesOnly(MR, next);
+  pushUndo(rec);
+  MR = next;
+  setMesh(new SculptMesh(live.pos, live.idx, live.col, live.mask, next.cur), { quiet: true });
+  scheduleAutosave(); syncLevelUI();
+}
+function mrUpOnce(state, live) {
+  const L = state.levels[state.cur], H = state.levels[state.cur + 1];
+  const sub = subdivideArrays(live.pos, L.idx, live.col, live.mask, H.smooth);
+  const pos = mrDecode(sub.pos, H.d, sub.idx, H.n);
+  const col = sub.col, mask = sub.mask;
+  for (let k = 0; k < col.length; k++) col[k] = Math.min(1, Math.max(0, col[k] + H.dc[k]));
+  for (let k = 0; k < mask.length; k++) mask[k] = Math.min(1, Math.max(0, mask[k] + H.dm[k]));
+  return { state: { cur: state.cur + 1, levels: state.levels }, live: { pos, idx: sub.idx, col, mask } };
+}
+function mrDownOnce(state, live) {
+  const H = state.levels[state.cur], L = state.levels[state.cur - 1];
+  const pos = mrLower(live.pos, H.idx, H.n, L.n);
+  const col = Float32Array.from(live.col.subarray(0, L.n * 3)), mask = Float32Array.from(live.mask.subarray(0, L.n));
+  // the higher level's detail, measured against the subdivision of this new lower level
+  const sub = subdivideArrays(pos, L.idx, col, mask, H.smooth);
+  const d = mrEncode(live.pos, sub.pos, sub.idx, H.n);
+  const dc = new Float32Array(H.n * 3), dm = new Float32Array(H.n);
+  for (let k = 0; k < dc.length; k++) dc[k] = live.col[k] - sub.col[k];
+  for (let k = 0; k < dm.length; k++) dm[k] = live.mask[k] - sub.mask[k];
+  const levels = state.levels.slice(); levels[state.cur] = { ...H, d, dc, dm };
+  return { state: { cur: state.cur - 1, levels }, live: { pos, idx: L.idx.slice(), col, mask } };
+}
+function mrBusy(work) {
+  if (stroke) return;
+  if (mesh.dyn) {
+    // levels need a fixed topology: dynamic topology goes off (as Sculptris Pro does with SDiv in ZBrush)
+    S.dyntopo = false; saveSettings();
+    const a = mesh.arrays();
+    setMesh(new SculptMesh(a.pos, a.idx, a.col, a.mask, 0), { quiet: true });
+    toast('Динамичната топология е изключена: нивата на разделяне искат постоянна мрежа.');
+  }
+  busy(true);
+  setTimeout(() => { try { work(); } catch (e) { toast('Не успях: ' + e.message); } busy(false); }, 30);
+}
+function setLevel(target) {
+  if (!MR || target === MR.cur || target < 0 || target > mrTop()) return;
+  mrBusy(() => {
+    let state = MR, live = { ...liveArrays(), idx: null };
+    const t0 = performance.now();
+    while (state.cur < target) ({ state, live } = mrUpOnce(state, live));
+    while (state.cur > target) ({ state, live } = mrDownOnce(state, live));
+    mrCommit(state, live);
+    toast(`Ниво ${state.cur} от ${mrTop()}: ${fmt(mesh.f)} триъгълника (${((performance.now() - t0) / 1000).toFixed(1)} с).`);
+  });
+}
+// Ctrl+D: the next level up, or a new one at the top
+function divide() {
+  if (MR && MR.cur < mrTop()) { setLevel(MR.cur + 1); return; }
+  if (mesh.f * 4 > MAX_TRIS) { toast(`Над ${(MAX_TRIS / 1e6).toFixed(0)} млн. триъгълника таблетите стават бавни. Разделянето е спряно.`); return; }
+  mrBusy(() => {
+    mrStart();
+    const live = liveArrays(), L = MR.levels[MR.cur];
+    const sub = subdivideArrays(live.pos, L.idx, live.col, live.mask, S.loop);
+    const n = sub.pos.length / 3;
+    const levels = MR.levels.concat([{ idx: Uint32Array.from(sub.idx), n, smooth: S.loop, d: new Float32Array(n * 3), dc: new Float32Array(n * 3), dm: new Float32Array(n) }]);
+    mrCommit({ cur: MR.cur + 1, levels }, sub);
+    toast(`Ниво ${MR.cur}: ${fmt(mesh.f)} триъгълника.`);
+  });
+}
+function deleteHigher() {
+  if (!MR || MR.cur === mrTop()) return;
+  pushUndo(snapshot());
+  MR = { cur: MR.cur, levels: MR.levels.slice(0, MR.cur + 1) };
+  if (!MR.cur) MR = null;
+  syncLevelUI(); scheduleAutosave(); toast('По-високите нива са изтрити.');
+}
+function deleteLower() {
+  if (!MR || MR.cur === 0) return;
+  pushUndo(snapshot());
+  // the current level becomes the base; the levels above keep their detail (it is relative to it)
+  const levels = [{ idx: Uint32Array.from(mesh.idx.subarray(0, mesh.f * 3)), n: mesh.n }].concat(MR.levels.slice(MR.cur + 1));
+  MR = levels.length > 1 ? { cur: 0, levels } : null;
+  mesh.level = 0;
+  syncLevelUI(); scheduleAutosave(); toast('По-ниските нива са изтрити: това ниво е новата основа.');
+}
+// things that change the topology (dynamic topology, remesh) keep only the current level
+function dropLevels(why) {
+  if (!MR || mrTop() === 0) { MR = null; return true; }
+  if (!confirm(`${why} работи само с едно ниво на разделяне. Да се запази само текущото ниво (${MR.cur} от ${mrTop()}) и другите да се изтрият?`)) return false;
+  MR = null; mesh.level = 0; syncLevelUI();
+  return true;
+}
+function syncLevelUI() {
+  const top = mrTop(), cur = MR ? MR.cur : 0;
+  $('gLevel').textContent = top ? `${cur} от ${top}` : '0';
+  $('bLvDown').disabled = !MR || cur === 0;
+  $('bLvUp').disabled = !MR || cur === top;
+  $('bDelLower').disabled = !MR || cur === 0;
+  $('bDelHigher').disabled = !MR || cur === top;
+  $('bSubdiv').textContent = MR && cur < top ? 'Към ниво ' + (cur + 1) + ' (Ctrl+D)' : 'Раздели ×4 детайл (Ctrl+D)';
+}
+
 /* ---------- dynamic topology controls ---------- */
 function setDyntopo(on) {
   if (stroke) { syncDynUI(); return; }
+  if (on && !mesh.dyn && !dropLevels('Динамичната топология')) { syncDynUI(); return; }
   if (on && mesh.f > DYN_MAX_TRIS) { toast('Динамичната топология работи до 2 млн. триъгълника. Започнете от по-лек модел.'); syncDynUI(); return; }
   const want = on && mesh.f <= DYN_MAX_TRIS;
   S.dyntopo = on; saveSettings(); syncDynUI();
@@ -3141,7 +3494,7 @@ function scheduleAutosave() {
     try {
       const a = mesh.dyn ? mesh.arrays() : mesh;
       const db = await idb(); const tx = db.transaction('mesh', 'readwrite');
-      tx.objectStore('mesh').put({ pos: a.pos, idx: a.idx, col: a.col, mask: a.mask, level: mesh.level, t: Date.now() }, 'last');
+      tx.objectStore('mesh').put({ pos: a.pos, idx: a.idx, col: a.col, mask: a.mask, level: mesh.level, mr: MR, t: Date.now() }, 'last');
     } catch (e) { /* storage unavailable */ }
   }, 2500);
 }
@@ -3160,7 +3513,7 @@ let toastT = 0;
 function toast(msg) { const t = $('toast'); t.textContent = msg; t.classList.add('show'); clearTimeout(toastT); toastT = setTimeout(() => t.classList.remove('show'), 2600); }
 function updateStats() {
   $('hVerts').textContent = fmt(mesh.n); $('hTris').textContent = fmt(mesh.f);
-  $('gVerts').textContent = fmt(mesh.n); $('gTris').textContent = fmt(mesh.f); $('gLevel').textContent = mesh.level;
+  $('gVerts').textContent = fmt(mesh.n); $('gTris').textContent = fmt(mesh.f); syncLevelUI();
 }
 
 const rail = $('rail');
@@ -3252,7 +3605,7 @@ $('bName').addEventListener('input', () => {
 function syncBrushUI() {
   syncRadius(); syncStrength();
   const b = brush(), base = b.base;
-  const moves = base === 'grab' || base === 'snake';
+  const moves = base === 'grab' || base === 'snake' || base === 'pose';
   $('bName').value = b.name; $('bName').disabled = b.builtin;
   $('bName').title = b.builtin ? 'Готовите четки не се преименуват; „Нова от тази“ прави ваше копие' : '';
   $('bBase').value = base;
@@ -3263,7 +3616,7 @@ function syncBrushUI() {
   $('topoRow').hidden = base !== 'grab';
   $('grabGrp').hidden = base !== 'grab';
   $('volRow').hidden = !(base === 'grab' && b.grab === 'elastic');
-  $('curveGrp').hidden = base === 'grab' && b.grab === 'elastic';
+  $('curveGrp').hidden = (base === 'grab' && b.grab === 'elastic') || base === 'pose';
   $('sAngle').closest('.row').hidden = b.alphaRot === 'random';
   $('bBrushReset').textContent = b.builtin ? 'Нулирай' : 'Изтрий';
   for (const f of brushSyncs) f();
@@ -3449,8 +3802,32 @@ bindToggle('tFlat', 'flat', () => (material.uniforms.flatShade.value = S.flat ? 
 material.uniforms.flatShade.value = S.flat ? 1 : 0;
 
 function setPressed(id, v) { $(id).setAttribute('aria-pressed', v ? 'true' : 'false'); }
-$('bSym').onclick = () => { S.sym = !S.sym; setPressed('bSym', S.sym); saveSettings(); toast(S.sym ? 'Симетрия по X: включена' : 'Симетрия: изключена'); requestRender(); };
-setPressed('bSym', S.sym);
+function syncSym() {
+  symUpdate();
+  setPressed('bSym', SYM.length > 0);
+  for (const el of $('symChips').children) el.setAttribute('aria-pressed', !!S[el.dataset.key]);
+  for (const el of $('radialAxisChips').children) el.setAttribute('aria-pressed', S.radialAxis === el.dataset.id);
+  saveSettings(); requestRender();
+}
+for (const [key, name] of [['sym', 'X'], ['symY', 'Y'], ['symZ', 'Z']]) {
+  const el = document.createElement('button'); el.className = 'chip'; el.dataset.key = key; el.textContent = 'Огледало ' + name;
+  el.onclick = () => { S[key] = !S[key]; syncSym(); };
+  $('symChips').appendChild(el);
+}
+for (const ax of ['x', 'y', 'z']) {
+  const el = document.createElement('button'); el.className = 'chip'; el.dataset.id = ax; el.textContent = ax.toUpperCase();
+  el.onclick = () => { S.radialAxis = ax; syncSym(); };
+  $('radialAxisChips').appendChild(el);
+}
+bindRange('sRadial', 'oRadial', () => Math.max(1, S.radial), (v) => { S.radial = v < 2 ? 0 : v; syncSym(); }, (v) => (v < 2 ? 'изкл.' : v + ' копия'));
+// the top button: X mirror on/off, or everything off when any symmetry is on
+$('bSym').onclick = () => {
+  const any = SYM.length > 0;
+  if (any) { S.sym = S.symY = S.symZ = false; S.radial = 0; } else S.sym = true;
+  $('sRadial').value = Math.max(1, S.radial); $('oRadial').textContent = S.radial < 2 ? 'изкл.' : S.radial + ' копия';
+  syncSym(); toast(any ? 'Симетрията е изключена.' : 'Симетрия по X: включена');
+};
+syncSym();
 function toggleWire() {
   S.wire = !S.wire;
   if (wmesh) wmesh.visible = S.wire;
@@ -3461,7 +3838,11 @@ setPressed('bWire', S.wire);
 $('bWire').onclick = toggleWire;
 $('bFrame').onclick = () => frameView();
 $('bUndo').onclick = undo; $('qUndo').onclick = undo; $('bRedo').onclick = redo;
-$('bSubdiv').onclick = subdivide;
+$('bSubdiv').onclick = divide;
+$('bLvDown').onclick = () => MR && setLevel(MR.cur - 1);
+$('bLvUp').onclick = () => MR && setLevel(MR.cur + 1);
+$('bDelLower').onclick = deleteLower;
+$('bDelHigher').onclick = deleteHigher;
 $('bSmoothAll').onclick = smoothAll;
 $('bRemesh').onclick = remesh;
 bindRange('sVoxel', 'oVoxel', () => S.voxel, (v) => (S.voxel = v), (v) => String(v));
@@ -3549,9 +3930,15 @@ setMesh(makeSphere(6), { frame: true });
 resize();
 loadAutosave().then((d) => {
   if (d && d.pos && d.idx && d.pos.length > 9) {
-    setMesh(new SculptMesh(d.pos, d.idx, d.col, d.mask, d.level || 0), { frame: true });
+    // subdivision levels come back too, if they still match the saved mesh
+    const mr = d.mr;
+    const ok = mr && Array.isArray(mr.levels) && mr.levels.length > 1 && mr.cur >= 0 && mr.cur < mr.levels.length
+      && mr.levels[mr.cur].n * 3 === d.pos.length && mr.levels.every((L, i) => L && L.idx && L.n && (i === 0 || (L.d && L.d.length === L.n * 3 && L.dc && L.dm)));
+    MR = ok ? mr : null;
+    if (MR && S.dyntopo) { S.dyntopo = false; saveSettings(); }
+    setMesh(new SculptMesh(d.pos, d.idx, d.col, d.mask, MR ? MR.cur : 0), { frame: true });
     toast('Продължавате последния модел. „Нов“ започва отначало.');
   }
 });
-window.__glina = { get mesh() { return mesh; }, camera, orbit, pick, selectTool, brush, brushById, maskOp, remesh, undo, redo, subdivide, setDyntopo, floodDetail, S, get undoStack() { return undoStack; } };
+window.__glina = { get mesh() { return mesh; }, get stroke() { return stroke; }, get gesture() { return gesture; }, get nav() { return nav; }, get MR() { return MR; }, syncSym, get SYM() { return SYM; }, setLevel, divide, deleteLower, deleteHigher, camera, orbit, pick, selectTool, brush, brushById, maskOp, remesh, undo, redo, subdivide, setDyntopo, floodDetail, S, get undoStack() { return undoStack; } };
 </script>

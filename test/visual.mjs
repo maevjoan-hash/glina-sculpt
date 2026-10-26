@@ -16,6 +16,7 @@ await page.evaluate((kv) => {
   const G = window.__glina, val = (v) => (v[0] === '[' ? JSON.parse(v) : v === 'true' ? true : v === 'false' ? false : isNaN(+v) ? v : +v);
   for (const s of kv) { const [k, v] = s.split('='); if (k === 'tool') G.selectTool(v); }
   for (const s of kv) { const [k, v] = s.split('='); if (k === 'tool') continue; if (k.startsWith('b.')) G.brush()[k.slice(2)] = val(v); else G.S[k] = val(v); }
+  if (G.syncSym) G.syncSym();
 }, kv);
 const frames = (n) => page.evaluate(async (k) => { for (let i = 0; i < k; i++) await new Promise((r) => requestAnimationFrame(r)); }, n);
 async function drag(x0, y0, x1, y1, steps = 40, button = 'left') {
