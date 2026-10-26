@@ -8,7 +8,6 @@ const [scenario = 'pull', out = 'shot.png', ...kv] = process.argv.slice(2);
 const browser = await chromium.launch({ executablePath: process.env.CHROME || '/opt/pw-browsers/chromium', args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader'] });
 const page = await browser.newPage({ viewport: { width: 900, height: 700 } });
 const errors = []; page.on('pageerror', (e) => errors.push(String(e))); page.on('console', (m) => { if (m.type() === 'error') errors.push(m.text()); });
-if (process.env.KELGROW) await page.addInitScript((g) => { globalThis.__kelGrow = +g; }, process.env.KELGROW);
 await page.goto(pathToFileURL(path.join(ROOT, 'dist', 'glina.html')).href);
 await page.waitForFunction(() => window.__glina && window.__glina.mesh);
 await page.evaluate(() => { localStorage.clear(); document.getElementById('hintClose')?.click(); document.getElementById('bPanel').click(); });
