@@ -53,6 +53,33 @@ for (const conf of [{ sym: false, symY: true }, { sym: false, symZ: true }, { sy
   console.log(`${pass ? 'PASS' : 'FAIL'}  ${JSON.stringify(conf)}: ${heights.length} bumps of the same height`, JSON.stringify(heights.map((v) => +v.toFixed(4))));
   await page.evaluate(() => window.__glina.undo()); await frames(2);
 }
+// Pose near the symmetry plane: the overlap of the two copies must bend smoothly (no tearing):
+// the largest jump in displacement along an edge, relative to the edge, stays like without symmetry
+for (const symOn of [false, true]) {
+  await page.evaluate((on) => { const G = window.__glina; Object.assign(G.S, { sym: on, symY: false, symZ: false, radial: 0 }); G.syncSym(); G.selectTool('pose'); G.brush().radius = 90; }, symOn);
+  const sx = await page.evaluate(({ w, h }) => { let best = w / 2, bd = 1e9; for (let px = 0; px < w; px += 1) { const hit = window.__glina.pick(px, h / 2); if (hit && Math.abs(hit.point.x - 0.1) < bd) { bd = Math.abs(hit.point.x - 0.1); best = px; } } return best; }, { w: box.w, h: box.h });
+  const x = box.x + sx, y = box.y + box.h / 2;
+  await page.mouse.move(x, y); await page.mouse.down();
+  for (let k = 1; k <= 10; k++) { await page.mouse.move(x + k * 3, y - k * 8); await frames(1); }
+  await page.mouse.up(); await frames(3);
+  const jump = await page.evaluate(() => {
+    const G = window.__glina, m = G.mesh, P = m.pos, rec = G.undoStack[G.undoStack.length - 1], d = new Map();
+    for (let k = 0; k < rec.idx.length; k++) { const i = rec.idx[k]; d.set(i, [P[i * 3] - rec.pos[k * 3], P[i * 3 + 1] - rec.pos[k * 3 + 1], P[i * 3 + 2] - rec.pos[k * 3 + 2]]); }
+    let worst = 0;
+    const I = m.idx;
+    for (let f = 0; f < m.f * 3; f += 3) for (let e = 0; e < 3; e++) {
+      const a = I[f + e], b = I[f + (e + 1) % 3], da = d.get(a) || [0, 0, 0], db = d.get(b) || [0, 0, 0];
+      const len = Math.hypot(P[a * 3] - P[b * 3], P[a * 3 + 1] - P[b * 3 + 1], P[a * 3 + 2] - P[b * 3 + 2]) || 1e-9;
+      const orig = Math.hypot(rec.pos ? 0 : 0, 0, 0);
+      worst = Math.max(worst, Math.hypot(da[0] - db[0], da[1] - db[1], da[2] - db[2]) / len);
+    }
+    return worst;
+  });
+  console.log(`INFO  pose at x=0.1, symmetry ${symOn ? 'on' : 'off'}: worst displacement jump along an edge = ${jump.toFixed(2)} edge lengths`);
+  if (!symOn) globalThis.__poseBase = jump;
+  else { const pass = jump < globalThis.__poseBase * 1.6 + 0.5; ok = ok && pass; console.log(`${pass ? 'PASS' : 'FAIL'}  pose near the plane bends as smoothly as without symmetry`); }
+  await page.evaluate(() => window.__glina.undo()); await frames(2);
+}
 console.log(errors.length ? 'FAIL  page errors ' + errors.slice(0, 3) : 'PASS  no page errors');
 await browser.close();
 process.exit(ok && !errors.length ? 0 : 1);
