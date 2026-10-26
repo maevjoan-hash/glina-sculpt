@@ -8,6 +8,10 @@ on:
     tags: ['v*']
   workflow_dispatch:
   workflow_call:        # run by release.yml
+    inputs:
+      release_tag:        # the draft release the files go to
+        type: string
+        default: ''
 
 permissions:
   contents: write
@@ -82,28 +86,27 @@ jobs:
           sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0 || true
           xvfb-run -a -s "-screen 0 1920x1080x24" node test/smoke.mjs
 
-      # the files are only kept for a release (1 day: the release has them after that); pushes to main
-      # just build and test, so the private repository's 500 MB of artifact storage does not fill up
+      # Pushes to main only build and test. A manual run keeps its files for a day in Artifacts; a release
+      # run puts them straight into its draft release (the private repository has 500 MB of artifact storage)
       - uses: actions/upload-artifact@v4
-        if: github.ref != 'refs/heads/main' || github.event_name == 'workflow_dispatch'
+        if: ${{ !inputs.release_tag && (github.ref != 'refs/heads/main' || github.event_name == 'workflow_dispatch') }}
         with:
           retention-days: 1
           name: glina-desktop-${{ matrix.platform }}
           path: ${{ matrix.files }}
           if-no-files-found: error
 
-  release:
-    if: startsWith(github.ref, 'refs/tags/v')
-    needs: build
-    runs-on: ubuntu-24.04
-    steps:
-      - uses: actions/download-artifact@v4
-        with:
-          pattern: glina-desktop-*
-          path: packages
-          merge-multiple: true
-      - run: ls -l packages
+      - name: Upload to the draft release
+        if: ${{ inputs.release_tag }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ inputs.release_tag }}
+          FILES: ${{ matrix.files }}
+        run: gh release upload "$TAG" $FILES --clobber --repo "$GITHUB_REPOSITORY"
+
       - name: Attach to the release
+        if: startsWith(github.ref, 'refs/tags/v')
         uses: softprops/action-gh-release@v2
         with:
-          files: packages/*
+          files: ${{ matrix.files }}
+          fail_on_unmatched_files: true
