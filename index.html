@@ -169,6 +169,13 @@ input[type=range] { width: 100%; height: 26px; accent-color: var(--wax); backgro
 .alpha[aria-pressed="true"] { border-color: var(--wax); }
 .tool.mine::after { content: ""; position: absolute; left: 5px; top: 5px; width: 5px; height: 5px; border-radius: 50%; background: var(--wax); }
 .tool.add { color: var(--muted); }
+#layerList { display: grid; gap: 6px; }
+.layer { display: grid; grid-template-columns: 26px 18px 1fr 70px 24px; gap: 6px; align-items: center; padding: 4px 6px; border-radius: 8px; background: var(--panel-2); border: 1px solid var(--line); }
+.layer.rec { border-color: var(--danger); }
+.layer input[type=text] { min-width: 0; height: 26px; padding: 0 6px; border-radius: 5px; border: 1px solid var(--line); background: var(--bg); color: var(--fg); font: inherit; }
+.layer input[type=checkbox] { accent-color: var(--wax); margin: 0; }
+.lbtn { width: 24px; height: 24px; padding: 0; border-radius: 6px; border: 1px solid var(--line); background: var(--bg); color: var(--muted); cursor: pointer; }
+.lbtn[aria-pressed="true"] { color: var(--danger); border-color: var(--danger); }
 .swatch { width: 38px; height: 38px; border-radius: 50%; border: 2px solid transparent; padding: 0; cursor: pointer; background: none; overflow: hidden; }
 .swatch img { width: 100%; height: 100%; display: block; }
 .swatch[aria-pressed="true"] { border-color: var(--wax); }
@@ -267,6 +274,7 @@ input[type=range] { width: 100%; height: 26px; accent-color: var(--wax); backgro
         <div class="row" id="modRow"><label for="sMod">Притискане ↔ надуване (Brush Mod)</label><output id="oMod"></output><input type="range" id="sMod" min="-1" max="1" step="0.05"></div>
         <label class="toggle" id="frontRow">Само видимата страна <input type="checkbox" id="tFront"></label>
         <label class="toggle" id="topoRow">Само свързаната повърхност <input type="checkbox" id="tTopo"></label>
+        <label class="toggle" id="groupRow">Само групата под четката <input type="checkbox" id="tGroupOnly"></label>
         <div class="grp" id="grabGrp"><div class="note lab">Хващане</div><div class="chips" id="grabChips"></div></div>
         <div class="row" id="volRow"><label for="sVolume">Запазване на обема</label><output id="oVolume"></output><input type="range" id="sVolume" min="0" max="0.49" step="0.01"></div>
         <div class="two"><button class="btn wide" id="bBrushNew">Нова от тази</button><button class="btn wide" id="bBrushReset">Нулирай</button></div>
@@ -307,6 +315,22 @@ input[type=range] { width: 100%; height: 26px; accent-color: var(--wax); backgro
       <div class="two"><button class="btn wide" id="bMaskBlur">Размажи</button><button class="btn wide" id="bMaskSharpen">Изостри</button></div>
       <div class="two"><button class="btn wide" id="bMaskGrow">Разшири</button><button class="btn wide" id="bMaskShrink">Свий</button></div>
       <button class="btn wide" id="bMaskCavity" title="Маскира вдлъбнатините: гънки, пори, бръчки">Маска по вдлъбнатините</button>
+    </section>
+
+    <section class="sec">
+      <h2>Слоеве</h2>
+      <div id="layerList"></div>
+      <div class="two"><button class="btn wide" id="bLayerAdd">+ Нов слой</button><button class="btn wide" id="bLayerBake" title="Слоевете стават част от модела">Приложи всички</button></div>
+      <p class="note">Слоят пази промените отделно. <b>●</b> записва в него, отметката го скрива или показва, плъзгачът го засилва (до 200%), отслабва или обръща (под 0). Записва формата и боята.</p>
+    </section>
+
+    <section class="sec">
+      <h2>Групи</h2>
+      <label class="toggle">Покажи групите <input type="checkbox" id="tGroups"></label>
+      <button class="btn wide" id="bGrpMask">Нова група от маската</button>
+      <div class="two"><button class="btn wide" id="bGrpParts" title="Всяка отделна част е група">По части</button><button class="btn wide" id="bGrpAngle" title="Нова група там, където повърхността се чупи рязко">По ъглите</button></div>
+      <button class="btn wide" id="bGrpClear">Една група за всичко</button>
+      <p class="note"><b>Ctrl+Shift+щракване</b> по група маскира всичко останало (по празното изчиства маската). Четка с „Само групата под четката“ не излиза от групата, в която е започнала.</p>
     </section>
 
     <section class="sec">
@@ -401,6 +425,7 @@ const BRUSH_DEFAULTS = {
   base: 'draw', radius: 50, strength: 0.5, dir: 1, curve: 'smooth', focal: 0, tip: 'round',
   alpha: 'none', alphaMid: 0, alphaRot: 'fixed', alphaAngle: 0,
   stroke: 'dots', spacing: 0.15, mod: 0, front: true, topo: false, grab: 'soft', volume: 0.4,
+  group: false,        // only the polygroup under the brush (ZBrush: Auto Masking > Mask By Polygroups)
 };
 const PRESETS = [
   { id: 'draw', name: 'Рисуване', short: 'Рис.', key: 'x', zb: 'Standard' },
@@ -452,6 +477,7 @@ const S = {
   detail: 12,          // dyntopo edge length in screen pixels
   decimate: true,
   voxel: 96,           // voxel remesh resolution along the longest side
+  showGroups: false,   // colour the polygroups
 };
 let savedSettings = null;
 try { savedSettings = JSON.parse(localStorage.getItem('glina.settings') || 'null'); } catch (e) { /* storage unavailable */ }
@@ -541,6 +567,7 @@ function brushLUT(b) {
 function lut(L, t) { const x = t * 256, i = x | 0; return i >= 256 ? 0 : L[i] + (L[i + 1] - L[i]) * (x - i); }
 let curLUT = curveLUT(curvePts('smooth'), 0);   // the falloff gather() uses: the active stroke's brush
 let curFront = true;                            // only surfaces facing the brush (ZBrush: BackfaceMask)
+let curGroup = -1;                              // only this polygroup (-1: all); set around one gather
 
 /* ---------- alphas: grayscale stamps, 128×128 ---------- */
 const ALPHA_N = 128;
@@ -638,11 +665,12 @@ if (!S.brushes.some((b) => b.id === S.tool)) S.tool = 'draw';
    Sculpt mesh: typed arrays + adjacency (CSR)
    ===================================================================== */
 class SculptMesh {
-  constructor(pos, idx, col, mask, level = 0) {
+  constructor(pos, idx, col, mask, level = 0, grp = null) {
     this.pos = pos; this.idx = idx;
     this.n = pos.length / 3; this.f = idx.length / 3;
     this.col = col || new Float32Array(this.n * 3).fill(1);
     this.mask = mask || new Float32Array(this.n);
+    this.grp = grp && grp.length >= this.n ? grp : new Float32Array(this.n);   // polygroup per vertex
     this.nrm = new Float32Array(this.n * 3);
     this.fn = new Float32Array(this.f * 3);
     this.level = level;
@@ -754,7 +782,7 @@ class SculptMesh {
   }
   // Compact copies of the live data (the dynamic arrays carry spare capacity).
   arrays() {
-    return { pos: this.pos.slice(0, this.n * 3), idx: this.idx.slice(0, this.f * 3), col: this.col.slice(0, this.n * 3), mask: this.mask.slice(0, this.n), level: this.level };
+    return { pos: this.pos.slice(0, this.n * 3), idx: this.idx.slice(0, this.f * 3), col: this.col.slice(0, this.n * 3), mask: this.mask.slice(0, this.n), grp: this.grp.slice(0, this.n), level: this.level };
   }
 
   /* ---------- dynamic topology (Sculptris / Blender Dyntopo style) ----------
@@ -928,6 +956,7 @@ class SculptMesh {
     N[m3] = nx / nl; N[m3 + 1] = ny / nl; N[m3 + 2] = nz / nl;
     for (let k = 0; k < 3; k++) C[m3 + k] = (C[a3 + k] + C[b3 + k]) * 0.5;
     M[m] = (M[a] + M[b]) * 0.5;
+    this.grp[m] = this.grp[a];
     this.dirty.push(m);
     for (let s = 0; s < faces.length; s++) {
       const t = faces[s], I = this.idx, o = t * 3;
@@ -1018,7 +1047,7 @@ class SculptMesh {
       remap[v] = j;
       if (j !== v) {
         for (let k = 0; k < 3; k++) { P[j * 3 + k] = P[v * 3 + k]; N[j * 3 + k] = N[v * 3 + k]; C[j * 3 + k] = C[v * 3 + k]; }
-        M[j] = M[v]; vfA[j] = vfA[v];
+        M[j] = M[v]; this.grp[j] = this.grp[v]; vfA[j] = vfA[v];
       }
       j++;
     }
@@ -1034,7 +1063,7 @@ class SculptMesh {
 }
 
 const FAR = 1e30;   // parking spot for freed vertices: never inside a brush, never drawn
-const V_ARRAYS = [['pos', 3, Float32Array], ['nrm', 3, Float32Array], ['col', 3, Float32Array], ['mask', 1, Float32Array],
+const V_ARRAYS = [['pos', 3, Float32Array], ['nrm', 3, Float32Array], ['col', 3, Float32Array], ['mask', 1, Float32Array], ['grp', 1, Float32Array],
   ['uStamp', 1, Uint32Array], ['uIdx', 1, Uint32Array], ['uPos', 3, Float32Array], ['uCol', 3, Float32Array], ['uMask', 1, Float32Array],
   ['frStamp', 1, Uint32Array], ['frList', 1, Uint32Array], ['gIdx', 1, Uint32Array], ['gFall', 1, Float32Array], ['tmp', 3, Float32Array], ['tagV', 1, Uint32Array], ['eStamp', 1, Uint32Array]];
 const F_ARRAYS = [['idx', 3, Uint32Array], ['fn', 3, Float32Array], ['tagF', 1, Uint32Array], ['gCell', 1, Int32Array], ['gSlot', 1, Int32Array]];
@@ -1119,7 +1148,7 @@ function makePlane(seg = 140) {
 }
 
 /* ---------- Loop subdivision (works on raw arrays) ---------- */
-function subdivideArrays(pos, idx, col, mask, smooth) {
+function subdivideArrays(pos, idx, col, mask, smooth, grp = null) {
   const n = pos.length / 3, f = idx.length / 3;
   // adjacency (vertex -> neighbours) to number edges without a hash map
   const tmp = new SculptMesh(pos, idx, col, mask);
@@ -1137,7 +1166,7 @@ function subdivideArrays(pos, idx, col, mask, smooth) {
     return -1;
   };
   const N = n + ne;
-  const P = new Float32Array(N * 3), C = new Float32Array(N * 3), M = new Float32Array(N);
+  const P = new Float32Array(N * 3), C = new Float32Array(N * 3), M = new Float32Array(N), Gr = new Float32Array(N);
   const cIn = col || new Float32Array(n * 3).fill(1), mIn = mask || new Float32Array(n);
   const opp = new Float32Array(ne * 3), oppCount = new Uint8Array(ne), ea = new Uint32Array(ne), eb = new Uint32Array(ne);
   const fE = new Uint32Array(f * 3);
@@ -1157,6 +1186,7 @@ function subdivideArrays(pos, idx, col, mask, smooth) {
       C[o + k] = (cIn[a * 3 + k] + cIn[b * 3 + k]) * 0.5;
     }
     M[n + e] = (mIn[a] + mIn[b]) * 0.5;
+    if (grp) Gr[n + e] = grp[a] === grp[b] ? grp[a] : Math.min(grp[a], grp[b]);
   }
   for (let v = 0; v < n; v++) {
     const val = vvOff[v + 1] - vvOff[v];
@@ -1169,6 +1199,7 @@ function subdivideArrays(pos, idx, col, mask, smooth) {
       P[v * 3] = w * pos[v * 3] + beta * x; P[v * 3 + 1] = w * pos[v * 3 + 1] + beta * y; P[v * 3 + 2] = w * pos[v * 3 + 2] + beta * z;
     }
     C[v * 3] = cIn[v * 3]; C[v * 3 + 1] = cIn[v * 3 + 1]; C[v * 3 + 2] = cIn[v * 3 + 2]; M[v] = mIn[v];
+    if (grp) Gr[v] = grp[v];
   }
   const I = new Uint32Array(f * 12);
   for (let t = 0, p = 0; t < f; t++) {
@@ -1179,7 +1210,7 @@ function subdivideArrays(pos, idx, col, mask, smooth) {
     I[p++] = ca; I[p++] = bc; I[p++] = c;
     I[p++] = ab; I[p++] = bc; I[p++] = ca;
   }
-  return { pos: P, idx: I, col: C, mask: M };
+  return { pos: P, idx: I, col: C, mask: M, grp: Gr };
 }
 
 /* =====================================================================
@@ -1323,8 +1354,8 @@ function voxelRemesh(src, res) {
     nb[v * 3] += pos[u * 3]; nb[v * 3 + 1] += pos[u * 3 + 1]; nb[v * 3 + 2] += pos[u * 3 + 2]; nc[v]++;
   }
   for (let v = 0; v < nV; v++) if (nc[v]) for (let q = 0; q < 3; q++) pos[v * 3 + q] += (nb[v * 3 + q] / nc[v] - pos[v * 3 + q]) * 0.5;
-  const col = new Float32Array(nV * 3), mask = new Float32Array(nV);
-  const SC = src.col, SM = src.mask, bary = [0, 0, 0];
+  const col = new Float32Array(nV * 3), mask = new Float32Array(nV), grp = new Float32Array(nV);
+  const SC = src.col, SM = src.mask, SG = src.grp, bary = [0, 0, 0];
   for (let v = 0; v < nV; v++) {
     const px = pos[v * 3], py = pos[v * 3 + 1], pz = pos[v * 3 + 2];
     const ci = Math.min(nx - 2, Math.max(0, Math.floor((px - ox) / h))), cj = Math.min(ny - 2, Math.max(0, Math.floor((py - oy) / h))), ck = Math.min(nz - 2, Math.max(0, Math.floor((pz - oz) / h)));
@@ -1343,8 +1374,9 @@ function voxelRemesh(src, res) {
     baryOf(P, a * 3, b * 3, c * 3, bx, by, bz, bary);
     for (let q = 0; q < 3; q++) col[v * 3 + q] = SC[a * 3 + q] * bary[0] + SC[b * 3 + q] * bary[1] + SC[c * 3 + q] * bary[2];
     mask[v] = SM[a] * bary[0] + SM[b] * bary[1] + SM[c] * bary[2];
+    if (SG) grp[v] = SG[bary[0] >= bary[1] && bary[0] >= bary[2] ? a : bary[1] >= bary[2] ? b : c];
   }
-  return { pos, idx, col, mask, res };
+  return { pos, idx, col, mask, grp, res };
 }
 // squared distance from p to triangle (a, b, c) (offsets into P); the closest point goes to out
 function closestOnTri(P, a, b, c, px, py, pz, out) {
@@ -1451,18 +1483,22 @@ const camera = new THREE.PerspectiveCamera(38, 1, 0.01, 200);
 const matcapTextures = MATCAPS.map((m) => { const t = new THREE.CanvasTexture(makeMatcap(m)); t.colorSpace = THREE.NoColorSpace; return t; });
 
 const material = new THREE.ShaderMaterial({
-  uniforms: { matcap: { value: matcapTextures[0] }, flatShade: { value: 0 } },
+  uniforms: { matcap: { value: matcapTextures[0] }, flatShade: { value: 0 }, showGroups: { value: 0 } },
   vertexShader: `
-    attribute vec3 aColor; attribute float aMask;
-    varying vec3 vN; varying vec3 vC; varying float vM; varying vec3 vView;
+    attribute vec3 aColor; attribute float aMask; attribute float aGroup;
+    varying vec3 vN; varying vec3 vC; varying float vM; varying vec3 vView; varying vec3 vG;
     void main() {
       vN = normalize(normalMatrix * normal); vC = aColor; vM = aMask;
+      // a colour per group: golden-angle hues, so neighbouring numbers differ clearly; a border blends
+      // across one row of triangles (groups are per vertex)
+      float h = fract(aGroup * 0.381966 + 0.13);
+      vG = clamp(abs(mod(h * 6.0 + vec3(0.0, 4.0, 2.0), 6.0) - 3.0) - 1.0, 0.0, 1.0);
       vec4 mv = modelViewMatrix * vec4(position, 1.0); vView = mv.xyz;
       gl_Position = projectionMatrix * mv;
     }`,
   fragmentShader: `
-    uniform sampler2D matcap; uniform float flatShade;
-    varying vec3 vN; varying vec3 vC; varying float vM; varying vec3 vView;
+    uniform sampler2D matcap; uniform float flatShade; uniform float showGroups;
+    varying vec3 vN; varying vec3 vC; varying float vM; varying vec3 vView; varying vec3 vG;
     void main() {
       vec3 n = normalize(vN);
       if (flatShade > 0.5) n = normalize(cross(dFdx(vView), dFdy(vView)));
@@ -1472,6 +1508,7 @@ const material = new THREE.ShaderMaterial({
       vec3 y = cross(v, x);
       vec2 uv = vec2(dot(x, n), dot(y, n)) * 0.495 + 0.5;
       vec3 c = texture2D(matcap, uv).rgb * vC;
+      if (showGroups > 0.5) c = mix(c, c * (0.35 + 0.9 * vG), 0.75);
       c = mix(c, c * 0.28 + vec3(0.02, 0.03, 0.08), clamp(vM, 0.0, 1.0) * 0.85);
       gl_FragColor = vec4(c, 1.0);
     }`,
@@ -1535,6 +1572,7 @@ function buildGeometry() {
   geo.setAttribute('normal', new THREE.BufferAttribute(m.nrm, 3).setUsage(THREE.DynamicDrawUsage));
   geo.setAttribute('aColor', new THREE.BufferAttribute(m.col, 3).setUsage(THREE.DynamicDrawUsage));
   geo.setAttribute('aMask', new THREE.BufferAttribute(m.mask, 1).setUsage(THREE.DynamicDrawUsage));
+  geo.setAttribute('aGroup', new THREE.BufferAttribute(m.grp, 1).setUsage(THREE.DynamicDrawUsage));
   if (m.dyn) { geo.setDrawRange(0, m.f * 3); m.geomDirty = false; m.topoDirty = false; m.fMarks.length = 0; }
   gmesh = new THREE.Mesh(geo, material); gmesh.frustumCulled = false; gmesh.raycast = m.dyn ? () => {} : acceleratedRaycast;
   if (m.dyn) {
@@ -1784,6 +1822,7 @@ function gather(cx, cy, cz, r, nx, ny, nz, frontOnly) {
           const d2 = dx * dx + dy * dy + dz * dz;
           if (d2 >= r2) continue;
           if (frontOnly && nr[i * 3] * nx + nr[i * 3 + 1] * ny + nr[i * 3 + 2] * nz < -0.1) continue;
+          if (curGroup >= 0 && m.grp[i] !== curGroup) continue;
           out[c] = i; fall[c] = lut(FL, Math.sqrt(d2) / r); c++;
         }
       }
@@ -1798,6 +1837,7 @@ function gather(cx, cy, cz, r, nx, ny, nz, frontOnly) {
     const d2 = dx * dx + dy * dy + dz * dz;
     if (d2 >= r2) continue;
     if (frontOnly && nr[i * 3] * nx + nr[i * 3 + 1] * ny + nr[i * 3 + 2] * nz < -0.1) continue;
+    if (curGroup >= 0 && m.grp[i] !== curGroup) continue;
     out[c] = i; fall[c] = lut(FL, Math.sqrt(d2) / r); c++;
   }
   m.gCount = c;
@@ -1993,6 +2033,21 @@ function kelvinlet(eps, nu) {
   };
   return K;
 }
+// the polygroup of the vertex nearest to p (within r), for brushes that stay in one group
+function groupNear(p, r) {
+  const keep = curGroup; curGroup = -1;
+  const cnt = gather(p.x, p.y, p.z, r, 0, 0, 0, false);
+  curGroup = keep;
+  let best = -1, bd = Infinity;
+  for (let k = 0; k < cnt; k++) { const i = mesh.gIdx[k], d = dist2(mesh.pos, i, p.x, p.y, p.z); if (d < bd) { bd = d; best = i; } }
+  return best < 0 ? -1 : mesh.grp[best];
+}
+// run fn with gathers limited to the group at p when the brush asks for it
+function inGroup(b, p, r, fn) {
+  const keep = curGroup;
+  curGroup = b.group ? groupNear(p, r) : -1;
+  try { return fn(); } finally { curGroup = keep; }
+}
 // Pose (Blender's Pose brush, ZBrush's Transpose in one gesture): the connected surface within r of
 // the press point is the part that turns; the first ring of vertices outside r is the joint, and its
 // average the pivot. Weights are 1 on the part and fade over two rings beyond it (4 smoothing passes).
@@ -2006,7 +2061,7 @@ function poseRegion(pt, r) {
   for (let h = 0; h < region.length; h++) {
     forNeighbors(m, region[h], (u) => {
       if (inR.has(u) || ring.has(u)) return;
-      if (dist2(P, u, pt.x, pt.y, pt.z) <= r2) { inR.add(u); region.push(u); } else ring.add(u);
+      if (dist2(P, u, pt.x, pt.y, pt.z) <= r2 && (curGroup < 0 || m.grp[u] === curGroup)) { inR.add(u); region.push(u); } else ring.add(u);
     });
   }
   const origin = new THREE.Vector3();
@@ -2281,7 +2336,7 @@ function beginStroke(e, x, y, b, sign) {
     const hit = pick(x, y);
     if (!hit) { stroke = null; return false; }
     const r = b.radius * worldPerPx(hit.point);
-    const parts = [hit.point, ...SYM.map(({ m }) => symV(m, hit.point))].map((c, k) => ({ m: k ? SYM[k - 1].m : IDENT, ...poseRegion(c, r) }));
+    const parts = [hit.point, ...SYM.map(({ m }) => symV(m, hit.point))].map((c, k) => ({ m: k ? SYM[k - 1].m : IDENT, ...inGroup(b, c, r, () => poseRegion(c, r)) }));
     // all parts share one list of vertices; where copies overlap (a part on the symmetry plane) each
     // vertex blends their turns by weight, so the overlap bends smoothly instead of tearing
     const slot = new Map(), all = [];
@@ -2322,7 +2377,7 @@ function beginStroke(e, x, y, b, sign) {
         const Ms = [IDENT, ...SYM.map((t) => t.m)];
         const idx = [], at = new Map(), eSlot = [], eT = [], eW = [];
         Ms.forEach((m, t) => {
-          const set = mk(symV(m, hit.point), symV(m, hit.normal));
+          const cp = symV(m, hit.point), set = inGroup(b, cp, reach, () => mk(cp, symV(m, hit.normal)));
           for (let k = 0; k < set.idx.length; k++) {
             const v = set.idx[k];
             let j = at.get(v);
@@ -2412,7 +2467,7 @@ function processStroke() {
       // snake hook: re-gathers under the moving point, so the pulled tip keeps growing
       const st = g.strength;
       const doSet = (pt, d, nn) => {
-        const cnt = gather(pt.x, pt.y, pt.z, g.r, nn.x, nn.y, nn.z, false);
+        const cnt = inGroup(stroke.b, pt, g.r, () => gather(pt.x, pt.y, pt.z, g.r, nn.x, nn.y, nn.z, false));
         const P = mesh.pos, MK = mesh.mask, G = mesh.gIdx, F = mesh.gFall;
         for (let k = 0; k < cnt; k++) {
           const i = G[k], w = F[k] * st * (1 - MK[i]); if (w <= 0) continue; touchVert(i);
@@ -2449,7 +2504,7 @@ function processStroke() {
       for (const grp of groups) {
         grp.f = grp.ms.map((m) => symA(m, [fx, fy, fz])).reduce((a, b) => [a[0] + b[0], a[1] + b[1], a[2] + b[2]], [0, 0, 0]).map((v) => v / grp.ms.length);
         const c = centre(grp);
-        const cnt = g.topo ? gatherConnected(c, reachMax) : gather(c.x, c.y, c.z, reachMax, 0, 0, 0, false);
+        const cnt = inGroup(stroke.b, c, g.r, () => (g.topo ? gatherConnected(c, reachMax) : gather(c.x, c.y, c.z, reachMax, 0, 0, 0, false)));
         grp.list = mesh.gIdx.slice(0, cnt);
       }
       const mainF = groups[0].f;   // the identity is always first
@@ -2570,14 +2625,19 @@ function dab(x, y, p, o = {}) {
   }
   // keep the picking structure in step with what this dab moved (mask and paint move nothing)
   const moves = tool !== 'mask' && tool !== 'paint';
+  // (with "only one group" each copy keeps the group it started the stroke on)
+  const lockGroup = (k, p) => { if (!b.group) return -1; if (!stroke.groups) stroke.groups = []; if (stroke.groups[k] === undefined) stroke.groups[k] = groupNear(p, r); return stroke.groups[k]; };
+  curGroup = lockGroup(0, hit.point);
   applyBrush(tool, hit.point, hit.normal, r, s, stroke.sign, info);
   if (mesh.dyn && moves) gridFollowBrush();
   // each copy's brush plane is the transformed main one, so stamps are mirrored / turned with it
   const frame = { u: lastFrame.u.slice(), v: lastFrame.v.slice() }, shaped = b.tip === 'square' || b.alpha !== 'none' || b.mod;
-  for (const c of copies) {
+  copies.forEach((c, k) => {
+    curGroup = lockGroup(k + 1, c.p);
     applyBrush(tool, c.p, c.n, r, s, stroke.sign, { b, dir: info.dir ? symV(c.m, info.dir) : null, uv: shaped ? { u: symA(c.m, frame.u), v: symA(c.m, frame.v) } : null });
     if (mesh.dyn && moves) gridFollowBrush();
-  }
+  });
+  curGroup = -1;
   if (!mesh.dyn && moves) {
     // a DragRect / DragDot stamp is redrawn each move: refit where the last one was as well
     const R = (o.single && stroke.lastStamp ? Math.max(r, stroke.lastStamp.r) : r) * (b.tip === 'square' ? 1.42 : 1);
@@ -2639,7 +2699,7 @@ function endStroke(commit = true) {
     mesh.gridMaybeRebuild();
     if (changed) {
       if (commit) { pushUndo(snap); scheduleAutosave(); }
-      else setMesh(new SculptMesh(snap.pos, snap.idx, snap.col, snap.mask, snap.level));
+      else setMesh(new SculptMesh(snap.pos, snap.idx, snap.col, snap.mask, snap.level, snap.grp));
     }
     updateStats(); requestRender();
     return;
@@ -2648,6 +2708,7 @@ function endStroke(commit = true) {
   if (m.dyn) m.gridMaybeRebuild();
   if (n > 0) {
     const rec = { type: 'verts', idx: m.uIdx.slice(0, n), pos: m.uPos.slice(0, n * 3), col: m.uCol.slice(0, n * 3), mask: m.uMask.slice(0, n) };
+    if (commit && recLayer >= 0) recordStroke(rec);
     if (commit) { pushUndo(rec); scheduleAutosave(); }
     else { swapVerts(rec); }
   }
@@ -2703,6 +2764,15 @@ function flushDyn() {
 /* ---------- undo ---------- */
 function swapVerts(rec) {
   const m = mesh;
+  // a recorded stroke: the layer gets back (or again) what the stroke put into it
+  const L = rec.layer && LAYERS.includes(rec.layer) ? rec.layer : null;
+  if (L) {
+    const inv = 1 / (L.s || 1);
+    for (let k = 0; k < rec.idx.length; k++) {
+      const i = rec.idx[k];
+      for (let q = 0; q < 3; q++) { L.d[i * 3 + q] += (rec.pos[k * 3 + q] - m.pos[i * 3 + q]) * inv; L.dc[i * 3 + q] += (rec.col[k * 3 + q] - m.col[i * 3 + q]) * inv; }
+    }
+  }
   for (let k = 0; k < rec.idx.length; k++) {
     const i = rec.idx[k];
     for (let q = 0; q < 3; q++) {
@@ -2720,19 +2790,25 @@ function swapVerts(rec) {
 function snapshot() {
   // (the subdivision levels are never changed in place, so a reference is enough)
   if (mesh.dyn) return { type: 'mesh', ...mesh.arrays(), mr: MR };
-  return { type: 'mesh', pos: mesh.pos, idx: mesh.idx, col: mesh.col, mask: mesh.mask, level: mesh.level, mr: MR };
+  return { type: 'mesh', pos: mesh.pos, idx: mesh.idx, col: mesh.col, mask: mesh.mask, grp: mesh.grp, level: mesh.level, mr: MR, layers: LAYERS, recLayer, layerBytes: layerBytes() };
 }
 const UNDO_BYTES = 400 * 1024 * 1024;
-function recBytes(r) { return r.pos.byteLength + r.idx.byteLength + r.col.byteLength + r.mask.byteLength + (r.mrBytes || 0); }
+function recBytes(r) {
+  if (r.type === 'fn') return r.bytes || 0;
+  return r.pos.byteLength + r.idx.byteLength + r.col.byteLength + r.mask.byteLength + (r.grp ? r.grp.byteLength : 0) + (r.mrBytes || 0) + (r.layerBytes || 0);
+}
 function applyRecord(rec) {
   if (rec.type === 'verts') { swapVerts(rec); return rec; }
+  // an operation that knows how to undo and redo itself (groups, layers)
+  if (rec.type === 'fn') { rec.undo(); return { type: 'fn', undo: rec.redo, redo: rec.undo, bytes: rec.bytes }; }
   const cur = snapshot();
   cur.mrBytes = mrBytesOnly(MR, rec.mr || null);
   MR = rec.mr || null;
   // levels need a fixed mesh: coming back to them turns dynamic topology off (as loading does)
   if (MR && S.dyntopo) { S.dyntopo = false; saveSettings(); toast('Динамичната топология е изключена: нивата на разделяне се върнаха.'); }
-  setMesh(new SculptMesh(rec.pos, rec.idx, rec.col, rec.mask, rec.level));
-  syncLevelUI();
+  setMesh(new SculptMesh(rec.pos, rec.idx, rec.col, rec.mask, rec.level, rec.grp));
+  LAYERS = rec.layers || []; recLayer = rec.layers ? rec.recLayer : -1;
+  syncLevelUI(); renderLayers();
   return cur;
 }
 function pushUndo(rec) {
@@ -2753,6 +2829,7 @@ function updateUndoButtons() {
 function replaceMesh(newMesh, { frame = false } = {}) {
   const rec = snapshot(); rec.mrBytes = mrBytesOnly(MR, null); pushUndo(rec);
   MR = null; newMesh.level = 0;   // a new model has no subdivision levels
+  LAYERS = []; recLayer = -1; renderLayers();   // nor layers (undo brings both back)
   const paused = setMesh(newMesh, { frame, quiet: true });
   scheduleAutosave(); syncLevelUI();
   return paused;
@@ -2817,6 +2894,8 @@ canvas.addEventListener('pointerdown', (e) => {
   const ctrl = e.ctrlKey || e.metaKey;
   // ZBrush: Ctrl masks. On the model a click blurs the mask (Ctrl+Alt sharpens) and a drag paints it;
   // on empty space a click inverts it and a drag draws a rectangle to mask (Alt: unmask, empty: clear).
+  // Ctrl+Shift+click: on a group masks everything else; on empty space clears the mask
+  if (ctrl && e.shiftKey) { gesture = { kind: 'group', hit, x0: x, y0: y, x, y, e, id: e.pointerId }; hideRing(); return; }
   if (ctrl) { gesture = { kind: hit ? 'maskpaint' : 'maskrect', x0: x, y0: y, x, y, alt: e.altKey, e, id: e.pointerId }; hideRing(); return; }
   if (!hit) { nav = { mode: e.altKey ? 'pan' : 'orbit', x, y, id: e.pointerId }; hideRing(); return; }
   let b = brush();
@@ -2876,7 +2955,8 @@ function endPointer(e) {
     const g = gesture; gesture = null; showMaskRect(false);
     const moved = Math.hypot(g.x - g.x0, g.y - g.y0) > 4;
     if (e.type === 'pointercancel') return;
-    if (g.kind === 'maskpaint') maskOp(g.alt ? 'sharpen' : 'blur');
+    if (g.kind === 'group') { if (!moved) { if (g.hit) maskAllBut(groupNear(g.hit.point, worldPerPx(g.hit.point) * 20)); else maskOp('clear'); } }
+    else if (g.kind === 'maskpaint') maskOp(g.alt ? 'sharpen' : 'blur');
     else if (!moved) maskOp('invert');
     else maskRect(g);
     requestRender();
@@ -2986,10 +3066,10 @@ function remesh() {
   setTimeout(() => {
     const t0 = performance.now();
     let r;
-    try { r = voxelRemesh({ pos: src.pos.subarray(0, mesh.n * 3), idx: src.idx.subarray(0, mesh.f * 3), col: src.col, mask: src.mask }, S.voxel); }
+    try { r = voxelRemesh({ pos: src.pos.subarray(0, mesh.n * 3), idx: src.idx.subarray(0, mesh.f * 3), col: src.col, mask: src.mask, grp: src.grp }, S.voxel); }
     catch (e) { busy(false); toast('Преизграждането не успя: ' + e.message); return; }
     if (r.idx.length < 12) { busy(false); toast('Моделът е твърде тънък за тази плътност. Увеличете плътността.'); return; }
-    const paused = replaceMesh(new SculptMesh(r.pos, r.idx, r.col, r.mask, 0));
+    const paused = replaceMesh(new SculptMesh(r.pos, r.idx, r.col, r.mask, 0, r.grp));
     busy(false);
     toast(`Нова мрежа: ${fmt(mesh.f)} триъгълника за ${((performance.now() - t0) / 1000).toFixed(1)} с.` + (r.res < S.voxel ? ` Плътността е намалена до ${r.res}, за да стигне паметта.` : '') + (paused ? ' ' + DYN_PAUSED_MSG : ''));
   }, 30);
@@ -3198,7 +3278,7 @@ function mrLower(high, highIdx, nHigh, nLow) {
   }
   return P.slice(0, nLow * 3);
 }
-const liveArrays = () => (mesh.dyn ? mesh.arrays() : { pos: mesh.pos, col: mesh.col, mask: mesh.mask });
+const liveArrays = () => (mesh.dyn ? mesh.arrays() : { pos: mesh.pos, col: mesh.col, mask: mesh.mask, grp: mesh.grp });
 function mrStart() {
   // the live mesh becomes level 0; its triangles are copied (the BVH keeps reordering the live ones)
   if (!MR) MR = { cur: 0, levels: [{ idx: Uint32Array.from(mesh.idx.subarray(0, mesh.f * 3)), n: mesh.n }] };
@@ -3217,17 +3297,19 @@ function mrCommit(next, live, prev = MR) {
   const rec = snapshot(); rec.mr = prev; rec.mrBytes = mrBytesOnly(prev, next);
   pushUndo(rec);
   MR = next;
-  setMesh(new SculptMesh(live.pos, live.idx, live.col, live.mask, next.cur), { quiet: true });
+  if (LAYERS.length) toast('Слоевете са приложени към модела: те важат за една мрежа.');
+  LAYERS = []; recLayer = -1; renderLayers();
+  setMesh(new SculptMesh(live.pos, live.idx, live.col, live.mask, next.cur, live.grp), { quiet: true });
   scheduleAutosave(); syncLevelUI();
 }
 function mrUpOnce(state, live) {
   const L = state.levels[state.cur], H = state.levels[state.cur + 1];
-  const sub = subdivideArrays(live.pos, L.idx, live.col, live.mask, H.smooth);
+  const sub = subdivideArrays(live.pos, L.idx, live.col, live.mask, H.smooth, live.grp);
   const pos = mrDecode(sub.pos, H.d, sub.idx, H.n);
   const col = sub.col, mask = sub.mask;
   for (let k = 0; k < col.length; k++) col[k] = Math.min(1, Math.max(0, col[k] + H.dc[k]));
   for (let k = 0; k < mask.length; k++) mask[k] = Math.min(1, Math.max(0, mask[k] + H.dm[k]));
-  return { state: { cur: state.cur + 1, levels: state.levels }, live: { pos, idx: sub.idx, col, mask } };
+  return { state: { cur: state.cur + 1, levels: state.levels }, live: { pos, idx: sub.idx, col, mask, grp: sub.grp } };
 }
 function mrDownOnce(state, live) {
   const H = state.levels[state.cur], L = state.levels[state.cur - 1];
@@ -3240,7 +3322,7 @@ function mrDownOnce(state, live) {
   for (let k = 0; k < dc.length; k++) dc[k] = live.col[k] - sub.col[k];
   for (let k = 0; k < dm.length; k++) dm[k] = live.mask[k] - sub.mask[k];
   const levels = state.levels.slice(); levels[state.cur] = { ...H, d, dc, dm };
-  return { state: { cur: state.cur - 1, levels }, live: { pos, idx: L.idx.slice(), col, mask } };
+  return { state: { cur: state.cur - 1, levels }, live: { pos, idx: L.idx.slice(), col, mask, grp: live.grp ? Float32Array.from(live.grp.subarray(0, L.n)) : null } };
 }
 let mrPending = false;   // a level change is queued: further requests wait for it (no double clicks)
 function mrBusy(work) {
@@ -3249,7 +3331,7 @@ function mrBusy(work) {
     // levels need a fixed topology: dynamic topology goes off (as Sculptris Pro does with SDiv in ZBrush)
     S.dyntopo = false; saveSettings();
     const a = mesh.arrays();
-    setMesh(new SculptMesh(a.pos, a.idx, a.col, a.mask, 0), { quiet: true });
+    setMesh(new SculptMesh(a.pos, a.idx, a.col, a.mask, 0, a.grp), { quiet: true });
     toast('Динамичната топология е изключена: нивата на разделяне искат постоянна мрежа.');
   }
   busy(true); mrPending = true;
@@ -3277,7 +3359,7 @@ function divide() {
     const prev = MR;   // (undo goes back to no levels at all, not to a one-level state)
     mrStart();
     const live = liveArrays(), L = MR.levels[MR.cur];
-    const sub = subdivideArrays(live.pos, L.idx, live.col, live.mask, S.loop);
+    const sub = subdivideArrays(live.pos, L.idx, live.col, live.mask, S.loop, live.grp);
     const n = sub.pos.length / 3;
     const levels = MR.levels.concat([{ idx: Uint32Array.from(sub.idx), n, smooth: S.loop, d: new Float32Array(n * 3), dc: new Float32Array(n * 3), dm: new Float32Array(n) }]);
     mrCommit({ cur: MR.cur + 1, levels }, sub, prev);
@@ -3323,11 +3405,194 @@ function syncLevelUI() {
   $('bSubdiv').textContent = MR && cur < top ? 'Към ниво ' + (cur + 1) + ' (Ctrl+D)' : 'Раздели ×4 детайл (Ctrl+D)';
 }
 
+/* ---------- 3D layers (ZBrush: Layers) ----------
+   A layer holds a shape offset and a colour offset per vertex. The model shown is the base plus every
+   visible layer times its strength (the base itself is never stored: it is what is shown minus the
+   layers). While a layer records, each finished stroke's change goes into it. Layers belong to one
+   mesh, so anything that changes the topology applies them first (undo brings them back). */
+let LAYERS = [];          // [{ name, d: Float32Array(n·3), dc: Float32Array(n·3), s, on }]
+let recLayer = -1;        // the layer that records strokes, or -1
+const layerBytes = () => LAYERS.reduce((t, L) => t + L.d.byteLength + L.dc.byteLength, 0);
+// add a layer's effect on the mesh, scaled by k (negative removes it)
+function layerApply(L, k) {
+  if (!k) return;
+  const m = mesh, P = m.pos, C = m.col, n = Math.min(m.n * 3, L.d.length);
+  for (let i = 0; i < n; i++) { P[i] += L.d[i] * k; C[i] = Math.min(1, Math.max(0, C[i] + L.dc[i] * k)); }
+  m.computeAllNormals(); for (const a of ['position', 'normal', 'aColor']) uploadAll(geo.attributes[a]);
+  bvhDirty = true; requestRender(); scheduleAutosave();
+}
+const layerFx = (L) => (L.on ? L.s : 0);
+function layerStep(doIt, undoIt, bytes = 0) { doIt(); pushUndo({ type: 'fn', undo: () => { undoIt(); renderLayers(); }, redo: () => { doIt(); renderLayers(); }, bytes }); renderLayers(); }
+function addLayer() {
+  if (stroke || mrPending) return;
+  if (mesh.dyn) { toast('Слоевете не работят с динамична топология. Изключете я (D).'); return; }
+  const n = mesh.n, L = { name: 'Слой ' + (LAYERS.length + 1), d: new Float32Array(n * 3), dc: new Float32Array(n * 3), s: 1, on: true };
+  const prevRec = recLayer;
+  layerStep(() => { LAYERS.push(L); recLayer = LAYERS.length - 1; }, () => { LAYERS.splice(LAYERS.indexOf(L), 1); recLayer = prevRec; }, L.d.byteLength * 2);
+  toast(`„${L.name}“ записва: всичко, което изваяте сега, отива в него.`);
+}
+function deleteLayer(L) {
+  const at = LAYERS.indexOf(L), wasRec = recLayer === at, fx = layerFx(L);
+  layerStep(() => { layerApply(L, -fx); LAYERS.splice(LAYERS.indexOf(L), 1); if (wasRec) recLayer = -1; else if (recLayer > at) recLayer--; },
+    () => { LAYERS.splice(at, 0, L); layerApply(L, fx); if (wasRec) recLayer = at; else if (recLayer >= at) recLayer++; });
+}
+function setLayerStrength(L, s, from) {
+  const was = from === undefined ? L.s : from;
+  if (s === was) return;
+  layerStep(() => { if (L.on) layerApply(L, s - L.s); L.s = s; }, () => { if (L.on) layerApply(L, was - L.s); L.s = was; });
+}
+function toggleLayer(L) {
+  layerStep(() => { L.on = !L.on; layerApply(L, L.on ? L.s : -L.s); }, () => { L.on = !L.on; layerApply(L, L.on ? L.s : -L.s); });
+}
+function recordLayer(L) {
+  const was = recLayer, to = recLayer === LAYERS.indexOf(L) ? -1 : LAYERS.indexOf(L);
+  // recording works at full strength and visible, as in ZBrush
+  const s0 = L.s, on0 = L.on;
+  layerStep(() => { recLayer = to; if (to >= 0) { if (!L.on) { L.on = true; layerApply(L, L.s); } if (L.s !== 1) { layerApply(L, 1 - L.s); L.s = 1; } } },
+    () => { recLayer = was; if (to >= 0) { if (L.s !== s0) { layerApply(L, s0 - L.s); L.s = s0; } if (L.on !== on0) { L.on = on0; if (!on0) layerApply(L, -L.s); } } });
+}
+// the layers become part of the mesh (shape and colour stay as shown)
+function bakeLayers(quiet) {
+  if (!LAYERS.length) return;
+  const list = LAYERS, rec = recLayer;
+  layerStep(() => { LAYERS = []; recLayer = -1; }, () => { LAYERS = list; recLayer = rec; }, list.reduce((t, L) => t + L.d.byteLength * 2, 0));
+  if (!quiet) toast('Слоевете са приложени към модела.');
+}
+// a finished stroke while a layer records: its change goes into the layer
+function recordStroke(rec) {
+  const L = LAYERS[recLayer]; if (!L) return;
+  const m = mesh, inv = 1 / (L.s || 1);
+  for (let k = 0; k < rec.idx.length; k++) {
+    const i = rec.idx[k];
+    for (let q = 0; q < 3; q++) { L.d[i * 3 + q] += (m.pos[i * 3 + q] - rec.pos[k * 3 + q]) * inv; L.dc[i * 3 + q] += (m.col[i * 3 + q] - rec.col[k * 3 + q]) * inv; }
+  }
+  rec.layer = L;
+}
+function layersForSave() { return LAYERS.length ? { list: LAYERS.map((L) => ({ name: L.name, d: L.d, dc: L.dc, s: L.s, on: L.on })), rec: recLayer } : null; }
+function restoreLayers(data) {
+  LAYERS = []; recLayer = -1;
+  if (data && Array.isArray(data.list) && !mesh.dyn) {
+    for (const L of data.list) if (L && L.d && L.d.length === mesh.n * 3 && L.dc && L.dc.length === mesh.n * 3) LAYERS.push({ name: String(L.name || 'Слой').slice(0, 30), d: L.d, dc: L.dc, s: Number.isFinite(L.s) ? L.s : 1, on: L.on !== false });
+    if (Number.isInteger(data.rec) && data.rec < LAYERS.length) recLayer = data.rec;
+  }
+  renderLayers();
+}
+function renderLayers() {
+  const box = $('layerList'); if (!box) return;
+  box.textContent = '';
+  LAYERS.forEach((L, k) => {
+    const row = document.createElement('div'); row.className = 'layer' + (recLayer === k ? ' rec' : '');
+    const recB = document.createElement('button'); recB.className = 'lbtn'; recB.textContent = '●'; recB.title = recLayer === k ? 'Спри записа' : 'Записвай в този слой';
+    recB.setAttribute('aria-pressed', recLayer === k); recB.onclick = () => recordLayer(L);
+    const eye = document.createElement('input'); eye.type = 'checkbox'; eye.checked = L.on; eye.title = 'Видим'; eye.onchange = () => toggleLayer(L);
+    const name = document.createElement('input'); name.type = 'text'; name.value = L.name; name.maxLength = 30;
+    name.onchange = () => { L.name = name.value.trim() || L.name; scheduleAutosave(); };
+    const sl = document.createElement('input'); sl.type = 'range'; sl.min = -1; sl.max = 2; sl.step = 0.05; sl.value = L.s; sl.disabled = recLayer === k;
+    sl.title = 'Сила: ' + Math.round(L.s * 100) + '%';
+    let from = L.s;
+    sl.oninput = () => { if (L.on) layerApply(L, +sl.value - L.s); L.s = +sl.value; sl.title = 'Сила: ' + Math.round(L.s * 100) + '%'; };
+    sl.onchange = () => { const to = L.s; if (L.on) layerApply(L, from - to); L.s = from; setLayerStrength(L, to, from); from = to; };
+    const del = document.createElement('button'); del.className = 'lbtn'; del.textContent = '×'; del.title = 'Изтрий слоя'; del.onclick = () => deleteLayer(L);
+    row.append(recB, eye, name, sl, del);
+    box.appendChild(row);
+  });
+  $('bLayerBake').disabled = !LAYERS.length;
+}
+
+/* ---------- polygroups (ZBrush: Polygroups) ---------- */
+function setGroupsUndoable(next, msg) {
+  const m = mesh, n = m.n, old = m.grp.slice(0, n);
+  const put = (arr) => { if (mesh.n !== arr.length) return; mesh.grp.set(arr); uploadAll(geo.attributes.aGroup); requestRender(); scheduleAutosave(); };
+  put(next);
+  pushUndo({ type: 'fn', undo: () => put(old), redo: () => put(next), bytes: old.byteLength * 2 });
+  if (!S.showGroups) { S.showGroups = true; syncGroupsUI(); }
+  if (msg) toast(msg);
+}
+function groupCount(g) { return new Set(g).size; }
+function groupOp(kind) {
+  if (stroke || mrPending) return;
+  const m = mesh, n = m.n, G = m.grp, next = Float32Array.from(G.subarray(0, n));
+  let top = 0; for (let i = 0; i < n; i++) if (G[i] > top) top = G[i];
+  if (kind === 'frommask') {
+    // the masked part becomes a new group (ZBrush: Group Masked)
+    let any = 0;
+    for (let i = 0; i < n; i++) if (m.mask[i] > 0.5) { next[i] = top + 1; any++; }
+    if (!any) { toast('Първо маскирайте частта, която да стане група (Ctrl+влачене по модела).'); return; }
+    setGroupsUndoable(next, 'Маскираната част е нова група.');
+  } else if (kind === 'angle') {
+    // faces flood across edges where the surface bends less than ~35° (ZBrush: Group By Normals);
+    // a vertex takes the group of its biggest face, so a cube gives its six sides
+    const I = m.idx, P = m.pos, f = m.f, fg = new Int32Array(f).fill(-1), FN = new Float32Array(f * 3), area = new Float32Array(f);
+    for (let t = 0; t < f; t++) {
+      const a = I[t * 3] * 3, b = I[t * 3 + 1] * 3, c = I[t * 3 + 2] * 3;
+      const ux = P[b] - P[a], uy = P[b + 1] - P[a + 1], uz = P[b + 2] - P[a + 2], vx = P[c] - P[a], vy = P[c + 1] - P[a + 1], vz = P[c + 2] - P[a + 2];
+      const x = uy * vz - uz * vy, y = uz * vx - ux * vz, z = ux * vy - uy * vx, l = Math.hypot(x, y, z) || 1;
+      FN[t * 3] = x / l; FN[t * 3 + 1] = y / l; FN[t * 3 + 2] = z / l; area[t] = l;
+    }
+    const facesOf = (v, fn) => { if (m.dyn) { const L = m.vfA[v]; for (let j = 0; j < L.length; j++) fn(L[j]); } else for (let j = m.vfOff[v]; j < m.vfOff[v + 1]; j++) fn(m.vf[j]); };
+    const lim = Math.cos(35 * Math.PI / 180);
+    let g = 0;
+    for (let t0 = 0; t0 < f; t0++) {
+      if (fg[t0] >= 0) continue;
+      const q = [t0]; fg[t0] = g;
+      for (let h = 0; h < q.length; h++) {
+        const t = q[h];
+        for (let e = 0; e < 3; e++) {
+          const a = I[t * 3 + e], b = I[t * 3 + (e + 1) % 3];
+          facesOf(a, (t2) => {
+            if (fg[t2] >= 0 || (I[t2 * 3] !== b && I[t2 * 3 + 1] !== b && I[t2 * 3 + 2] !== b)) return;
+            if (FN[t * 3] * FN[t2 * 3] + FN[t * 3 + 1] * FN[t2 * 3 + 1] + FN[t * 3 + 2] * FN[t2 * 3 + 2] < lim) return;
+            fg[t2] = g; q.push(t2);
+          });
+        }
+      }
+      g++;
+    }
+    for (let v = 0; v < n; v++) { let best = -1, ba = -1; facesOf(v, (t) => { if (area[t] > ba) { ba = area[t]; best = t; } }); if (best >= 0) next[v] = fg[best]; }
+    const used = groupCount(next);
+    setGroupsUndoable(next, `${used} ${used === 1 ? 'група' : 'групи'}.`);
+  } else if (kind === 'parts') {
+    // flood fill over the edges: every separate piece is a group (ZBrush: Auto Groups)
+    const NR = m.nrm, lim = Math.cos(35 * Math.PI / 180), seen = new Uint8Array(n);
+    let g = 0;
+    for (let s0 = 0; s0 < n; s0++) {
+      if (seen[s0] || (m.dyn && !m.vfA[s0].length)) continue;
+      const q = [s0]; seen[s0] = 1;
+      for (let h = 0; h < q.length; h++) {
+        const v = q[h]; next[v] = g;
+        forNeighbors(m, v, (u) => {
+          if (seen[u]) return;
+          if (kind === 'angle' && NR[v * 3] * NR[u * 3] + NR[v * 3 + 1] * NR[u * 3 + 1] + NR[v * 3 + 2] * NR[u * 3 + 2] < lim) return;
+          seen[u] = 1; q.push(u);
+        });
+      }
+      g++;
+    }
+    setGroupsUndoable(next, `${g} ${g === 1 ? 'група' : 'групи'}.`);
+  } else if (kind === 'clear') {
+    next.fill(0);
+    setGroupsUndoable(next, 'Целият модел е една група.');
+  }
+}
+// Ctrl+Shift+click on a group: mask everything else (ZBrush isolates it the same way)
+function maskAllBut(group) {
+  const m = mesh, next = new Float32Array(m.n);
+  for (let i = 0; i < m.n; i++) next[i] = m.grp[i] === group ? 0 : 1;
+  setMaskUndoable(next);
+  toast('Маскирано е всичко освен групата.');
+}
+function syncGroupsUI() {
+  $('tGroups').checked = S.showGroups;
+  material.uniforms.showGroups.value = S.showGroups ? 1 : 0;
+  saveSettings(); requestRender();
+}
+
 /* ---------- dynamic topology controls ---------- */
 function setDyntopo(on) {
   if (stroke) { syncDynUI(); return; }
   if (on && mesh.f > DYN_MAX_TRIS) { toast('Динамичната топология работи до 2 млн. триъгълника. Започнете от по-лек модел.'); syncDynUI(); return; }
   if (on && !mesh.dyn && MR) { if (mrPending || !askDropLevels('Динамичната топология')) { syncDynUI(); return; } dropLevelsUndoable(); }
+  if (on && !mesh.dyn && LAYERS.length) bakeLayers();
   const want = on && mesh.f <= DYN_MAX_TRIS;
   S.dyntopo = on; saveSettings(); syncDynUI();
   if (!!mesh.dyn === want) return;
@@ -3337,7 +3602,7 @@ function setDyntopo(on) {
     const want = S.dyntopo && mesh.f <= DYN_MAX_TRIS;
     if (stroke || !!mesh.dyn === want) return;          // toggled back before this ran
     const a = mesh.arrays();
-    setMesh(new SculptMesh(a.pos, a.idx, a.col, a.mask, a.level));
+    setMesh(new SculptMesh(a.pos, a.idx, a.col, a.mask, a.level, a.grp));
     toast(S.dyntopo ? `Динамична топология: детайл ${S.detail} px. Четката сама добавя триъгълници.` : 'Динамичната топология е изключена.');
   }, 30);
 }
@@ -3356,7 +3621,7 @@ function floodDetail() {
     const changed = dynRemesh(0, 0, 0, Infinity, L, 0, 0, 0, true);
     if (dynHitCap) {
       // a half-refined model is worse than none: put the old one back
-      setMesh(new SculptMesh(snap.pos, snap.idx, snap.col, snap.mask, snap.level));
+      setMesh(new SculptMesh(snap.pos, snap.idx, snap.col, snap.mask, snap.level, snap.grp));
       busy(false);
       toast('Това би минало 2 млн. триъгълника. Отдалечете изгледа или увеличете размера на детайла.');
       return;
@@ -3541,7 +3806,7 @@ function scheduleAutosave() {
     try {
       const a = mesh.dyn ? mesh.arrays() : mesh;
       const db = await idb(); const tx = db.transaction('mesh', 'readwrite');
-      tx.objectStore('mesh').put({ pos: a.pos, idx: a.idx, col: a.col, mask: a.mask, level: mesh.level, mr: MR, t: Date.now() }, 'last');
+      tx.objectStore('mesh').put({ pos: a.pos, idx: a.idx, col: a.col, mask: a.mask, grp: mesh.dyn ? a.grp : mesh.grp, level: mesh.level, mr: MR, layers: layersForSave(), t: Date.now() }, 'last');
     } catch (e) { /* storage unavailable */ }
   }, 2500);
 }
@@ -3667,11 +3932,19 @@ function syncBrushUI() {
   $('sAngle').closest('.row').hidden = b.alphaRot === 'random';
   $('bBrushReset').textContent = b.builtin ? 'Нулирай' : 'Изтрий';
   for (const f of brushSyncs) f();
-  $('tFront').checked = b.front; $('tTopo').checked = b.topo;
+  $('tFront').checked = b.front; $('tTopo').checked = b.topo; $('tGroupOnly').checked = b.group;
   renderAlphas(); drawCurve();
 }
 $('tFront').addEventListener('change', () => { brush().front = $('tFront').checked; saveSettings(); });
 $('tTopo').addEventListener('change', () => { brush().topo = $('tTopo').checked; saveSettings(); });
+$('tGroupOnly').addEventListener('change', () => { brush().group = $('tGroupOnly').checked; saveSettings(); });
+$('tGroups').addEventListener('change', () => { S.showGroups = $('tGroups').checked; syncGroupsUI(); });
+$('bGrpMask').onclick = () => groupOp('frommask');
+$('bLayerAdd').onclick = addLayer;
+$('bLayerBake').onclick = () => bakeLayers();
+$('bGrpParts').onclick = () => groupOp('parts');
+$('bGrpAngle').onclick = () => groupOp('angle');
+$('bGrpClear').onclick = () => groupOp('clear');
 
 /* ---------- alpha picker ---------- */
 const thumbCache = new Map();
@@ -3875,6 +4148,7 @@ $('bSym').onclick = () => {
   syncSym(); toast(any ? 'Симетрията е изключена.' : 'Симетрия по X: включена');
 };
 syncSym();
+syncGroupsUI(); renderLayers();
 function toggleWire() {
   S.wire = !S.wire;
   if (wmesh) wmesh.visible = S.wire;
@@ -3983,9 +4257,10 @@ loadAutosave().then((d) => {
       && mr.levels[mr.cur].n * 3 === d.pos.length && mr.levels.every((L, i) => L && L.idx && L.n && (i === 0 || (L.d && L.d.length === L.n * 3 && L.dc && L.dm)));
     MR = ok ? mr : null;
     if (MR && S.dyntopo) { S.dyntopo = false; saveSettings(); }
-    setMesh(new SculptMesh(d.pos, d.idx, d.col, d.mask, MR ? MR.cur : 0), { frame: true });
+    setMesh(new SculptMesh(d.pos, d.idx, d.col, d.mask, MR ? MR.cur : 0, d.grp && d.grp.length === d.pos.length / 3 ? d.grp : null), { frame: true });
+    restoreLayers(d.layers);
     toast('Продължавате последния модел. „Нов“ започва отначало.');
   }
 });
-window.__glina = { get mesh() { return mesh; }, get stroke() { return stroke; }, get gesture() { return gesture; }, get nav() { return nav; }, get MR() { return MR; }, syncSym, get SYM() { return SYM; }, setLevel, divide, deleteLower, deleteHigher, camera, orbit, pick, selectTool, brush, brushById, maskOp, remesh, undo, redo, subdivide, setDyntopo, floodDetail, S, get undoStack() { return undoStack; } };
+window.__glina = { get LAYERS() { return LAYERS; }, get recLayer() { return recLayer; }, addLayer, deleteLayer, toggleLayer, recordLayer, setLayerStrength, bakeLayers, groupOp, maskAllBut, groupNear, get mesh() { return mesh; }, get stroke() { return stroke; }, get gesture() { return gesture; }, get nav() { return nav; }, get MR() { return MR; }, syncSym, get SYM() { return SYM; }, setLevel, divide, deleteLower, deleteHigher, camera, orbit, pick, selectTool, brush, brushById, maskOp, remesh, undo, redo, subdivide, setDyntopo, floodDetail, S, get undoStack() { return undoStack; } };
 </script>
