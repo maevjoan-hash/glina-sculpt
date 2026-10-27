@@ -276,6 +276,10 @@ input[type=range] { width: 100%; height: 26px; accent-color: var(--wax); backgro
         <label class="toggle" id="topoRow">Само свързаната повърхност <input type="checkbox" id="tTopo"></label>
         <label class="toggle" id="groupRow">Само групата под четката <input type="checkbox" id="tGroupOnly"></label>
         <div class="grp" id="grabGrp"><div class="note lab">Хващане</div><div class="chips" id="grabChips"></div></div>
+        <div class="grp" id="immGrp"><div class="note lab">Форма за вмъкване</div><div class="chips" id="immChips"></div>
+          <p class="note">Натиснете върху модела и влачете: дължината е размерът, посоката я завърта. Щракване вмъква с размера на четката.</p></div>
+        <div class="row" id="taperRow"><label for="sTaper">Изтъняване към краищата на кривата</label><output id="oTaper"></output><input type="range" id="sTaper" min="0" max="1" step="0.05"></div>
+        <p class="note" id="curveNote">Кривата остава след щриха: хванете я и я огънете, и щрихът се прави наново. Esc или друга четка я пуска.</p>
         <div class="row" id="volRow"><label for="sVolume">Запазване на обема</label><output id="oVolume"></output><input type="range" id="sVolume" min="0" max="0.49" step="0.01"></div>
         <div class="two"><button class="btn wide" id="bBrushNew">Нова от тази</button><button class="btn wide" id="bBrushReset">Нулирай</button></div>
         <div class="two"><button class="btn wide" id="bBrushExport">Изнеси</button><button class="btn wide" id="bBrushImport">Внеси</button></div>
@@ -368,6 +372,7 @@ input[type=range] { width: 100%; height: 26px; accent-color: var(--wax); backgro
 <input type="file" id="fileIn" accept=".obj,.stl" hidden>
 <input type="file" id="brushIn" accept=".json,application/json" hidden>
 <input type="file" id="alphaIn" accept="image/*" hidden>
+<input type="file" id="immIn" accept=".obj,.stl" hidden>
 
 <script type="importmap">
 { "imports": {
@@ -401,6 +406,9 @@ const ICON = {
   snake: '<path d="M4 19c4 0 3-7 7-7s4-6 8-8"/><circle cx="19" cy="4" r="1.6"/>',
   clip: '<path d="M3 21L21 3" stroke-dasharray="3 2"/><path d="M6 12c0-4 3-7 6-7l-6 13z" fill="currentColor" opacity=".35"/><path d="M14 19c3 0 6-3 6-6"/>',
   cut: '<path d="M3 21L21 3" stroke-dasharray="3 2"/><circle cx="7" cy="17" r="2.2"/><circle cx="17" cy="7" r="2.2" opacity=".4"/><path d="M9 9l3 3" opacity=".6"/>',
+  insert: '<circle cx="12" cy="9" r="4.5"/><path d="M3 19c3-2.5 6-3.5 9-3.5s6 1 9 3.5"/><path d="M12 13.5v2" opacity=".5"/>',
+  tube: '<path d="M4 19c2-8 7-12 16-13" stroke-width="5" opacity=".25"/><path d="M4 19c2-8 7-12 16-13"/>',
+  curve: '<path d="M3 17c4-9 8 2 12-6 1.5-3 3.5-4 6-4"/><circle cx="3" cy="17" r="1.4"/><circle cx="21" cy="7" r="1.4"/>',
   pose: '<path d="M4 20l7-7"/><path d="M11 13l6-8"/><circle cx="11" cy="13" r="2"/><path d="M14 4h4v4" opacity=".6"/>',
   mask: '<circle cx="12" cy="12" r="8"/><path d="M12 4a8 8 0 010 16z" fill="currentColor"/>',
   paint: '<path d="M12 3c4 5 6 8 6 11a6 6 0 01-12 0c0-3 2-6 6-11z"/>',
@@ -421,7 +429,7 @@ const BASES = [
   { id: 'draw', name: 'Рисуване (Standard)' }, { id: 'clay', name: 'Глина (Clay)' }, { id: 'claystrips', name: 'Глина на ивици (ClayBuildup)' },
   { id: 'inflate', name: 'Надуване (Inflate)' }, { id: 'flatten', name: 'Изравняване (hPolish)' }, { id: 'scrape', name: 'Подрязване (TrimDynamic)' },
   { id: 'pinch', name: 'Притискане (Pinch)' }, { id: 'crease', name: 'Гънка' }, { id: 'smooth', name: 'Изглаждане (Smooth)' },
-  { id: 'grab', name: 'Хващане (Move)' }, { id: 'snake', name: 'Издърпване (SnakeHook)' }, { id: 'pose', name: 'Поза (Pose)' }, { id: 'clip', name: 'Отсичане (ClipCurve)' }, { id: 'cut', name: 'Отрязване (TrimCurve)' }, { id: 'mask', name: 'Маска' }, { id: 'paint', name: 'Боя' },
+  { id: 'grab', name: 'Хващане (Move)' }, { id: 'snake', name: 'Издърпване (SnakeHook)' }, { id: 'pose', name: 'Поза (Pose)' }, { id: 'insert', name: 'Вмъкване на форма (InsertMesh)' }, { id: 'tube', name: 'Тръба по крива (CurveTube)' }, { id: 'clip', name: 'Отсичане (ClipCurve)' }, { id: 'cut', name: 'Отрязване (TrimCurve)' }, { id: 'mask', name: 'Маска' }, { id: 'paint', name: 'Боя' },
 ];
 // a complete brush; presets only list what differs
 const BRUSH_DEFAULTS = {
@@ -429,6 +437,8 @@ const BRUSH_DEFAULTS = {
   alpha: 'none', alphaMid: 0, alphaRot: 'fixed', alphaAngle: 0,
   stroke: 'dots', spacing: 0.15, mod: 0, front: true, topo: false, grab: 'soft', volume: 0.4,
   group: false,        // only the polygroup under the brush (ZBrush: Auto Masking > Mask By Polygroups)
+  imm: 'sphere',       // the shape Insert puts in
+  taper: 0,            // curves and tubes: thinner toward both ends (ZBrush: Curve Falloff)
 };
 const PRESETS = [
   { id: 'draw', name: 'Рисуване', short: 'Рис.', key: 'x', zb: 'Standard' },
@@ -446,6 +456,9 @@ const PRESETS = [
   { id: 'grabtopo', name: 'Хващане на част', short: 'Част', key: 'o', base: 'grab', icon: 'grabtopo', topo: true, radius: 90, strength: 1, curve: 'move', front: false, zb: 'Move Topological' },
   { id: 'snake', name: 'Издърпване', short: 'Дърпай', key: 'h', base: 'snake', radius: 45, strength: 0.8, front: false, zb: 'SnakeHook' },
   { id: 'pose', name: 'Поза', short: 'Поза', key: 'q', base: 'pose', radius: 70, strength: 1, front: false, zb: 'Transpose / Pose' },
+  { id: 'curvedam', name: 'Гънка по крива', short: 'Крива', icon: 'curve', radius: 12, strength: 0.6, dir: -1, curve: 'sharp', focal: 0.3, mod: 0.6, spacing: 0.08, stroke: 'curve', taper: 0.7, zb: 'Curve Mode + Dam_Standard' },
+  { id: 'imm', name: 'Вмъкване на форма', short: 'Вмъкни', key: 'j', base: 'insert', radius: 40, zb: 'InsertMesh (IMM)' },
+  { id: 'tube', name: 'Тръба по крива', short: 'Тръба', key: 'l', base: 'tube', radius: 10, stroke: 'curve', zb: 'CurveTube' },
   { id: 'clip', name: 'Отсичане', short: 'Отсечи', key: 'y', base: 'clip', zb: 'ClipCurve' },
   { id: 'cut', name: 'Отрязване', short: 'Отрежи', key: 'u', base: 'cut', zb: 'TrimCurve' },
   { id: 'mask', name: 'Маска', short: 'Маска', key: 'm', base: 'mask', radius: 45, strength: 0.8, zb: 'MaskPen' },
@@ -489,8 +502,9 @@ let savedSettings = null;
 try { savedSettings = JSON.parse(localStorage.getItem('glina.settings') || 'null'); } catch (e) { /* storage unavailable */ }
 if (savedSettings) for (const k of Object.keys(savedSettings)) if (k in S && k !== 'penSeen' && k !== 'brushes') S[k] = savedSettings[k];
 // one brush field from settings or a file: right type and range, or undefined
-const ENUMS = { tip: ['round', 'square'], alphaRot: ['fixed', 'stroke', 'random'], stroke: ['dots', 'dragrect', 'dragdot', 'spray', 'line'], grab: ['soft', 'elastic'] };
-const RANGES = { radius: [4, 320], strength: [0.01, 1], focal: [-1, 1], alphaMid: [0, 1], alphaAngle: [0, 360], spacing: [0.03, 0.6], mod: [-1, 1], volume: [0, 0.49] };
+const ENUMS = { tip: ['round', 'square'], alphaRot: ['fixed', 'stroke', 'random'], stroke: ['dots', 'dragrect', 'dragdot', 'spray', 'line', 'curve'], grab: ['soft', 'elastic'],
+  imm: ['sphere', 'cube', 'cylinder', 'cone', 'torus', 'file'] };
+const RANGES = { radius: [4, 320], strength: [0.01, 1], focal: [-1, 1], alphaMid: [0, 1], alphaAngle: [0, 360], spacing: [0.03, 0.6], mod: [-1, 1], volume: [0, 0.49], taper: [0, 1] };
 function brushField(k, v) {
   if (k === 'curve') return Array.isArray(v) && v.length >= 2 && v.length <= 32 && v.every((p) => Array.isArray(p) && p.length === 2 && p.every((x) => Number.isFinite(x) && x >= 0 && x <= 1)) ? v.map((p) => p.slice()) : undefined;
   if (k === 'base') return BASES.some((x) => x.id === v) ? v : undefined;
@@ -1151,6 +1165,160 @@ function makePlane(seg = 140) {
     idx[p++] = a; idx[p++] = c; idx[p++] = b; idx[p++] = b; idx[p++] = c; idx[p++] = d;
   }
   return new SculptMesh(pos, idx);
+}
+
+/* ---------- Shapes for Insert (ZBrush: InsertMesh) and tubes along a curve ----------
+   Unit size (about 1 across the middle), "up" is +Y. h is the wanted edge length in the same units, so a
+   shape put in at any size gets triangles like the model around it. */
+// a profile [radius, y] turned around the Y axis; points with radius 0 are poles
+function lathe(profile, h) {
+  const prof = [];
+  for (let i = 0; i + 1 < profile.length; i++) {
+    const [r0, y0] = profile[i], [r1, y1] = profile[i + 1], k = Math.max(1, Math.ceil(Math.hypot(r1 - r0, y1 - y0) / h));
+    for (let j = 0; j < k; j++) prof.push([r0 + (r1 - r0) * j / k, y0 + (y1 - y0) * j / k]);
+  }
+  prof.push(profile[profile.length - 1].slice());
+  const rmax = Math.max(...prof.map((q) => q[0])), U = Math.max(8, Math.min(400, Math.ceil(2 * Math.PI * rmax / h)));
+  const pos = [], rings = prof.map(([r, y]) => {
+    const at = pos.length / 3;
+    if (r < 1e-9) { pos.push(0, y, 0); return { at, pole: true }; }
+    for (let j = 0; j < U; j++) { const a = 2 * Math.PI * j / U; pos.push(r * Math.cos(a), y, r * Math.sin(a)); }
+    return { at, pole: false };
+  });
+  return { pos: new Float32Array(pos), idx: Uint32Array.from(stitchRings(rings, U)) };
+}
+// triangles between rings of U vertices (or poles), one after the other
+function stitchRings(rings, U) {
+  const idx = [];
+  for (let i = 0; i + 1 < rings.length; i++) {
+    const A = rings[i], B = rings[i + 1];
+    for (let j = 0; j < U; j++) {
+      const j1 = (j + 1) % U;
+      if (A.pole && B.pole) continue;
+      if (A.pole) idx.push(A.at, B.at + j1, B.at + j);
+      else if (B.pole) idx.push(A.at + j, A.at + j1, B.at);
+      else idx.push(A.at + j, A.at + j1, B.at + j1, A.at + j, B.at + j1, B.at + j);
+    }
+  }
+  return idx;
+}
+// turn every triangle round if the shape's volume came out negative (normals inward)
+function outward(pos, idx) {
+  let v = 0;
+  for (let t = 0; t < idx.length; t += 3) {
+    const a = idx[t] * 3, b = idx[t + 1] * 3, c = idx[t + 2] * 3;
+    v += pos[a] * (pos[b + 1] * pos[c + 2] - pos[b + 2] * pos[c + 1]) - pos[a + 1] * (pos[b] * pos[c + 2] - pos[b + 2] * pos[c]) + pos[a + 2] * (pos[b] * pos[c + 1] - pos[b + 1] * pos[c]);
+  }
+  if (v < 0) for (let t = 0; t < idx.length; t += 3) { const x = idx[t + 1]; idx[t + 1] = idx[t + 2]; idx[t + 2] = x; }
+  return { pos, idx };
+}
+const IMM = [
+  // lift: how far the centre sits above the surface, in the shape's own size (the rest sinks in, so the
+  // part overlaps the model and a voxel remesh fuses them)
+  { id: 'sphere', name: 'Сфера', lift: 0.45 }, { id: 'cube', name: 'Куб', lift: 0.5 }, { id: 'cylinder', name: 'Цилиндър', lift: 0.7 },
+  { id: 'cone', name: 'Конус', lift: 0.7 }, { id: 'torus', name: 'Тор', lift: 0.12 }, { id: 'file', name: 'От файл…', lift: 0.5 },
+];
+let immFile = null;   // { pos, idx, name }: a shape from an .obj / .stl, for this session
+function immShape(kind, h) {
+  h = Math.min(0.5, Math.max(0.012, h));
+  const arr = (m) => ({ pos: m.pos.slice(0, m.n * 3), idx: m.idx.slice(0, m.f * 3) });
+  if (kind === 'file' && immFile) return { pos: immFile.pos, idx: immFile.idx };
+  if (kind === 'cube') return arr(makeCube(Math.max(1, Math.min(120, Math.ceil(1.6 / h)))));
+  if (kind === 'cylinder') return outward(...Object.values(lathe([[0, -1], [0.6, -1], [0.6, 1], [0, 1]], h)));
+  if (kind === 'cone') return outward(...Object.values(lathe([[0, -1], [0.8, -1], [0, 1]], h)));
+  if (kind === 'torus') return arr(makeTorus(0.75, 0.3, Math.max(12, Math.min(400, Math.ceil(2 * Math.PI * 1.05 / h))), Math.max(6, Math.min(160, Math.ceil(2 * Math.PI * 0.3 / h)))));
+  return arr(makeSphere(Math.max(1, Math.min(7, Math.round(Math.log2(1.05 / h))))));
+}
+// A tube along a curve of surface points: circles swept with rotation-minimizing frames (double
+// reflection), round caps at both ends. r: radius; taper thins it toward the ends; h: edge length.
+function tubeArrays(pts, r, taper, h) {
+  // centres every h along the curve
+  const C = [pts[0].p.clone()], first = pts[0].n.clone();
+  let carry = 0;
+  for (let i = 1; i < pts.length; i++) {
+    const a = pts[i - 1].p, b = pts[i].p, L = a.distanceTo(b);
+    let t = h - carry;
+    while (t <= L) { C.push(a.clone().lerp(b, t / L)); t += h; }
+    carry = L - (t - h);
+  }
+  const last = pts[pts.length - 1].p;
+  if (C[C.length - 1].distanceTo(last) > h * 0.3) C.push(last.clone()); else C[C.length - 1].copy(last);
+  if (C.length < 2) C.push(last.clone().addScaledVector(first, 1e-4));
+  while (C.length > 4000) { for (let i = 1; i < C.length - 1; i++) C.splice(i, 1); }   // (a very long curve: coarser)
+  const K = C.length, T = C.map((c, i) => C[Math.min(K - 1, i + 1)].clone().sub(C[Math.max(0, i - 1)]).normalize());
+  // first frame: the surface normal turned square to the curve
+  let N = first.clone().addScaledVector(T[0], -first.dot(T[0]));
+  if (N.lengthSq() < 1e-12) N = new THREE.Vector3(T[0].y, -T[0].x, 0).lengthSq() > 1e-6 ? new THREE.Vector3(T[0].y, -T[0].x, 0) : new THREE.Vector3(0, T[0].z, -T[0].y);
+  N.normalize();
+  const Ns = [N.clone()];
+  for (let i = 0; i + 1 < K; i++) {
+    const v1 = C[i + 1].clone().sub(C[i]), c1 = v1.lengthSq();
+    if (c1 < 1e-20) { Ns.push(Ns[i].clone()); continue; }
+    const rL = Ns[i].clone().addScaledVector(v1, -2 / c1 * v1.dot(Ns[i])), tL = T[i].clone().addScaledVector(v1, -2 / c1 * v1.dot(T[i]));
+    const v2 = T[i + 1].clone().sub(tL), c2 = v2.lengthSq();
+    Ns.push((c2 < 1e-20 ? rL : rL.addScaledVector(v2, -2 / c2 * v2.dot(rL))).normalize());
+  }
+  const tap = (t) => Math.max(0.12, 1 - taper * (1 - Math.pow(Math.sin(Math.PI * t), 0.6)));
+  const U = Math.max(6, Math.min(64, Math.ceil(2 * Math.PI * r / h)));
+  const pos = [], rings = [];
+  const ring = (c, n, b, rad) => {
+    rings.push({ at: pos.length / 3, pole: false });
+    for (let j = 0; j < U; j++) { const a = 2 * Math.PI * j / U, x = Math.cos(a) * rad, y = Math.sin(a) * rad; pos.push(c.x + n.x * x + b.x * y, c.y + n.y * x + b.y * y, c.z + n.z * x + b.z * y); }
+  };
+  const pole = (c) => { rings.push({ at: pos.length / 3, pole: true }); pos.push(c.x, c.y, c.z); };
+  // round cap: rings shrinking along the tangent, then a pole
+  const cap = (i, dirSign, rad, startCap) => {
+    const m = Math.max(1, Math.round(Math.PI / 2 * rad / h)), B = new THREE.Vector3().crossVectors(T[i], Ns[i]), list = [];
+    for (let k = m; k >= 1; k--) {
+      const ph = (Math.PI / 2) * k / (m + 1);
+      list.push([C[i].clone().addScaledVector(T[i], dirSign * rad * Math.sin(ph)), rad * Math.cos(ph)]);
+    }
+    if (startCap) { pole(C[i].clone().addScaledVector(T[i], -rad)); for (const [c, rr] of list) ring(c, Ns[i], B, rr); }
+    else { for (let k = list.length - 1; k >= 0; k--) ring(list[k][0], Ns[i], B, list[k][1]); pole(C[i].clone().addScaledVector(T[i], rad)); }
+  };
+  cap(0, -1, r * tap(0), true);
+  for (let i = 0; i < K; i++) ring(C[i], Ns[i], new THREE.Vector3().crossVectors(T[i], Ns[i]), r * tap(K > 1 ? i / (K - 1) : 0.5));
+  cap(K - 1, 1, r * tap(1), false);
+  return outward(new Float32Array(pos), Uint32Array.from(stitchRings(rings, U)));
+}
+// the mean edge length of a mesh (from up to 4000 triangles), to size new parts' triangles like it
+function meanEdge(pos, idx) {
+  const f = idx.length / 3, step = Math.max(1, Math.floor(f / 4000));
+  let s = 0, c = 0;
+  for (let t = 0; t < f; t += step) for (let e = 0; e < 3; e++) { const a = idx[t * 3 + e], b = idx[t * 3 + (e + 1) % 3]; s += Math.sqrt(edgeLen2(pos, a, b)); c++; }
+  return c ? s / c : 0.02;
+}
+// the model plus new parts: each part is { pos, idx } in world space; they all become one new polygroup.
+// maskRest masks what was there before, so the new part can be moved on its own (as ZBrush does)
+function appendParts(src, parts, maskRest) {
+  const n0 = src.pos.length / 3;
+  let nAdd = 0, fAdd = 0;
+  for (const q of parts) { nAdd += q.pos.length / 3; fAdd += q.idx.length; }
+  const pos = new Float32Array((n0 + nAdd) * 3), col = new Float32Array((n0 + nAdd) * 3).fill(1), mask = new Float32Array(n0 + nAdd), grp = new Float32Array(n0 + nAdd);
+  const idx = new Uint32Array(src.idx.length + fAdd);
+  pos.set(src.pos.subarray(0, n0 * 3)); col.set(src.col.subarray(0, n0 * 3)); idx.set(src.idx);
+  let g = 0;
+  for (let i = 0; i < n0; i++) { mask[i] = maskRest ? 1 : src.mask[i]; grp[i] = src.grp ? src.grp[i] : 0; if (grp[i] >= g) g = grp[i] + 1; }
+  let v = n0, f = src.idx.length;
+  for (const q of parts) {
+    pos.set(q.pos, v * 3);
+    for (let k = 0; k < q.idx.length; k++) idx[f + k] = q.idx[k] + v;
+    grp.fill(g, v, v + q.pos.length / 3);
+    v += q.pos.length / 3; f += q.idx.length;
+  }
+  return { pos, idx, col, mask, grp };
+}
+// a part placed with a 3×3 matrix (row-major) and an offset; a mirror turns the triangles round
+function placePart(shape, M, o) {
+  const P = shape.pos, out = new Float32Array(P.length);
+  for (let i = 0; i < P.length; i += 3) {
+    const x = P[i], y = P[i + 1], z = P[i + 2];
+    out[i] = M[0] * x + M[1] * y + M[2] * z + o[0]; out[i + 1] = M[3] * x + M[4] * y + M[5] * z + o[1]; out[i + 2] = M[6] * x + M[7] * y + M[8] * z + o[2];
+  }
+  const det = M[0] * (M[4] * M[8] - M[5] * M[7]) - M[1] * (M[3] * M[8] - M[5] * M[6]) + M[2] * (M[3] * M[7] - M[4] * M[6]);
+  let idx = shape.idx;
+  if (det < 0) { idx = shape.idx.slice(); for (let t = 0; t < idx.length; t += 3) { const x = idx[t + 1]; idx[t + 1] = idx[t + 2]; idx[t + 2] = x; } }
+  return { pos: out, idx };
 }
 
 /* ---------- Loop subdivision (works on raw arrays) ---------- */
@@ -3139,7 +3307,7 @@ function applyRecord(rec) {
   return cur;
 }
 function pushUndo(rec) {
-  undoStack.push(rec); redoStack.length = 0;
+  undoStack.push(rec); redoStack.length = 0; undoSerial++;
   // keep the newest steps within a memory budget (dynamic-topology strokes store whole meshes)
   let total = 0;
   for (let i = undoStack.length - 1; i >= 0; i--) {
@@ -3148,8 +3316,8 @@ function pushUndo(rec) {
   }
   updateUndoButtons();
 }
-function undo() { if (stroke || mrPending || !undoStack.length) return; redoStack.push(applyRecord(undoStack.pop())); updateUndoButtons(); requestRender(); scheduleAutosave(); }
-function redo() { if (stroke || mrPending || !redoStack.length) return; undoStack.push(applyRecord(redoStack.pop())); updateUndoButtons(); requestRender(); scheduleAutosave(); }
+function undo() { if (stroke || mrPending || !undoStack.length) return; undoSerial++; redoStack.push(applyRecord(undoStack.pop())); updateUndoButtons(); requestRender(); scheduleAutosave(); }
+function redo() { if (stroke || mrPending || !redoStack.length) return; undoSerial++; undoStack.push(applyRecord(redoStack.pop())); updateUndoButtons(); requestRender(); scheduleAutosave(); }
 function updateUndoButtons() {
   $('bUndo').disabled = !undoStack.length; $('qUndo').disabled = !undoStack.length; $('bRedo').disabled = !redoStack.length;
 }
@@ -3204,7 +3372,7 @@ canvas.addEventListener('pointerdown', (e) => {
     if (pointers.size >= 2) {
       // second finger: cancel a just-started finger stroke and switch to pinch navigation
       if (stroke && stroke.pointerType === 'touch') endStroke(false);
-      if (gesture) { gesture = null; drawOverlay(); }   // (a line or a selection that was starting)
+      cancelGesture();   // (a line, a selection, a shape or a curve that was starting)
       nav = { mode: 'pinch', ...pinchState() };
       return;
     }
@@ -3228,12 +3396,19 @@ canvas.addEventListener('pointerdown', (e) => {
   // Clip / Trim: a line, from anywhere (on or off the model)
   const cb = brush();
   if (cb.base === 'clip' || cb.base === 'cut') { gesture = { kind: 'cutline', base: cb.base, x0: x, y0: y, x, y, alt: e.altKey, snap: e.shiftKey, id: e.pointerId }; hideRing(); return; }
+  // a press on the waiting curve bends it (and redoes its stroke on release)
+  if (isCurveBrush(cb) && !e.shiftKey && !tempSmooth && liveCurve() && curve.brushId === cb.id) {
+    const k = curveHitIndex(x, y);
+    if (k >= 0) { startCurveEdit(e, x, y, k); hideRing(); drawOverlay(); return; }
+  }
   if (!hit) { nav = { mode: e.altKey ? 'pan' : 'orbit', x, y, id: e.pointerId }; hideRing(); return; }
   let b = brush();
   if (e.shiftKey || tempSmooth) b = { ...brushById('smooth'), base: 'smooth' };   // Shift always smooths
   const eraser = e.pointerType === 'pen' && (e.buttons & 32);
   // Alt (or the pen's eraser end, or ⇅) reverses the brush's own direction
   const sign = b.dir * ((S.invert !== (e.altKey || tempInvert || !!eraser)) ? -1 : 1);
+  if (b.base === 'insert') { gesture = { kind: 'insert', b, hit: { point: hit.point.clone(), normal: hit.normal.clone() }, x0: x, y0: y, x, y, id: e.pointerId }; showInsertPreview(gesture); hideRing(); return; }
+  if (isCurveBrush(b)) { curve = null; gesture = { kind: 'curvedraw', b, sign, pts: [[x, y]], x0: x, y0: y, x, y, id: e.pointerId }; hideRing(); drawOverlay(); return; }
   beginStroke(e, x, y, b, sign);
 });
 
@@ -3250,6 +3425,9 @@ canvas.addEventListener('pointermove', (e) => {
     // Ctrl+Shift dragged: the same as Ctrl+drag (paint mask, or a mask rectangle on empty space)
     if (gesture.kind === 'group' && moved) { gesture.kind = gesture.hit ? 'maskpaint' : 'maskrect'; gesture.pts = [[gesture.x0, gesture.y0]]; }
     if (gesture.kind === 'cutline') { gesture.alt = e.altKey; gesture.snap = e.shiftKey; drawOverlay(); return; }
+    if (gesture.kind === 'insert') { showInsertPreview(gesture); return; }
+    if (gesture.kind === 'curveedit') { drawOverlay(); return; }
+    if (gesture.kind === 'curvedraw') { const lp = gesture.pts[gesture.pts.length - 1]; if (Math.hypot(x - lp[0], y - lp[1]) > 2) { gesture.pts.push([x, y]); drawOverlay(); } return; }
     if (gesture.kind === 'maskrect' && gesture.pts) { const lp = gesture.pts[gesture.pts.length - 1]; if (Math.hypot(x - lp[0], y - lp[1]) > 3) gesture.pts.push([x, y]); }
     if (gesture.kind === 'maskpaint' && moved) {
       // turn into a mask stroke from the press point
@@ -3289,10 +3467,13 @@ canvas.addEventListener('pointermove', (e) => {
 function endPointer(e) {
   if (e.pointerType === 'touch') pointers.delete(e.pointerId);
   if (gesture && e.pointerId === gesture.id) {
+    if (e.type === 'pointercancel') { cancelGesture(); return; }
     const g = gesture; gesture = null; drawOverlay();
     const moved = !!g.moved || Math.hypot(g.x - g.x0, g.y - g.y0) > 4;
-    if (e.type === 'pointercancel') return;
     if (g.kind === 'cutline') { if (moved) applyCut(g); }
+    else if (g.kind === 'insert') insertShape(g);
+    else if (g.kind === 'curvedraw') { if (moved) finishCurve(g); }
+    else if (g.kind === 'curveedit') finishCurveEdit(g, false);
     else if (g.kind === 'group') { if (!moved) { if (g.hit) maskAllBut(groupNear(g.hit.point, worldPerPx(g.hit.point) * 20)); else maskOp('clear'); } }
     else if (g.kind === 'maskpaint') maskOp(g.alt ? 'sharpen' : 'blur');
     else if (!moved) maskOp('invert');
@@ -3365,6 +3546,7 @@ function frame() {
   if (stroke) { refitBVH(); dynSplitsLeft = DYN_FRAME_SPLITS; dynCollapsesLeft = DYN_FRAME_COLLAPSES; processStroke(); flushFrame(); }
   else updateHover();
   renderer.render(scene, camera);
+  if (curve && !gesture) drawOverlay();
   if (stroke && stroke.queue.length) requestRender();
 }
 
@@ -3486,8 +3668,19 @@ const SVGNS = 'http://www.w3.org/2000/svg';
 function drawOverlay() {
   const svg = $('overlay'); svg.textContent = '';
   const g = gesture;
-  if (!g) return;
   const el = (tag, attrs) => { const e = document.createElementNS(SVGNS, tag); for (const k in attrs) e.setAttribute(k, attrs[k]); svg.appendChild(e); return e; };
+  // a curve: being drawn, being bent, or waiting to be bent
+  let line = null;
+  if (g && g.kind === 'curvedraw') line = g.pts;
+  else if (g && g.kind === 'curveedit') line = bentCurve(g);
+  else if (!g && liveCurve()) { camera.updateMatrixWorld(); line = curve.pts.map((q) => toScreen(q.p)).filter((q) => q[2] < 1); }
+  if (line && line.length > 1) {
+    const pts = line.map((q) => q[0].toFixed(1) + ',' + q[1].toFixed(1)).join(' ');
+    el('polyline', { points: pts, fill: 'none', stroke: '#000', 'stroke-opacity': 0.45, 'stroke-width': 4, 'stroke-linejoin': 'round', 'stroke-linecap': 'round' });
+    el('polyline', { points: pts, fill: 'none', stroke: '#ffd48a', 'stroke-width': 1.8, 'stroke-linejoin': 'round', 'stroke-linecap': 'round' });
+    for (const q of [line[0], line[line.length - 1]]) el('circle', { cx: q[0], cy: q[1], r: 3.5, fill: '#ffd48a', stroke: '#000', 'stroke-opacity': 0.5 });
+  }
+  if (!g) return;
   if (g.kind === 'maskrect') {
     const colr = g.alt ? '#ff9f7e' : '#7ea6ff';
     const pts = selectionPolygon(g).map((p) => p.join(',')).join(' ');
@@ -3610,6 +3803,209 @@ function applyCut(g) {
     } catch (e) { toast('Отрязването не успя: ' + e.message); }
     finally { busy(false); }
   }, 30);
+}
+
+// the model's arrays as they are now (dynamic topology: compacted copies)
+function meshArrays() {
+  const m = mesh;
+  return m.dyn ? m.arrays() : { pos: m.pos.subarray(0, m.n * 3), idx: m.idx.subarray(0, m.f * 3), col: m.col, mask: m.mask, grp: m.grp };
+}
+const _sp = new THREE.Vector3();
+function toScreen(p) { _sp.copy(p).project(camera); return [(_sp.x * 0.5 + 0.5) * viewport.w, (0.5 - _sp.y * 0.5) * viewport.h, _sp.z]; }
+
+/* ---------- Insert a shape (ZBrush: InsertMesh) ----------
+   Press on the model and drag: the shape stands on the surface (its up along the normal), the drag's
+   length is its size and its direction turns it. A click puts it in at the brush size. It joins the
+   model as a new polygroup and the rest is masked, so Move, Inflate and the like work on the new part
+   alone (Ctrl+click on empty space inverts the mask, Ctrl+drag there clears it). */
+let immPreview = null;
+function insertPlacement(g) {
+  const b = g.b, n = g.hit.normal.clone().normalize(), wpp = worldPerPx(g.hit.point);
+  const dx = g.x - g.x0, dy = g.y - g.y0, dpx = Math.hypot(dx, dy);
+  const size = dpx > 4 ? dpx * wpp : b.radius * wpp;
+  // the drag direction on screen, on the surface's tangent plane
+  const right = new THREE.Vector3(1, 0, 0).applyQuaternion(camera.quaternion), up = new THREE.Vector3(0, 1, 0).applyQuaternion(camera.quaternion);
+  let t = dpx > 4 ? right.multiplyScalar(dx).addScaledVector(up, -dy) : right;
+  t.addScaledVector(n, -t.dot(n));
+  if (t.lengthSq() < 1e-12) t = Math.abs(n.x) < 0.9 ? new THREE.Vector3(1, 0, 0).addScaledVector(n, -n.x) : new THREE.Vector3(0, 0, 1).addScaledVector(n, -n.z);
+  t.normalize();
+  const z = new THREE.Vector3().crossVectors(t, n);
+  const info = IMM.find((x) => x.id === b.imm) || IMM[0];
+  // local X → t, Y → n, Z → t×n, times the size (row-major)
+  const M = [t.x * size, n.x * size, z.x * size, t.y * size, n.y * size, z.y * size, t.z * size, n.z * size, z.z * size];
+  const c = g.hit.point.clone().addScaledVector(n, info.lift * size);
+  return { M, o: [c.x, c.y, c.z], size };
+}
+// every symmetric copy of a placement
+function symPlacements(pl) {
+  const out = [pl];
+  for (const { m } of SYM) {
+    const M = new Array(9);
+    for (let i = 0; i < 3; i++) for (let j = 0; j < 3; j++) M[i * 3 + j] = m[i * 3] * pl.M[j] + m[i * 3 + 1] * pl.M[3 + j] + m[i * 3 + 2] * pl.M[6 + j];
+    out.push({ M, o: symA(m, pl.o), size: pl.size });
+  }
+  return out;
+}
+function showInsertPreview(g) {
+  if (!immPreview) {
+    const sh = immShape(g.b.imm, 0.07), geo2 = new THREE.BufferGeometry(), nv = sh.pos.length / 3;
+    geo2.setAttribute('position', new THREE.BufferAttribute(sh.pos, 3));
+    geo2.setIndex(new THREE.BufferAttribute(sh.idx, 1));
+    geo2.computeVertexNormals();
+    geo2.setAttribute('aColor', new THREE.BufferAttribute(new Float32Array(nv * 3).fill(1), 3));
+    geo2.setAttribute('aMask', new THREE.BufferAttribute(new Float32Array(nv), 1));
+    geo2.setAttribute('aGroup', new THREE.BufferAttribute(new Float32Array(nv).fill(7), 1));
+    immPreview = { geo: geo2, group: new THREE.Group() };
+    scene.add(immPreview.group);
+  }
+  const pls = symPlacements(insertPlacement(g)), G = immPreview.group;
+  while (G.children.length < pls.length) { const mm = new THREE.Mesh(immPreview.geo, material); mm.matrixAutoUpdate = false; mm.frustumCulled = false; G.add(mm); }
+  G.children.forEach((mm, k) => {
+    mm.visible = k < pls.length;
+    if (!mm.visible) return;
+    const { M, o } = pls[k];
+    mm.matrix.set(M[0], M[1], M[2], o[0], M[3], M[4], M[5], o[1], M[6], M[7], M[8], o[2], 0, 0, 0, 1);
+    mm.matrixWorldNeedsUpdate = true;
+  });
+  requestRender();
+}
+function hideInsertPreview() {
+  if (!immPreview) return;
+  scene.remove(immPreview.group); immPreview.geo.dispose(); immPreview = null; requestRender();
+}
+function insertShape(g) {
+  hideInsertPreview();
+  if (g.b.imm === 'file' && !immFile) { toast('Първо изберете файл за формата (Форма → От файл…).'); return; }
+  if (!askDropLevels('Вмъкването')) return;
+  const pls = symPlacements(insertPlacement(g));
+  busy(true);
+  setTimeout(() => {
+    try {
+      const src = meshArrays();
+      const shape = immShape(g.b.imm, meanEdge(src.pos, src.idx) / pls[0].size);
+      const parts = pls.map((pl) => placePart(shape, pl.M, pl.o));
+      const r = appendParts(src, parts, true);
+      if (r.idx.length / 3 > MAX_TRIS) { toast('Моделът би станал твърде голям: вмъкването е отменено.'); return; }
+      const paused = replaceMesh(new SculptMesh(r.pos, r.idx, r.col, r.mask, 0, r.grp));
+      toast(`Вмъкнато (${fmt(parts.reduce((a, q) => a + q.idx.length / 3, 0))} триъгълника), като нова група. Останалото е маскирано: Ctrl+щракване на празно обръща маската. „Ремеш“ слива частите.` + (paused ? ' ' + DYN_PAUSED_MSG : ''));
+    } catch (e) { toast('Вмъкването не успя: ' + e.message); }
+    finally { busy(false); }
+  }, 30);
+}
+
+/* ---------- Curves (ZBrush: Stroke > Curve Mode, CurveTube) ----------
+   A brush with the Curve stroke draws a line that lies on the surface; on release the brush runs along
+   it once. The line stays: drag any part of it to bend it and the stroke is done again along the new
+   line (one undo step). Esc, another brush or any other change lets it go. The Tube brush puts a tube
+   along the curve instead. */
+let curve = null;   // { brushId, pts: [{ p, n }], sign, r, serial }
+let undoSerial = 0;   // counts every change of the undo stack: a curve is editable only right after its stroke
+const CURVE_TOOLS = new Set(['draw', 'clay', 'claystrips', 'smooth', 'inflate', 'flatten', 'scrape', 'pinch', 'crease', 'mask', 'paint']);
+const isCurveBrush = (b) => b.base === 'tube' || (b.stroke === 'curve' && CURVE_TOOLS.has(b.base));
+function liveCurve() { if (curve && curve.serial !== undoSerial) curve = null; return curve; }
+function dropCurve() { if (curve) { curve = null; drawOverlay(); } }
+// screen points → points on the surface (every 4 px; smoothed when freshly drawn, against hand shake)
+function curveFromScreen(pts2, smooth) {
+  const R = [pts2[0].slice()];
+  let carry = 0;
+  for (let i = 1; i < pts2.length; i++) {
+    const [ax, ay] = pts2[i - 1], [bx, by] = pts2[i], L = Math.hypot(bx - ax, by - ay);
+    let t = 4 - carry;
+    while (t <= L) { R.push([ax + (bx - ax) * t / L, ay + (by - ay) * t / L]); t += 4; }
+    carry = L - (t - 4);
+  }
+  const lp = pts2[pts2.length - 1];
+  if (Math.hypot(lp[0] - R[R.length - 1][0], lp[1] - R[R.length - 1][1]) > 1) R.push(lp.slice());
+  for (let it = 0; smooth && it < 4; it++) for (let i = 1; i + 1 < R.length; i++) for (let q = 0; q < 2; q++) R[i][q] = (R[i - 1][q] + 2 * R[i][q] + R[i + 1][q]) / 4;
+  const out = [];
+  for (const [x, y] of R) { const h = pick(x, y); if (h) out.push({ p: h.point, n: h.normal.normalize() }); }
+  return out.length >= 2 ? out : null;
+}
+// run the curve's brush along it once (one undo step); a tube is a new part instead
+function applyCurve(c) {
+  const b = brushById(c.brushId);
+  if (!b) return;
+  if (b.base === 'tube') { applyTube(c, b); return; }
+  const serial0 = undoSerial;
+  if (!mesh.dyn && geo.boundsTree) { geo.boundsTree.refit(); bvhDirty = false; }
+  if (!beginStroke({ pointerId: -1, pointerType: 'mouse', pressure: 1 }, 0, 0, b, c.sign)) return;
+  stroke.queue.length = 0;
+  const P = c.pts, seg = [0];
+  for (let i = 1; i < P.length; i++) seg.push(seg[i - 1] + P[i].p.distanceTo(P[i - 1].p));
+  const total = seg[seg.length - 1] || 1e-9, rpx = radiusPxFor(1, b);
+  const tap = (t) => Math.max(0.05, 1 - b.taper * (1 - Math.pow(Math.sin(Math.PI * t), 0.6)));
+  let s = 0, i = 0;
+  for (let guard = 0; guard < 20000; guard++) {
+    while (i + 1 < P.length - 1 && seg[i + 1] < s) i++;
+    const a = P[i], bb = P[Math.min(P.length - 1, i + 1)], L = seg[Math.min(P.length - 1, i + 1)] - seg[i];
+    const u = L > 0 ? Math.min(1, (s - seg[i]) / L) : 0;
+    const point = a.p.clone().lerp(bb.p, u), normal = a.n.clone().lerp(bb.n, u).normalize();
+    const k = tap(s / total);
+    dab(0, 0, 1, { hit: { point, normal }, rscale: k });
+    if (s >= total) break;
+    s = Math.min(total, s + Math.max(1e-6, rpx * worldPerPx(point) * k * b.spacing));
+  }
+  endStroke(true);
+  c.pushed = undoSerial !== serial0;   // (a stroke that changed nothing adds no undo step)
+  c.serial = undoSerial;
+}
+function applyTube(c, b) {
+  const src = meshArrays(), h = Math.max(c.r / 3, Math.min(c.r, meanEdge(src.pos, src.idx)));
+  const shape = tubeArrays(c.pts, c.r, b.taper, h);
+  const parts = [shape, ...SYM.map(({ m }) => placePart(shape, m, [0, 0, 0]))];
+  const r = appendParts(src, parts, false);
+  if (r.idx.length / 3 > MAX_TRIS) { toast('Моделът би станал твърде голям: тръбата е отменена.'); return; }
+  const paused = replaceMesh(new SculptMesh(r.pos, r.idx, r.col, r.mask, 0, r.grp));
+  if (paused) toast(DYN_PAUSED_MSG);
+  c.pushed = true; c.serial = undoSerial;
+}
+// a fresh curve from what was drawn
+function finishCurve(g) {
+  if (g.b.base === 'tube' && !askDropLevels('Тръбата')) return;
+  const pts = curveFromScreen(g.pts, true);
+  if (!pts) { toast('Кривата трябва да е върху модела.'); return; }
+  curve = { brushId: g.b.id, pts, sign: g.sign, r: g.b.radius * worldPerPx(pts[0].p), serial: -1 };
+  applyCurve(curve);
+  drawOverlay();
+}
+// where on the curve (as drawn on screen now) a press lands, or -1
+function curveHitIndex(x, y) {
+  const c = liveCurve(); if (!c) return -1;
+  camera.updateMatrixWorld();
+  let best = -1, bd = 14 * 14;
+  c.pts.forEach((q, i) => { const [sx, sy, sz] = toScreen(q.p); if (sz > 1) return; const d = (sx - x) ** 2 + (sy - y) ** 2; if (d < bd) { bd = d; best = i; } });
+  return best;
+}
+// bending: points near the grabbed one follow the pen, fading out along the curve
+function bentCurve(g) {
+  const dx = g.x - g.x0, dy = g.y - g.y0;
+  return g.scr.map(([x, y], i) => { const u = Math.abs(g.s[i] - g.s[g.k]) / g.reach; const w = u >= 1 ? 0 : (1 - u * u) ** 2; return [x + dx * w, y + dy * w]; });
+}
+function startCurveEdit(e, x, y, k) {
+  const c = curve;
+  camera.updateMatrixWorld();
+  const scr = c.pts.map((q) => toScreen(q.p).slice(0, 2)), s = [0];
+  for (let i = 1; i < scr.length; i++) s.push(s[i - 1] + Math.hypot(scr[i][0] - scr[i - 1][0], scr[i][1] - scr[i - 1][1]));
+  // the curve's stroke comes off now and is done again along the bent curve on release
+  if (c.pushed) undo();
+  gesture = { kind: 'curveedit', scr, s, k, reach: Math.max(60, s[s.length - 1] * 0.3), x0: x, y0: y, x, y, id: e.pointerId, c };
+  curve = null;
+}
+function finishCurveEdit(g, cancelled) {
+  const c = g.c;
+  const pts = cancelled ? null : curveFromScreen(bentCurve(g), false);
+  if (pts) { c.pts = pts; }
+  curve = c;
+  applyCurve(c);
+  drawOverlay();
+}
+// a gesture cut short (a second finger, or the system took the pointer)
+function cancelGesture() {
+  const g = gesture; gesture = null;
+  if (!g) return;
+  if (g.kind === 'insert') hideInsertPreview();
+  if (g.kind === 'curveedit') finishCurveEdit(g, true);
+  drawOverlay();
 }
 
 
@@ -4178,6 +4574,23 @@ $('fileIn').onchange = async () => {
   busy(false);
 };
 
+$('immIn').onchange = async () => {
+  const file = $('immIn').files[0]; $('immIn').value = '';
+  if (!file) return;
+  try {
+    let r;
+    if (/\.stl$/i.test(file.name)) r = parseSTL(await file.arrayBuffer());
+    else if (/\.obj$/i.test(file.name)) r = parseOBJ(await file.text());
+    else throw new Error('изберете файл .obj или .stl.');
+    if (!r.idx.length) throw new Error('Файлът няма триъгълници.');
+    if (r.idx.length / 3 > 300000) throw new Error('за вмъкване е твърде голям (над 300 000 триъгълника).');
+    dropUnusedVerts(r);
+    normalizeArrays(r.pos);
+    immFile = { pos: r.pos, idx: r.idx, name: file.name };
+    toast(`Формата за вмъкване е ${file.name} (${fmt(r.idx.length / 3)} триъгълника).`);
+  } catch (err) { toast('Файлът не може да се отвори: ' + (err.message || err)); }
+};
+
 /* ---------- export ---------- */
 function exportOBJ() {
   const m = mesh, parts = ['# Глина Sculpt\n'];
@@ -4323,6 +4736,7 @@ function renderRail() {
 }
 function selectTool(id) {
   if (!brushById(id)) id = 'draw';
+  if (id !== S.tool) dropCurve();
   S.tool = id;
   for (const el of rail.children) if (el.dataset.tool) el.setAttribute('aria-pressed', el.dataset.tool === id);
   const b = brush();
@@ -4350,6 +4764,7 @@ const brushSyncs = [
   bindRange('sSpacing', 'oSpacing', () => brush().spacing, (v) => (brush().spacing = v), pct),
   bindRange('sMod', 'oMod', () => brush().mod, (v) => (brush().mod = v), (v) => (v > 0 ? 'притиска ' : v < 0 ? 'надува ' : '') + Math.round(Math.abs(v) * 100) + '%'),
   bindRange('sVolume', 'oVolume', () => brush().volume, (v) => (brush().volume = v), (v) => Math.round(v / 0.49 * 100) + '%'),
+  bindRange('sTaper', 'oTaper', () => brush().taper, (v) => (brush().taper = v), pct),
 ];
 // chips whose value lives on the current brush
 function brushChips(containerId, items, key, after) {
@@ -4372,7 +4787,9 @@ brushSyncs.push(
     { id: 'dragdot', name: 'Местене', title: 'DragDot: един отпечатък, който местите, докато вдигнете писалката' },
     { id: 'spray', name: 'Спрей', title: 'Spray: разпръснати отпечатъци с различен размер и ъгъл' },
     { id: 'line', name: 'Линия', title: 'Права линия от мястото на натискане до писалката; виждате я, докато я опъвате' },
+    { id: 'curve', name: 'Крива', title: 'Curve Mode: линия по повърхността, която после може да огъвате; щрихът се прави наново' },
   ], 'stroke'),
+  brushChips('immChips', IMM.map((x) => ({ id: x.id, name: x.name, title: x.id === 'file' ? 'Своя форма от файл .obj или .stl (за тази сесия)' : '' })), 'imm', () => { if (brush().imm === 'file') $('immIn').click(); }),
   brushChips('grabChips', [{ id: 'soft', name: 'Меко (Move)' }, { id: 'elastic', name: 'Еластично (Move Elastic)' }], 'grab'),
 );
 // falloff presets
@@ -4392,7 +4809,7 @@ $('bName').addEventListener('input', () => {
 function syncBrushUI() {
   syncRadius(); syncStrength();
   const b = brush(), base = b.base;
-  const moves = base === 'grab' || base === 'snake' || base === 'pose' || base === 'clip' || base === 'cut';
+  const moves = base === 'grab' || base === 'snake' || base === 'pose' || base === 'clip' || base === 'cut' || base === 'insert' || base === 'tube';
   $('bName').value = b.name; $('bName').disabled = b.builtin;
   $('bName').title = b.builtin ? 'Готовите четки не се преименуват; „Нова от тази“ прави ваше копие' : '';
   $('bBase').value = base;
@@ -4403,7 +4820,9 @@ function syncBrushUI() {
   $('topoRow').hidden = base !== 'grab';
   $('grabGrp').hidden = base !== 'grab';
   $('volRow').hidden = !(base === 'grab' && b.grab === 'elastic');
-  $('curveGrp').hidden = (base === 'grab' && b.grab === 'elastic') || base === 'pose';
+  $('curveGrp').hidden = (base === 'grab' && b.grab === 'elastic') || base === 'pose' || base === 'insert' || base === 'tube';
+  $('immGrp').hidden = base !== 'insert';
+  $('taperRow').hidden = $('curveNote').hidden = !isCurveBrush(b);
   $('sAngle').closest('.row').hidden = b.alphaRot === 'random';
   $('bBrushReset').textContent = b.builtin ? 'Нулирай' : 'Изтрий';
   for (const f of brushSyncs) f();
@@ -4705,7 +5124,7 @@ function openMenu(anchor, items) {
 }
 function outside(e) { if (!e.target.closest('#menu')) closeMenu(); }
 function closeMenu() { const m = $('menu'); if (m) m.remove(); window.removeEventListener('pointerdown', outside, { capture: true }); }
-window.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeMenu(); });
+window.addEventListener('keydown', (e) => { if (e.key === 'Escape') { closeMenu(); if (!gesture) dropCurve(); } });
 $('bNew').onclick = () => openMenu($('bNew'), [
   { label: 'Сфера', hint: '82 хил.', run: () => replaceMesh(makeSphere(6), { frame: true }) },
   { label: 'Сфера, по-лека', hint: '20 хил.', run: () => replaceMesh(makeSphere(5), { frame: true }) },
@@ -4738,5 +5157,5 @@ loadAutosave().then((d) => {
     toast('Продължавате последния модел. „Нов“ започва отначало.');
   }
 });
-window.__glina = { trimByPlane, applyCut, get LAYERS() { return LAYERS; }, get recLayer() { return recLayer; }, addLayer, deleteLayer, toggleLayer, recordLayer, setLayerStrength, bakeLayers, groupOp, maskAllBut, groupNear, get mesh() { return mesh; }, get stroke() { return stroke; }, get gesture() { return gesture; }, get nav() { return nav; }, get MR() { return MR; }, syncSym, get SYM() { return SYM; }, setLevel, divide, deleteLower, deleteHigher, camera, orbit, pick, selectTool, brush, brushById, maskOp, remesh, undo, redo, subdivide, setDyntopo, floodDetail, S, get undoStack() { return undoStack; } };
+window.__glina = { trimByPlane, applyCut, tubeArrays, immShape, hasOpenEdges, get curve() { return liveCurve(); }, dropCurve, get immFile() { return immFile; }, set immFile(v) { immFile = v; }, get LAYERS() { return LAYERS; }, get recLayer() { return recLayer; }, addLayer, deleteLayer, toggleLayer, recordLayer, setLayerStrength, bakeLayers, groupOp, maskAllBut, groupNear, get mesh() { return mesh; }, get stroke() { return stroke; }, get gesture() { return gesture; }, get nav() { return nav; }, get MR() { return MR; }, syncSym, get SYM() { return SYM; }, setLevel, divide, deleteLower, deleteHigher, camera, orbit, pick, selectTool, brush, brushById, maskOp, remesh, undo, redo, subdivide, setDyntopo, floodDetail, S, get undoStack() { return undoStack; } };
 </script>
