@@ -92,7 +92,7 @@ button, input, select { font: inherit; color: inherit; }
 #view { grid-area: view; position: relative; min-width: 0; overflow: hidden;
   background: radial-gradient(ellipse at 50% 38%, #2b3139 0%, #1a1e24 55%, #111317 100%); }
 #gl { position: absolute; inset: 0; width: 100%; height: 100%; display: block; touch-action: none; outline: none; }
-#maskRect { position: absolute; border: 1.5px dashed #7ea6ff; background: rgba(126,166,255,.12); pointer-events: none; }
+#overlay { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; overflow: visible; }
 #cursor2d { position: absolute; left: 0; top: 0; border-radius: 50%; border: 1.5px solid rgba(255,255,255,.55); pointer-events: none; transform: translate(-50%,-50%); box-shadow: 0 0 0 1px rgba(0,0,0,.35); }
 #hud {
   position: absolute; left: 12px; bottom: calc(12px + env(safe-area-inset-bottom, 0px)); display: flex; gap: 14px; align-items: center; flex-wrap: wrap;
@@ -222,7 +222,7 @@ input[type=range] { width: 100%; height: 26px; accent-color: var(--wax); backgro
   <main id="view">
     <canvas id="gl" tabindex="0"></canvas>
     <div id="cursor2d" hidden></div>
-    <div id="maskRect" hidden></div>
+    <svg id="overlay" aria-hidden="true"></svg>
     <div id="hint">
       <p><b>Стилус или мишка по модела</b> скулптира. Влачене по празното място или десен бутон върти, среден бутон или два пръста местят, колелцето приближава. <b>Shift</b> изглажда, <b>Alt</b> обръща посоката, <b>Ctrl</b> рисува маска, <b>D</b> включва динамичната топология.</p>
       <button id="hintClose" aria-label="Скрий подсказката">×</button>
@@ -311,6 +311,7 @@ input[type=range] { width: 100%; height: 26px; accent-color: var(--wax); backgro
     <section class="sec">
       <h2>Маска</h2>
       <p class="note">Маскираните зони са по-тъмни и не се променят. <b>Ctrl</b> рисува маска, <b>Ctrl+Alt</b> я трие. Ctrl+щракване по модела я размазва, по празното място я обръща. Ctrl+влачене по празното маскира правоъгълник; празен правоъгълник я изчиства.</p>
+      <div><div class="note lab">Ctrl+влачене по празното маскира</div><div class="chips" id="selChips"></div></div>
       <div class="two"><button class="btn wide" id="bMaskClear">Изчисти</button><button class="btn wide" id="bMaskInvert">Обърни</button></div>
       <div class="two"><button class="btn wide" id="bMaskBlur">Размажи</button><button class="btn wide" id="bMaskSharpen">Изостри</button></div>
       <div class="two"><button class="btn wide" id="bMaskGrow">Разшири</button><button class="btn wide" id="bMaskShrink">Свий</button></div>
@@ -398,6 +399,8 @@ const ICON = {
   elastic: '<path d="M4 18c3 0 4-3 8-3s5-9 8-11"/><path d="M17 4h3v3"/><path d="M4 21h16" opacity=".45"/>',
   grabtopo: '<path d="M12 3v12M6 9l6-6 6 6"/><circle cx="7" cy="19" r="2.5" opacity=".45"/><circle cx="17" cy="19" r="2.5"/>',
   snake: '<path d="M4 19c4 0 3-7 7-7s4-6 8-8"/><circle cx="19" cy="4" r="1.6"/>',
+  clip: '<path d="M3 21L21 3" stroke-dasharray="3 2"/><path d="M6 12c0-4 3-7 6-7l-6 13z" fill="currentColor" opacity=".35"/><path d="M14 19c3 0 6-3 6-6"/>',
+  cut: '<path d="M3 21L21 3" stroke-dasharray="3 2"/><circle cx="7" cy="17" r="2.2"/><circle cx="17" cy="7" r="2.2" opacity=".4"/><path d="M9 9l3 3" opacity=".6"/>',
   pose: '<path d="M4 20l7-7"/><path d="M11 13l6-8"/><circle cx="11" cy="13" r="2"/><path d="M14 4h4v4" opacity=".6"/>',
   mask: '<circle cx="12" cy="12" r="8"/><path d="M12 4a8 8 0 010 16z" fill="currentColor"/>',
   paint: '<path d="M12 3c4 5 6 8 6 11a6 6 0 01-12 0c0-3 2-6 6-11z"/>',
@@ -418,7 +421,7 @@ const BASES = [
   { id: 'draw', name: 'Рисуване (Standard)' }, { id: 'clay', name: 'Глина (Clay)' }, { id: 'claystrips', name: 'Глина на ивици (ClayBuildup)' },
   { id: 'inflate', name: 'Надуване (Inflate)' }, { id: 'flatten', name: 'Изравняване (hPolish)' }, { id: 'scrape', name: 'Подрязване (TrimDynamic)' },
   { id: 'pinch', name: 'Притискане (Pinch)' }, { id: 'crease', name: 'Гънка' }, { id: 'smooth', name: 'Изглаждане (Smooth)' },
-  { id: 'grab', name: 'Хващане (Move)' }, { id: 'snake', name: 'Издърпване (SnakeHook)' }, { id: 'pose', name: 'Поза (Pose)' }, { id: 'mask', name: 'Маска' }, { id: 'paint', name: 'Боя' },
+  { id: 'grab', name: 'Хващане (Move)' }, { id: 'snake', name: 'Издърпване (SnakeHook)' }, { id: 'pose', name: 'Поза (Pose)' }, { id: 'clip', name: 'Отсичане (ClipCurve)' }, { id: 'cut', name: 'Отрязване (TrimCurve)' }, { id: 'mask', name: 'Маска' }, { id: 'paint', name: 'Боя' },
 ];
 // a complete brush; presets only list what differs
 const BRUSH_DEFAULTS = {
@@ -443,6 +446,8 @@ const PRESETS = [
   { id: 'grabtopo', name: 'Хващане на част', short: 'Част', key: 'o', base: 'grab', icon: 'grabtopo', topo: true, radius: 90, strength: 1, curve: 'move', front: false, zb: 'Move Topological' },
   { id: 'snake', name: 'Издърпване', short: 'Дърпай', key: 'h', base: 'snake', radius: 45, strength: 0.8, front: false, zb: 'SnakeHook' },
   { id: 'pose', name: 'Поза', short: 'Поза', key: 'q', base: 'pose', radius: 70, strength: 1, front: false, zb: 'Transpose / Pose' },
+  { id: 'clip', name: 'Отсичане', short: 'Отсечи', key: 'y', base: 'clip', zb: 'ClipCurve' },
+  { id: 'cut', name: 'Отрязване', short: 'Отрежи', key: 'u', base: 'cut', zb: 'TrimCurve' },
   { id: 'mask', name: 'Маска', short: 'Маска', key: 'm', base: 'mask', radius: 45, strength: 0.8, zb: 'MaskPen' },
   { id: 'paint', name: 'Боя', short: 'Боя', key: 'v', base: 'paint', radius: 40, strength: 0.6, front: true },
 ];
@@ -478,12 +483,13 @@ const S = {
   decimate: true,
   voxel: 96,           // voxel remesh resolution along the longest side
   showGroups: false,   // colour the polygroups
+  selShape: 'rect',    // Ctrl+drag on empty space: rect | lasso
 };
 let savedSettings = null;
 try { savedSettings = JSON.parse(localStorage.getItem('glina.settings') || 'null'); } catch (e) { /* storage unavailable */ }
 if (savedSettings) for (const k of Object.keys(savedSettings)) if (k in S && k !== 'penSeen' && k !== 'brushes') S[k] = savedSettings[k];
 // one brush field from settings or a file: right type and range, or undefined
-const ENUMS = { tip: ['round', 'square'], alphaRot: ['fixed', 'stroke', 'random'], stroke: ['dots', 'dragrect', 'dragdot', 'spray'], grab: ['soft', 'elastic'] };
+const ENUMS = { tip: ['round', 'square'], alphaRot: ['fixed', 'stroke', 'random'], stroke: ['dots', 'dragrect', 'dragdot', 'spray', 'line'], grab: ['soft', 'elastic'] };
 const RANGES = { radius: [4, 320], strength: [0.01, 1], focal: [-1, 1], alphaMid: [0, 1], alphaAngle: [0, 360], spacing: [0.03, 0.6], mod: [-1, 1], volume: [0, 0.49] };
 function brushField(k, v) {
   if (k === 'curve') return Array.isArray(v) && v.length >= 2 && v.length <= 32 && v.every((p) => Array.isArray(p) && p.length === 2 && p.every((x) => Number.isFinite(x) && x >= 0 && x <= 1)) ? v.map((p) => p.slice()) : undefined;
@@ -1378,6 +1384,171 @@ function voxelRemesh(src, res) {
   }
   return { pos, idx, col, mask, grp, res };
 }
+/* ---------- trim: cut the mesh with a plane and close the cut (ZBrush: TrimCurve) ----------
+   Keeps the side where n·p + d < 0. Triangles across the plane are clipped (new vertices on the cut
+   edges, shared between neighbours); the loops of cut edges are closed with caps: ear clipping in the
+   plane, then long inner edges are split, flipped toward Delaunay and the inner points relaxed, so the
+   cap has even triangles like the rest. Detail elsewhere is untouched. */
+function trimByPlane(src, n, d) {
+  const P = src.pos, I = src.idx, nV = P.length / 3, C = src.col, M = src.mask, Gr = src.grp;
+  let ext = 0;
+  for (let i = 0; i < P.length; i++) ext = Math.max(ext, Math.abs(P[i]));
+  const eps = 1e-6 * (ext || 1);
+  // −1 kept, 0 on the plane (kept, and part of the rim), +1 cut away
+  const sd = new Float64Array(nV), side = new Int8Array(nV);
+  for (let v = 0; v < nV; v++) { const x = n[0] * P[v * 3] + n[1] * P[v * 3 + 1] + n[2] * P[v * 3 + 2] + d; sd[v] = x; side[v] = x < -eps ? -1 : x > eps ? 1 : 0; }
+  const pos = [], col = [], mask = [], grp = [], remap = new Int32Array(nV).fill(-1);
+  const keepV = (v) => { if (remap[v] < 0) { remap[v] = pos.length / 3; pos.push(P[v * 3], P[v * 3 + 1], P[v * 3 + 2]); col.push(C[v * 3], C[v * 3 + 1], C[v * 3 + 2]); mask.push(M[v]); grp.push(Gr ? Gr[v] : 0); } return remap[v]; };
+  const cut = new Map();
+  const cutV = (a, b) => {   // only for edges strictly across the plane
+    const k = a < b ? a * nV + b : b * nV + a;
+    let v = cut.get(k);
+    if (v === undefined) {
+      const t = sd[a] / (sd[a] - sd[b]);
+      v = pos.length / 3; cut.set(k, v);
+      for (let q = 0; q < 3; q++) { pos.push(P[a * 3 + q] + (P[b * 3 + q] - P[a * 3 + q]) * t); col.push(C[a * 3 + q] + (C[b * 3 + q] - C[a * 3 + q]) * t); }
+      // (snapped exactly onto the plane, so the cap is flat)
+      const o = (pos.length / 3 - 1) * 3, off = n[0] * pos[o] + n[1] * pos[o + 1] + n[2] * pos[o + 2] + d;
+      pos[o] -= n[0] * off; pos[o + 1] -= n[1] * off; pos[o + 2] -= n[2] * off;
+      mask.push(M[a] + (M[b] - M[a]) * t); grp.push(Gr ? (t < 0.5 ? Gr[a] : Gr[b]) : 0);
+    }
+    return v;
+  };
+  const out = [];
+  for (let f = 0; f < I.length; f += 3) {
+    const tri = [I[f], I[f + 1], I[f + 2]], sg = tri.map((v) => side[v]);
+    if (sg[0] <= 0 && sg[1] <= 0 && sg[2] <= 0) { if (sg[0] || sg[1] || sg[2]) out.push(keepV(tri[0]), keepV(tri[1]), keepV(tri[2])); continue; }
+    if (sg[0] >= 0 && sg[1] >= 0 && sg[2] >= 0) continue;   // all away (or on the plane): gone
+    // Sutherland–Hodgman on one triangle: kept and on-plane corners, plus crossings of real crossings
+    const poly = [];
+    for (let e = 0; e < 3; e++) {
+      const a = tri[e], b = tri[(e + 1) % 3], sa = sg[e], sb = sg[(e + 1) % 3];
+      if (sa <= 0) poly.push(keepV(a));
+      if (sa * sb < 0) poly.push(cutV(a, b));
+    }
+    for (let j = 1; j + 1 < poly.length; j++) out.push(poly[0], poly[j], poly[j + 1]);
+  }
+  // the rims: directed edges without a twin; the cap runs the other way round them
+  const twin = new Set();
+  for (let f = 0; f < out.length; f += 3) for (let e = 0; e < 3; e++) twin.add(out[f + e] * 4294967296 + out[f + (e + 1) % 3]);
+  const capNext = new Map();
+  for (let f = 0; f < out.length; f += 3) for (let e = 0; e < 3; e++) {
+    const a = out[f + e], b = out[f + (e + 1) % 3];
+    if (twin.has(b * 4294967296 + a)) continue;
+    // only rims on the plane are ours to close (an open model keeps its own holes)
+    const on = (v) => Math.abs(n[0] * pos[v * 3] + n[1] * pos[v * 3 + 1] + n[2] * pos[v * 3 + 2] + d) <= eps * 4;
+    if (on(a) && on(b)) capNext.set(b, a);
+  }
+  // plane basis for the caps
+  const ax = Math.abs(n[0]) < 0.9 ? [1, 0, 0] : [0, 1, 0];
+  const u = [n[1] * ax[2] - n[2] * ax[1], n[2] * ax[0] - n[0] * ax[2], n[0] * ax[1] - n[1] * ax[0]], ul = Math.hypot(...u);
+  u[0] /= ul; u[1] /= ul; u[2] /= ul;
+  const w = [n[1] * u[2] - n[2] * u[1], n[2] * u[0] - n[0] * u[2], n[0] * u[1] - n[1] * u[0]];
+  const used = new Set();
+  let capped = 0, open = 0;
+  for (const start of capNext.keys()) {
+    if (used.has(start)) continue;
+    const loop = [];
+    let v = start, ok = false;
+    while (v !== undefined && !used.has(v)) { used.add(v); loop.push(v); v = capNext.get(v); if (v === start) { ok = true; break; } }
+    if (!ok || loop.length < 3) { open++; continue; }
+    capLoop(loop, pos, col, mask, grp, out, u, w, n);
+    capped++;
+  }
+  return { pos: Float32Array.from(pos), idx: Uint32Array.from(out), col: Float32Array.from(col), mask: Float32Array.from(mask), grp: Float32Array.from(grp), capped, open };
+}
+// close one loop of cut vertices with even triangles in the plane; (u, w, n) is right-handed, so
+// counter-clockwise in (u, w) faces +n, the side that was cut away
+function capLoop(loop, pos, col, mask, grp, out, u, w, n) {
+  const L = loop.length;
+  const X = loop.map((v) => [pos[v * 3] * u[0] + pos[v * 3 + 1] * u[1] + pos[v * 3 + 2] * u[2], pos[v * 3] * w[0] + pos[v * 3 + 1] * w[1] + pos[v * 3 + 2] * w[2]]);
+  const cross = (o, a, b) => (a[0] - o[0]) * (b[1] - o[1]) - (a[1] - o[1]) * (b[0] - o[0]);
+  let area = 0;
+  for (let i = 0; i < L; i++) area += X[i][0] * X[(i + 1) % L][1] - X[(i + 1) % L][0] * X[i][1];
+  // 1. ear clipping (counter-clockwise order)
+  const idx = Array.from({ length: L }, (_, i) => i);
+  if (area < 0) idx.reverse();
+  const T = [];
+  const inTri = (p, a, b, c) => cross(a, b, p) >= 0 && cross(b, c, p) >= 0 && cross(c, a, p) >= 0;
+  while (idx.length > 3) {
+    let cut = false;
+    for (let i = 0; i < idx.length && !cut; i++) {
+      const i0 = idx[(i + idx.length - 1) % idx.length], i1 = idx[i], i2 = idx[(i + 1) % idx.length];
+      const A = X[i0], B = X[i1], Cc = X[i2];
+      if (cross(A, B, Cc) <= 1e-14) continue;   // reflex or flat corner
+      let ear = true;
+      for (const j of idx) if (j !== i0 && j !== i1 && j !== i2 && inTri(X[j], A, B, Cc)) { ear = false; break; }
+      if (ear) { T.push([i0, i1, i2]); idx.splice(i, 1); cut = true; }
+    }
+    if (!cut) { for (let i = 1; i + 1 < idx.length; i++) T.push([idx[0], idx[i], idx[i + 1]]); idx.length = 0; }   // degenerate: fan
+  }
+  if (idx.length === 3) T.push(idx.slice());
+  // 2. split long inner edges (both triangles), flip toward Delaunay, relax the inner points
+  let len = 0; for (let i = 0; i < L; i++) len += Math.hypot(X[(i + 1) % L][0] - X[i][0], X[(i + 1) % L][1] - X[i][1]);
+  const target = len / L;
+  const key = (a, b) => (a < b ? a * 4194304 + b : b * 4194304 + a);
+  const edges = () => { const E = new Map(); T.forEach((t, k) => { for (let e = 0; e < 3; e++) { const kk = key(t[e], t[(e + 1) % 3]); if (!E.has(kk)) E.set(kk, []); E.get(kk).push(k); } }); return E; };
+  const ang = (p, q, r) => { const x1 = X[q][0] - X[p][0], y1 = X[q][1] - X[p][1], x2 = X[r][0] - X[p][0], y2 = X[r][1] - X[p][1]; return Math.atan2(Math.abs(x1 * y2 - y1 * x2), x1 * x2 + y1 * y2); };
+  const flipAll = () => {
+    for (let pass = 0; pass < 20; pass++) {
+      let flips = 0;
+      const E = edges();
+      for (const [kk, ts] of E) {
+        if (ts.length !== 2) continue;
+        const a = Math.floor(kk / 4194304), b = kk % 4194304;
+        const t1 = T[ts[0]], t2 = T[ts[1]];
+        if (!t1.includes(a) || !t1.includes(b) || !t2.includes(a) || !t2.includes(b)) continue;   // changed this pass
+        const c = t1.find((v) => v !== a && v !== b), d = t2.find((v) => v !== a && v !== b);
+        if (ang(c, a, b) + ang(d, a, b) <= Math.PI + 1e-9) continue;
+        // the triangle holding a→b in its order keeps orientation: (a, b, c) → (a, d, c) and (d, b, c)
+        const ab = t1[(t1.indexOf(a) + 1) % 3] === b;
+        const n1 = ab ? [a, d, c] : [b, d, c], n2 = ab ? [d, b, c] : [d, a, c];
+        if (cross(X[n1[0]], X[n1[1]], X[n1[2]]) <= 1e-14 || cross(X[n2[0]], X[n2[1]], X[n2[2]]) <= 1e-14) continue;
+        T[ts[0]] = n1; T[ts[1]] = n2; flips++;
+      }
+      if (!flips) return;
+    }
+  };
+  flipAll();
+  for (let round = 0; round < 12; round++) {
+    let splits = 0;
+    for (const [kk, ts] of edges()) {
+      if (ts.length !== 2) continue;
+      const a = Math.floor(kk / 4194304), b = kk % 4194304;
+      if (Math.hypot(X[a][0] - X[b][0], X[a][1] - X[b][1]) < target * 1.6) continue;
+      if (!ts.every((k) => T[k].includes(a) && T[k].includes(b))) continue;   // already split this round
+      const m = X.length; X.push([(X[a][0] + X[b][0]) / 2, (X[a][1] + X[b][1]) / 2]);
+      for (const k of ts) {
+        const t = T[k], c = t.find((v) => v !== a && v !== b);
+        const ab = t[(t.indexOf(a) + 1) % 3] === b;
+        T[k] = ab ? [a, m, c] : [b, m, c]; T.push(ab ? [m, b, c] : [m, a, c]);
+      }
+      if (++splits > 4 * L + 64) break;
+    }
+    flipAll();
+    if (!splits) break;
+  }
+  for (let it = 0; it < 10; it++) {
+    const S3 = X.map(() => [0, 0, 0]);
+    for (const t of T) for (let e = 0; e < 3; e++) { const a = t[e], b = t[(e + 1) % 3]; S3[a][0] += X[b][0]; S3[a][1] += X[b][1]; S3[a][2]++; S3[b][0] += X[a][0]; S3[b][1] += X[a][1]; S3[b][2]++; }
+    for (let i = L; i < X.length; i++) if (S3[i][2]) X[i] = [S3[i][0] / S3[i][2], S3[i][1] / S3[i][2]];
+  }
+  flipAll();
+  // 3. inner points to 3D on the plane; colour, mask and group from the nearest boundary point
+  const off = pos[loop[0] * 3] * n[0] + pos[loop[0] * 3 + 1] * n[1] + pos[loop[0] * 3 + 2] * n[2];
+  const ids = X.map((_, i) => (i < L ? loop[i] : -1));
+  for (let i = L; i < X.length; i++) {
+    const [x, y] = X[i];
+    let best = 0, bd = Infinity;
+    for (let j = 0; j < L; j++) { const dd = (X[j][0] - x) ** 2 + (X[j][1] - y) ** 2; if (dd < bd) { bd = dd; best = j; } }
+    ids[i] = pos.length / 3;
+    for (let q = 0; q < 3; q++) pos.push(u[q] * x + w[q] * y + n[q] * off);
+    const s0 = loop[best];
+    col.push(col[s0 * 3], col[s0 * 3 + 1], col[s0 * 3 + 2]); mask.push(mask[s0]); grp.push(grp[s0]);
+  }
+  for (const t of T) out.push(ids[t[0]], ids[t[1]], ids[t[2]]);
+}
+
 // squared distance from p to triangle (a, b, c) (offsets into P); the closest point goes to out
 function closestOnTri(P, a, b, c, px, py, pz, out) {
   const ax = P[a], ay = P[a + 1], az = P[a + 2];
@@ -2317,7 +2488,8 @@ function smoothVerts(G, F, count, s) {
 function pressureOf(p) { return Math.pow(Math.min(1, Math.max(0, p)), S.curve); }
 function radiusPxFor(pr, b = (stroke && stroke.b) || brush()) { return b.radius * (S.prRadius ? 0.12 + 0.88 * pr : 1); }
 // DragRect / DragDot place one stamp that follows the pen until it lifts; topology stays as it is meanwhile
-const isDragStroke = (b) => b.stroke === 'dragrect' || b.stroke === 'dragdot';
+// (and Line: dabs along a straight line from the press point to the pen, redrawn as it moves)
+const isDragStroke = (b) => b.stroke === 'dragrect' || b.stroke === 'dragdot' || b.stroke === 'line';
 
 function beginStroke(e, x, y, b, sign) {
   const tool = b.base, drag = isDragStroke(b) && tool !== 'grab' && tool !== 'snake';
@@ -2569,6 +2741,16 @@ function processStroke() {
     const s = q[q.length - 1]; q.length = 0;
     const A = stroke.anchor;
     revertStroke();
+    if (b.stroke === 'line') {
+      // the surface is back as it was, so picking along the line needs the tree to match it again
+      if (!mesh.dyn && geo.boundsTree) { geo.boundsTree.refit(); bvhDirty = false; }
+      const dx = s.x - A.x, dy = s.y - A.y, len = Math.hypot(dx, dy);
+      const step = Math.max(1.5, radiusPxFor(pressureOf(A.p)) * b.spacing), nd = Math.min(400, Math.floor(len / step));
+      stroke.prevHit = null; stroke.dir = null;
+      for (let j = 0; j <= nd; j++) { const t = nd ? j / nd : 0; dab(A.x + dx * t, A.y + dy * t, A.p + (s.p - A.p) * t); }
+      bvhDirty = true;
+      return;
+    }
     if (b.stroke === 'dragrect') {
       const dx = s.x - A.x, dy = s.y - A.y, len = Math.hypot(dx, dy);
       if (len < 3) { bvhDirty = true; return; }   // everything went back: refit next frame
@@ -2915,7 +3097,10 @@ canvas.addEventListener('pointerdown', (e) => {
   // on empty space a click inverts it and a drag draws a rectangle to mask (Alt: unmask, empty: clear).
   // Ctrl+Shift+click: on a group masks everything else; on empty space clears the mask
   if (ctrl && e.shiftKey) { gesture = { kind: 'group', hit, x0: x, y0: y, x, y, e, id: e.pointerId }; hideRing(); return; }
-  if (ctrl) { gesture = { kind: hit ? 'maskpaint' : 'maskrect', x0: x, y0: y, x, y, alt: e.altKey, e, id: e.pointerId }; hideRing(); return; }
+  if (ctrl) { gesture = { kind: hit ? 'maskpaint' : 'maskrect', x0: x, y0: y, x, y, alt: e.altKey, e, id: e.pointerId, pts: [[x, y]] }; hideRing(); return; }
+  // Clip / Trim: a line, from anywhere (on or off the model)
+  const cb = brush();
+  if (cb.base === 'clip' || cb.base === 'cut') { gesture = { kind: 'cutline', base: cb.base, x0: x, y0: y, x, y, alt: e.altKey, snap: e.shiftKey, id: e.pointerId }; hideRing(); return; }
   if (!hit) { nav = { mode: e.altKey ? 'pan' : 'orbit', x, y, id: e.pointerId }; hideRing(); return; }
   let b = brush();
   if (e.shiftKey || tempSmooth) b = { ...brushById('smooth'), base: 'smooth' };   // Shift always smooths
@@ -2932,14 +3117,18 @@ canvas.addEventListener('pointermove', (e) => {
   if (tp) { tp.x = x; tp.y = y; }
   if (gesture && e.pointerId === gesture.id) {
     gesture.x = x; gesture.y = y;
-    const moved = Math.hypot(x - gesture.x0, y - gesture.y0) > 4;
+    // (once it has moved it counts as a drag, even if it comes back: a lasso closes where it began)
+    if (Math.hypot(x - gesture.x0, y - gesture.y0) > 4) gesture.moved = true;
+    const moved = !!gesture.moved;
     // Ctrl+Shift dragged: the same as Ctrl+drag (paint mask, or a mask rectangle on empty space)
-    if (gesture.kind === 'group' && moved) gesture.kind = gesture.hit ? 'maskpaint' : 'maskrect';
+    if (gesture.kind === 'group' && moved) { gesture.kind = gesture.hit ? 'maskpaint' : 'maskrect'; gesture.pts = [[gesture.x0, gesture.y0]]; }
+    if (gesture.kind === 'cutline') { gesture.alt = e.altKey; gesture.snap = e.shiftKey; drawOverlay(); return; }
+    if (gesture.kind === 'maskrect' && gesture.pts) { const lp = gesture.pts[gesture.pts.length - 1]; if (Math.hypot(x - lp[0], y - lp[1]) > 3) gesture.pts.push([x, y]); }
     if (gesture.kind === 'maskpaint' && moved) {
       // turn into a mask stroke from the press point
       const g = gesture; gesture = null;
       if (beginStroke(g.e, g.x0, g.y0, { ...brushById('mask'), base: 'mask', stroke: 'dots' }, g.alt ? -1 : 1)) stroke.queue.push({ x, y, p: readPressure(e) });
-    } else if (gesture.kind === 'maskrect') showMaskRect(moved);
+    } else if (gesture.kind === 'maskrect' && moved) drawOverlay();
     return;
   }
   if (nav) {
@@ -2973,10 +3162,11 @@ canvas.addEventListener('pointermove', (e) => {
 function endPointer(e) {
   if (e.pointerType === 'touch') pointers.delete(e.pointerId);
   if (gesture && e.pointerId === gesture.id) {
-    const g = gesture; gesture = null; showMaskRect(false);
-    const moved = Math.hypot(g.x - g.x0, g.y - g.y0) > 4;
+    const g = gesture; gesture = null; drawOverlay();
+    const moved = !!g.moved || Math.hypot(g.x - g.x0, g.y - g.y0) > 4;
     if (e.type === 'pointercancel') return;
-    if (g.kind === 'group') { if (!moved) { if (g.hit) maskAllBut(groupNear(g.hit.point, worldPerPx(g.hit.point) * 20)); else maskOp('clear'); } }
+    if (g.kind === 'cutline') { if (moved) applyCut(g); }
+    else if (g.kind === 'group') { if (!moved) { if (g.hit) maskAllBut(groupNear(g.hit.point, worldPerPx(g.hit.point) * 20)); else maskOp('clear'); } }
     else if (g.kind === 'maskpaint') maskOp(g.alt ? 'sharpen' : 'blur');
     else if (!moved) maskOp('invert');
     else maskRect(g);
@@ -3164,19 +3354,42 @@ function setMaskUndoable(next) {
   stroke = null;
   uploadAll(geo.attributes.aMask); requestRender(); scheduleAutosave();
 }
-function showMaskRect(on) {
-  const el = $('maskRect');
-  if (!on || !gesture) { el.hidden = true; return; }
-  const x = Math.min(gesture.x0, gesture.x), y = Math.min(gesture.y0, gesture.y);
-  Object.assign(el.style, { left: x + 'px', top: y + 'px', width: Math.abs(gesture.x - gesture.x0) + 'px', height: Math.abs(gesture.y - gesture.y0) + 'px' });
-  el.style.borderColor = gesture.alt ? '#ff9f7e' : '#7ea6ff';
-  el.hidden = false;
+// the selection being drawn: a mask rectangle or lasso, or a cut line with the side that goes shaded
+const SVGNS = 'http://www.w3.org/2000/svg';
+function drawOverlay() {
+  const svg = $('overlay'); svg.textContent = '';
+  const g = gesture;
+  if (!g) return;
+  const el = (tag, attrs) => { const e = document.createElementNS(SVGNS, tag); for (const k in attrs) e.setAttribute(k, attrs[k]); svg.appendChild(e); return e; };
+  if (g.kind === 'maskrect') {
+    const colr = g.alt ? '#ff9f7e' : '#7ea6ff';
+    const pts = selectionPolygon(g).map((p) => p.join(',')).join(' ');
+    if (pts) el('polygon', { points: pts, fill: colr, 'fill-opacity': 0.12, stroke: colr, 'stroke-width': 1.5, 'stroke-dasharray': '5 4' });
+  } else if (g.kind === 'cutline') {
+    const L = cutLine(g); if (!L) return;
+    el('polygon', { points: L.shade.map((p) => p.join(',')).join(' '), fill: g.base === 'cut' ? '#ef7a6a' : '#e7ad4b', 'fill-opacity': 0.18 });
+    el('line', { x1: L.a[0], y1: L.a[1], x2: L.b[0], y2: L.b[1], stroke: '#fff', 'stroke-width': 1.5, 'stroke-dasharray': '6 4' });
+  }
 }
-// mask everything that lies inside the rectangle on screen, front and back (ZBrush: MaskRect);
-// an empty rectangle clears the mask
+// rectangle or lasso, as a polygon in canvas pixels
+function selectionPolygon(g) {
+  if (S.selShape === 'lasso' && g.pts && g.pts.length > 2) return g.pts;
+  return [[g.x0, g.y0], [g.x, g.y0], [g.x, g.y], [g.x0, g.y]];
+}
+function inPolygon(x, y, poly) {
+  let c = false;
+  for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+    const [xi, yi] = poly[i], [xj, yj] = poly[j];
+    if ((yi > y) !== (yj > y) && x < ((xj - xi) * (y - yi)) / (yj - yi) + xi) c = !c;
+  }
+  return c;
+}
+// mask everything that lies inside the rectangle or lasso on screen, front and back (ZBrush: MaskRect,
+// MaskLasso); an empty selection clears the mask
 function maskRect(g) {
-  const m = mesh, P = m.pos, M = m.mask;
-  const x0 = Math.min(g.x0, g.x), x1 = Math.max(g.x0, g.x), y0 = Math.min(g.y0, g.y), y1 = Math.max(g.y0, g.y);
+  const m = mesh, P = m.pos, M = m.mask, poly = selectionPolygon(g);
+  let x0 = Infinity, x1 = -Infinity, y0 = Infinity, y1 = -Infinity;
+  for (const [x, y] of poly) { x0 = Math.min(x0, x); x1 = Math.max(x1, x); y0 = Math.min(y0, y); y1 = Math.max(y1, y); }
   camera.updateMatrixWorld();
   const e = new THREE.Matrix4().multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse).elements;
   const next = Float32Array.from(M.subarray(0, m.n));
@@ -3187,10 +3400,84 @@ function maskRect(g) {
     const w = e[3] * x + e[7] * y + e[11] * z + e[15]; if (w <= 0) continue;
     const sx = ((e[0] * x + e[4] * y + e[8] * z + e[12]) / w * 0.5 + 0.5) * viewport.w;
     const sy = (0.5 - (e[1] * x + e[5] * y + e[9] * z + e[13]) / w * 0.5) * viewport.h;
-    if (sx >= x0 && sx <= x1 && sy >= y0 && sy <= y1) { next[i] = g.alt ? 0 : 1; inside++; }
+    if (sx < x0 || sx > x1 || sy < y0 || sy > y1 || !inPolygon(sx, sy, poly)) continue;
+    next[i] = g.alt ? 0 : 1; inside++;
   }
   if (!inside) { next.fill(0); toast('Маската е изчистена.'); }
   setMaskUndoable(next);
+}
+
+/* ---------- Clip and Trim along a line (ZBrush: ClipCurve, TrimCurve) ----------
+   The line on screen and the eye make a plane. Clip flattens everything on the shaded side onto that
+   plane (the mesh stays as it is); Trim cuts it away and closes the cut. Alt shades the other side,
+   Shift turns the line in 15° steps. With symmetry, every copy of the plane cuts too. */
+function cutLine(g) {
+  let dx = g.x - g.x0, dy = g.y - g.y0;
+  const len = Math.hypot(dx, dy);
+  if (len < 8) return null;
+  if (g.snap) { const a = Math.round(Math.atan2(dy, dx) / (Math.PI / 12)) * (Math.PI / 12); dx = Math.cos(a) * len; dy = Math.sin(a) * len; }
+  const ux = dx / len, uy = dy / len, far = 4 * Math.hypot(viewport.w, viewport.h);
+  const side = g.alt ? -1 : 1, nx = -uy * side, ny = ux * side;   // the shaded side, in pixels
+  const a = [g.x0 - ux * far, g.y0 - uy * far], b = [g.x0 + ux * far, g.y0 + uy * far];
+  return { a, b, side: [nx, ny], p: [g.x0, g.y0], q: [g.x0 + dx, g.y0 + dy],
+    shade: [a, b, [b[0] + nx * far, b[1] + ny * far], [a[0] + nx * far, a[1] + ny * far]] };
+}
+// the plane in world space: n·p + d > 0 on the shaded side
+function cutPlane(L) {
+  const ray = (x, y) => { ndc.set((x / viewport.w) * 2 - 1, -(y / viewport.h) * 2 + 1); raycaster.setFromCamera(ndc, camera); return raycaster.ray.direction.clone(); };
+  const c = camera.position.clone(), da = ray(...L.p), db = ray(...L.q);
+  const n = new THREE.Vector3().crossVectors(da, db);
+  if (n.lengthSq() < 1e-20) return null;
+  n.normalize();
+  let d = -n.dot(c);
+  const t = ray(L.p[0] + L.side[0] * 20, L.p[1] + L.side[1] * 20), probe = c.clone().add(t);
+  if (n.dot(probe) + d < 0) { n.negate(); d = -d; }
+  return { n, d };
+}
+function applyCut(g) {
+  const L = cutLine(g); if (!L) return;
+  const pl = cutPlane(L); if (!pl) return;
+  // every symmetric copy of the plane: (M·n)·p + d (M is orthogonal and the planes pass through copies of the eye line)
+  const planes = [pl, ...SYM.map(({ m }) => ({ n: symV(m, pl.n), d: pl.d }))];
+  if (g.base === 'clip') {
+    const m = mesh, P = m.pos, MK = m.mask;
+    stroke = { uCount: 0, tool: 'clip' }; strokeId++; frame_.tag++;
+    for (const { n, d } of planes) for (let i = 0; i < m.n; i++) {
+      if (m.dyn && !m.vfA[i].length) continue;
+      const sd = n.x * P[i * 3] + n.y * P[i * 3 + 1] + n.z * P[i * 3 + 2] + d;
+      if (sd <= 0) continue;
+      const k = sd * (1 - MK[i]); if (k <= 0) continue;
+      touchVert(i);
+      P[i * 3] -= n.x * k; P[i * 3 + 1] -= n.y * k; P[i * 3 + 2] -= n.z * k;
+    }
+    const n = stroke.uCount;
+    if (n) {
+      frame_.positions = true;
+      const rec = { type: 'verts', idx: m.uIdx.slice(0, n), pos: m.uPos.slice(0, n * 3), col: m.uCol.slice(0, n * 3), mask: m.uMask.slice(0, n) };
+      if (recLayer >= 0) recordStroke(rec);
+      pushUndo(rec);
+    }
+    flushFrame();
+    stroke = null; bvhDirty = true; if (m.dyn) m.gridMaybeRebuild();
+    requestRender(); scheduleAutosave();
+    if (!n) toast('Нищо не беше от засенчената страна.');
+    return;
+  }
+  // trim: a new mesh, so one level and no layers (as in ZBrush, Trim needs no subdivision levels)
+  if (!askDropLevels('Отрязването')) return;
+  const src = mesh.dyn ? mesh.arrays() : { pos: mesh.pos.subarray(0, mesh.n * 3), idx: mesh.idx.subarray(0, mesh.f * 3), col: mesh.col, mask: mesh.mask, grp: mesh.grp };
+  busy(true);
+  setTimeout(() => {
+    try {
+      let r = src;
+      for (const { n, d } of planes) r = trimByPlane(r, [n.x, n.y, n.z], d);
+      if (r.idx.length < 12) { toast('Нищо не би останало: отрязването е отменено.'); return; }
+      if (r.idx.length === src.idx.length && r.pos.length === src.pos.length) { toast('Нищо не беше от засенчената страна.'); return; }
+      const paused = replaceMesh(new SculptMesh(r.pos, r.idx, r.col, r.mask, 0, r.grp));
+      toast('Отрязано и затворено.' + (r.open ? ' Част от среза е на отворено място и остана отворена.' : '') + (paused ? ' ' + DYN_PAUSED_MSG : ''));
+    } catch (e) { toast('Отрязването не успя: ' + e.message); }
+    finally { busy(false); }
+  }, 30);
 }
 
 
@@ -3952,6 +4239,7 @@ brushSyncs.push(
     { id: 'dragrect', name: 'Опъване', title: 'DragRect: един отпечатък; влаченето му дава размер и посока' },
     { id: 'dragdot', name: 'Местене', title: 'DragDot: един отпечатък, който местите, докато вдигнете писалката' },
     { id: 'spray', name: 'Спрей', title: 'Spray: разпръснати отпечатъци с различен размер и ъгъл' },
+    { id: 'line', name: 'Линия', title: 'Права линия от мястото на натискане до писалката; виждате я, докато я опъвате' },
   ], 'stroke'),
   brushChips('grabChips', [{ id: 'soft', name: 'Меко (Move)' }, { id: 'elastic', name: 'Еластично (Move Elastic)' }], 'grab'),
 );
@@ -3972,7 +4260,7 @@ $('bName').addEventListener('input', () => {
 function syncBrushUI() {
   syncRadius(); syncStrength();
   const b = brush(), base = b.base;
-  const moves = base === 'grab' || base === 'snake' || base === 'pose';
+  const moves = base === 'grab' || base === 'snake' || base === 'pose' || base === 'clip' || base === 'cut';
   $('bName').value = b.name; $('bName').disabled = b.builtin;
   $('bName').title = b.builtin ? 'Готовите четки не се преименуват; „Нова от тази“ прави ваше копие' : '';
   $('bBase').value = base;
@@ -4152,6 +4440,7 @@ function chips(containerId, items, get, set) {
   }
   render();
 }
+chips('selChips', [{ id: 'rect', name: 'Правоъгълник' }, { id: 'lasso', name: 'Ласо' }], () => S.selShape, (v) => (S.selShape = v));
 chips('fingerChips', [{ id: 'auto', name: 'Авто' }, { id: 'draw', name: 'Рисува' }, { id: 'navigate', name: 'Само изглед' }], () => S.finger, (v) => (S.finger = v));
 
 function bindToggle(id, key, after) {
@@ -4317,5 +4606,5 @@ loadAutosave().then((d) => {
     toast('Продължавате последния модел. „Нов“ започва отначало.');
   }
 });
-window.__glina = { get LAYERS() { return LAYERS; }, get recLayer() { return recLayer; }, addLayer, deleteLayer, toggleLayer, recordLayer, setLayerStrength, bakeLayers, groupOp, maskAllBut, groupNear, get mesh() { return mesh; }, get stroke() { return stroke; }, get gesture() { return gesture; }, get nav() { return nav; }, get MR() { return MR; }, syncSym, get SYM() { return SYM; }, setLevel, divide, deleteLower, deleteHigher, camera, orbit, pick, selectTool, brush, brushById, maskOp, remesh, undo, redo, subdivide, setDyntopo, floodDetail, S, get undoStack() { return undoStack; } };
+window.__glina = { trimByPlane, applyCut, get LAYERS() { return LAYERS; }, get recLayer() { return recLayer; }, addLayer, deleteLayer, toggleLayer, recordLayer, setLayerStrength, bakeLayers, groupOp, maskAllBut, groupNear, get mesh() { return mesh; }, get stroke() { return stroke; }, get gesture() { return gesture; }, get nav() { return nav; }, get MR() { return MR; }, syncSym, get SYM() { return SYM; }, setLevel, divide, deleteLower, deleteHigher, camera, orbit, pick, selectTool, brush, brushById, maskOp, remesh, undo, redo, subdivide, setDyntopo, floodDetail, S, get undoStack() { return undoStack; } };
 </script>
