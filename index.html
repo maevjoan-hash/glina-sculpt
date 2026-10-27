@@ -1385,30 +1385,47 @@ function voxelRemesh(src, res) {
   return { pos, idx, col, mask, grp, res };
 }
 /* ---------- trim: cut the mesh with a plane and close the cut (ZBrush: TrimCurve) ----------
-   Keeps the side where n·p + d < 0. Triangles across the plane are clipped (new vertices on the cut
-   edges, shared between neighbours); the loops of cut edges are closed with caps: ear clipping in the
-   plane, then long inner edges are split, flipped toward Delaunay and the inner points relaxed, so the
-   cap has even triangles like the rest. Detail elsewhere is untouched. */
+   Keeps the side where n·p + d < 0. Vertices within a sliver of the plane are put on it; triangles
+   across it are clipped (new vertices on the crossing edges, shared). The rims are the directed edges
+   without a twin that lie on the plane; going round them the other way gives loops: outer ones run
+   counter-clockwise seen from +n, holes (a torus, a hollow shell) clockwise. Each outer loop with its
+   holes is bridged into one polygon, ear-clipped, and filled with points on a hexagonal lattice by
+   incremental Delaunay insertion, so the cap has triangles like the surface around it. */
 function trimByPlane(src, n, d) {
   const P = src.pos, I = src.idx, nV = P.length / 3, C = src.col, M = src.mask, Gr = src.grp;
-  let ext = 0;
+  const sdRaw = new Float64Array(nV);
+  for (let v = 0; v < nV; v++) sdRaw[v] = n[0] * P[v * 3] + n[1] * P[v * 3 + 1] + n[2] * P[v * 3 + 2] + d;
+  // the edge length where the plane crosses: the cap's triangles get the same size
+  let lenSum = 0, lenCnt = 0, ext = 0;
   for (let i = 0; i < P.length; i++) ext = Math.max(ext, Math.abs(P[i]));
-  const eps = 1e-6 * (ext || 1);
-  // −1 kept, 0 on the plane (kept, and part of the rim), +1 cut away
-  const sd = new Float64Array(nV), side = new Int8Array(nV);
-  for (let v = 0; v < nV; v++) { const x = n[0] * P[v * 3] + n[1] * P[v * 3 + 1] + n[2] * P[v * 3 + 2] + d; sd[v] = x; side[v] = x < -eps ? -1 : x > eps ? 1 : 0; }
+  for (let f = 0; f < I.length; f += 3) for (let e = 0; e < 3; e++) {
+    const a = I[f + e], b = I[f + (e + 1) % 3];
+    if (a < b && (sdRaw[a] < 0) !== (sdRaw[b] < 0)) { lenSum += Math.sqrt((P[a * 3] - P[b * 3]) ** 2 + (P[a * 3 + 1] - P[b * 3 + 1]) ** 2 + (P[a * 3 + 2] - P[b * 3 + 2]) ** 2); lenCnt++; }
+  }
+  const target = lenCnt ? lenSum / lenCnt : ext * 0.02;
+  // vertices this close count as on the plane (no slivers of a few microns along the cut)
+  const eps = Math.max(1e-6 * (ext || 1), target * 0.03);
+  const side = new Int8Array(nV);
+  for (let v = 0; v < nV; v++) side[v] = sdRaw[v] < -eps ? -1 : sdRaw[v] > eps ? 1 : 0;
   const pos = [], col = [], mask = [], grp = [], remap = new Int32Array(nV).fill(-1);
-  const keepV = (v) => { if (remap[v] < 0) { remap[v] = pos.length / 3; pos.push(P[v * 3], P[v * 3 + 1], P[v * 3 + 2]); col.push(C[v * 3], C[v * 3 + 1], C[v * 3 + 2]); mask.push(M[v]); grp.push(Gr ? Gr[v] : 0); } return remap[v]; };
+  const keepV = (v) => {
+    if (remap[v] < 0) {
+      remap[v] = pos.length / 3;
+      const k = side[v] ? 0 : sdRaw[v];   // on the plane: exactly on it
+      pos.push(P[v * 3] - n[0] * k, P[v * 3 + 1] - n[1] * k, P[v * 3 + 2] - n[2] * k);
+      col.push(C[v * 3], C[v * 3 + 1], C[v * 3 + 2]); mask.push(M[v]); grp.push(Gr ? Gr[v] : 0);
+    }
+    return remap[v];
+  };
   const cut = new Map();
   const cutV = (a, b) => {   // only for edges strictly across the plane
     const k = a < b ? a * nV + b : b * nV + a;
     let v = cut.get(k);
     if (v === undefined) {
-      const t = sd[a] / (sd[a] - sd[b]);
+      const t = sdRaw[a] / (sdRaw[a] - sdRaw[b]);
       v = pos.length / 3; cut.set(k, v);
       for (let q = 0; q < 3; q++) { pos.push(P[a * 3 + q] + (P[b * 3 + q] - P[a * 3 + q]) * t); col.push(C[a * 3 + q] + (C[b * 3 + q] - C[a * 3 + q]) * t); }
-      // (snapped exactly onto the plane, so the cap is flat)
-      const o = (pos.length / 3 - 1) * 3, off = n[0] * pos[o] + n[1] * pos[o + 1] + n[2] * pos[o + 2] + d;
+      const o = v * 3, off = n[0] * pos[o] + n[1] * pos[o + 1] + n[2] * pos[o + 2] + d;
       pos[o] -= n[0] * off; pos[o + 1] -= n[1] * off; pos[o + 2] -= n[2] * off;
       mask.push(M[a] + (M[b] - M[a]) * t); grp.push(Gr ? (t < 0.5 ? Gr[a] : Gr[b]) : 0);
     }
@@ -1419,7 +1436,6 @@ function trimByPlane(src, n, d) {
     const tri = [I[f], I[f + 1], I[f + 2]], sg = tri.map((v) => side[v]);
     if (sg[0] <= 0 && sg[1] <= 0 && sg[2] <= 0) { if (sg[0] || sg[1] || sg[2]) out.push(keepV(tri[0]), keepV(tri[1]), keepV(tri[2])); continue; }
     if (sg[0] >= 0 && sg[1] >= 0 && sg[2] >= 0) continue;   // all away (or on the plane): gone
-    // Sutherland–Hodgman on one triangle: kept and on-plane corners, plus crossings of real crossings
     const poly = [];
     for (let e = 0; e < 3; e++) {
       const a = tri[e], b = tri[(e + 1) % 3], sa = sg[e], sb = sg[(e + 1) % 3];
@@ -1428,125 +1444,233 @@ function trimByPlane(src, n, d) {
     }
     for (let j = 1; j + 1 < poly.length; j++) out.push(poly[0], poly[j], poly[j + 1]);
   }
-  // the rims: directed edges without a twin; the cap runs the other way round them
-  const twin = new Set();
-  for (let f = 0; f < out.length; f += 3) for (let e = 0; e < 3; e++) twin.add(out[f + e] * 4294967296 + out[f + (e + 1) % 3]);
-  const capNext = new Map();
-  for (let f = 0; f < out.length; f += 3) for (let e = 0; e < 3; e++) {
-    const a = out[f + e], b = out[f + (e + 1) % 3];
-    if (twin.has(b * 4294967296 + a)) continue;
-    // only rims on the plane are ours to close (an open model keeps its own holes)
-    const on = (v) => Math.abs(n[0] * pos[v * 3] + n[1] * pos[v * 3 + 1] + n[2] * pos[v * 3 + 2] + d) <= eps * 4;
-    if (on(a) && on(b)) capNext.set(b, a);
-  }
-  // plane basis for the caps
+  // plane basis: (u, w, n) right-handed, so counter-clockwise in (u, w) faces +n (the cut side)
   const ax = Math.abs(n[0]) < 0.9 ? [1, 0, 0] : [0, 1, 0];
   const u = [n[1] * ax[2] - n[2] * ax[1], n[2] * ax[0] - n[0] * ax[2], n[0] * ax[1] - n[1] * ax[0]], ul = Math.hypot(...u);
   u[0] /= ul; u[1] /= ul; u[2] /= ul;
   const w = [n[1] * u[2] - n[2] * u[1], n[2] * u[0] - n[0] * u[2], n[0] * u[1] - n[1] * u[0]];
-  const used = new Set();
-  let capped = 0, open = 0;
-  for (const start of capNext.keys()) {
-    if (used.has(start)) continue;
-    const loop = [];
-    let v = start, ok = false;
-    while (v !== undefined && !used.has(v)) { used.add(v); loop.push(v); v = capNext.get(v); if (v === start) { ok = true; break; } }
-    if (!ok || loop.length < 3) { open++; continue; }
-    capLoop(loop, pos, col, mask, grp, out, u, w, n);
-    capped++;
+  const uv = (v) => [pos[v * 3] * u[0] + pos[v * 3 + 1] * u[1] + pos[v * 3 + 2] * u[2], pos[v * 3] * w[0] + pos[v * 3 + 1] * w[1] + pos[v * 3 + 2] * w[2]];
+  // the rims, reversed: cap edges a → b, several per vertex where rims touch (figure 8)
+  const twin = new Set();
+  for (let f = 0; f < out.length; f += 3) for (let e = 0; e < 3; e++) twin.add(out[f + e] * 4294967296 + out[f + (e + 1) % 3]);
+  const onP = (v) => Math.abs(n[0] * pos[v * 3] + n[1] * pos[v * 3 + 1] + n[2] * pos[v * 3 + 2] + d) <= eps * 0.5 + 1e-9 * (ext || 1);
+  const nexts = new Map();
+  let edges = 0;
+  for (let f = 0; f < out.length; f += 3) for (let e = 0; e < 3; e++) {
+    const a = out[f + e], b = out[f + (e + 1) % 3];
+    if (twin.has(b * 4294967296 + a) || !onP(a) || !onP(b)) continue;
+    if (!nexts.has(b)) nexts.set(b, []);
+    nexts.get(b).push(a); edges++;
   }
+  // walk the loops; at a vertex with two ways on, take the sharpest turn to the left (keeps loops simple)
+  const loops = [];
+  let open = 0;
+  const takeEdge = (from, prev) => {
+    const L = nexts.get(from); if (!L || !L.length) return undefined;
+    let k = 0;
+    if (L.length > 1 && prev !== undefined) {
+      const p0 = uv(prev), p1 = uv(from), din = Math.atan2(p1[1] - p0[1], p1[0] - p0[0]);
+      let best = Infinity;
+      L.forEach((c, j) => { const p2 = uv(c); let t = Math.atan2(p2[1] - p1[1], p2[0] - p1[0]) - din; while (t <= -Math.PI) t += 2 * Math.PI; while (t > Math.PI) t -= 2 * Math.PI; if (-t < best) { best = -t; k = j; } });
+    }
+    return L.splice(k, 1)[0];
+  };
+  for (const start of [...nexts.keys()]) {
+    while (nexts.get(start) && nexts.get(start).length) {
+      const loop = [start];
+      let prev, v = start, ok = false;
+      for (let guard = 0; guard <= edges; guard++) {
+        const nx = takeEdge(v, prev);
+        if (nx === undefined) break;
+        if (nx === start) { ok = true; break; }
+        loop.push(nx); prev = v; v = nx;
+      }
+      if (ok && loop.length >= 3) loops.push(loop); else open++;
+    }
+  }
+  const capped = capLoops(loops, uv, target, pos, col, mask, grp, out, u, w, n, d);
   return { pos: Float32Array.from(pos), idx: Uint32Array.from(out), col: Float32Array.from(col), mask: Float32Array.from(mask), grp: Float32Array.from(grp), capped, open };
 }
-// close one loop of cut vertices with even triangles in the plane; (u, w, n) is right-handed, so
-// counter-clockwise in (u, w) faces +n, the side that was cut away
-function capLoop(loop, pos, col, mask, grp, out, u, w, n) {
-  const L = loop.length;
-  const X = loop.map((v) => [pos[v * 3] * u[0] + pos[v * 3 + 1] * u[1] + pos[v * 3 + 2] * u[2], pos[v * 3] * w[0] + pos[v * 3 + 1] * w[1] + pos[v * 3 + 2] * w[2]]);
-  const cross = (o, a, b) => (a[0] - o[0]) * (b[1] - o[1]) - (a[1] - o[1]) * (b[0] - o[0]);
-  let area = 0;
-  for (let i = 0; i < L; i++) area += X[i][0] * X[(i + 1) % L][1] - X[(i + 1) % L][0] * X[i][1];
-  // 1. ear clipping (counter-clockwise order)
-  const idx = Array.from({ length: L }, (_, i) => i);
-  if (area < 0) idx.reverse();
-  const T = [];
-  const inTri = (p, a, b, c) => cross(a, b, p) >= 0 && cross(b, c, p) >= 0 && cross(c, a, p) >= 0;
-  while (idx.length > 3) {
-    let cut = false;
-    for (let i = 0; i < idx.length && !cut; i++) {
-      const i0 = idx[(i + idx.length - 1) % idx.length], i1 = idx[i], i2 = idx[(i + 1) % idx.length];
-      const A = X[i0], B = X[i1], Cc = X[i2];
-      if (cross(A, B, Cc) <= 1e-14) continue;   // reflex or flat corner
-      let ear = true;
-      for (const j of idx) if (j !== i0 && j !== i1 && j !== i2 && inTri(X[j], A, B, Cc)) { ear = false; break; }
-      if (ear) { T.push([i0, i1, i2]); idx.splice(i, 1); cut = true; }
-    }
-    if (!cut) { for (let i = 1; i + 1 < idx.length; i++) T.push([idx[0], idx[i], idx[i + 1]]); idx.length = 0; }   // degenerate: fan
+// all loops of one plane: outer ones (counter-clockwise) with the holes inside them
+function capLoops(loops, uv, target, pos, col, mask, grp, out, u, w, n, d) {
+  const polys = loops.map((ids) => {
+    const X = ids.map(uv);
+    let a = 0; for (let i = 0; i < X.length; i++) { const p = X[i], q = X[(i + 1) % X.length]; a += p[0] * q[1] - q[0] * p[1]; }
+    return { ids, X, area: a / 2 };
+  });
+  const inPoly = (pt, X) => { let c = false; for (let i = 0, j = X.length - 1; i < X.length; j = i++) { const [xi, yi] = X[i], [xj, yj] = X[j]; if ((yi > pt[1]) !== (yj > pt[1]) && pt[0] < ((xj - xi) * (pt[1] - yi)) / (yj - yi) + xi) c = !c; } return c; };
+  const outers = polys.filter((p) => p.area > 0), holes = polys.filter((p) => p.area <= 0);
+  for (const o of outers) o.holes = [];
+  for (const h of holes) {
+    const host = outers.filter((o) => inPoly(h.X[0], o.X)).sort((a, b) => a.area - b.area)[0];
+    if (host) host.holes.push(h);
+    else { h.ids.reverse(); h.X.reverse(); h.area = -h.area; h.holes = []; outers.push(h); }   // a loop wound the other way round: its own cap
   }
-  if (idx.length === 3) T.push(idx.slice());
-  // 2. split long inner edges (both triangles), flip toward Delaunay, relax the inner points
-  let len = 0; for (let i = 0; i < L; i++) len += Math.hypot(X[(i + 1) % L][0] - X[i][0], X[(i + 1) % L][1] - X[i][1]);
-  const target = len / L;
-  const key = (a, b) => (a < b ? a * 4194304 + b : b * 4194304 + a);
-  const edges = () => { const E = new Map(); T.forEach((t, k) => { for (let e = 0; e < 3; e++) { const kk = key(t[e], t[(e + 1) % 3]); if (!E.has(kk)) E.set(kk, []); E.get(kk).push(k); } }); return E; };
-  const ang = (p, q, r) => { const x1 = X[q][0] - X[p][0], y1 = X[q][1] - X[p][1], x2 = X[r][0] - X[p][0], y2 = X[r][1] - X[p][1]; return Math.atan2(Math.abs(x1 * y2 - y1 * x2), x1 * x2 + y1 * y2); };
-  const flipAll = () => {
-    for (let pass = 0; pass < 20; pass++) {
-      let flips = 0;
-      const E = edges();
-      for (const [kk, ts] of E) {
-        if (ts.length !== 2) continue;
-        const a = Math.floor(kk / 4194304), b = kk % 4194304;
-        const t1 = T[ts[0]], t2 = T[ts[1]];
-        if (!t1.includes(a) || !t1.includes(b) || !t2.includes(a) || !t2.includes(b)) continue;   // changed this pass
-        const c = t1.find((v) => v !== a && v !== b), d = t2.find((v) => v !== a && v !== b);
-        if (ang(c, a, b) + ang(d, a, b) <= Math.PI + 1e-9) continue;
-        // the triangle holding a→b in its order keeps orientation: (a, b, c) → (a, d, c) and (d, b, c)
-        const ab = t1[(t1.indexOf(a) + 1) % 3] === b;
-        const n1 = ab ? [a, d, c] : [b, d, c], n2 = ab ? [d, b, c] : [d, a, c];
-        if (cross(X[n1[0]], X[n1[1]], X[n1[2]]) <= 1e-14 || cross(X[n2[0]], X[n2[1]], X[n2[2]]) <= 1e-14) continue;
-        T[ts[0]] = n1; T[ts[1]] = n2; flips++;
+  for (const o of outers) capPolygon(o, uv, target, pos, col, mask, grp, out, u, w, n, d);
+  return outers.length;
+}
+function capPolygon(o, uv, target, pos, col, mask, grp, out, u, w, n, d) {
+  const orient = (a, b, c) => (b[0] - a[0]) * (c[1] - a[1]) - (b[1] - a[1]) * (c[0] - a[0]);
+  // 1. one polygon: each hole bridged to the nearest outer vertex it can see (rightmost holes first)
+  let ring = o.ids.map((id, i) => ({ id, p: o.X[i] }));
+  const segsCross = (p1, p2, q1, q2) => orient(p1, p2, q1) * orient(p1, p2, q2) < 0 && orient(q1, q2, p1) * orient(q1, q2, p2) < 0;
+  const holes = o.holes.slice().sort((a, b) => Math.max(...b.X.map((p) => p[0])) - Math.max(...a.X.map((p) => p[0])));
+  holes.forEach((h, hi) => {
+    let mi = 0; h.X.forEach((p, i) => { if (p[0] > h.X[mi][0]) mi = i; });
+    const m = h.X[mi];
+    const blockers = [];
+    for (let i = 0; i < ring.length; i++) blockers.push([ring[i].p, ring[(i + 1) % ring.length].p]);
+    for (const h2 of holes.slice(hi)) for (let i = 0; i < h2.X.length; i++) blockers.push([h2.X[i], h2.X[(i + 1) % h2.X.length]]);
+    const cands = ring.map((r, i) => ({ i, d: (r.p[0] - m[0]) ** 2 + (r.p[1] - m[1]) ** 2 })).sort((a, b) => a.d - b.d);
+    let at = cands[0].i;
+    for (const c of cands.slice(0, 400)) {
+      const q = ring[c.i].p;
+      if (!blockers.some(([a, b]) => segsCross(m, q, a, b))) { at = c.i; break; }
+    }
+    const hring = h.ids.map((id, i) => ({ id, p: h.X[i] }));
+    const hseq = hring.slice(mi).concat(hring.slice(0, mi + 1));   // m … round … m
+    ring = ring.slice(0, at + 1).concat(hseq, [ring[at]], ring.slice(at + 1));
+  });
+  // 2. ear clipping on a linked list
+  const N = ring.length, nx = new Int32Array(N), pv = new Int32Array(N), tris = [];
+  for (let i = 0; i < N; i++) { nx[i] = (i + 1) % N; pv[i] = (i + N - 1) % N; }
+  const P2 = (i) => ring[i].p;
+  const isEar = (i) => {
+    const a = pv[i], c = nx[i], A = P2(a), B = P2(i), Cc = P2(c);
+    if (orient(A, B, Cc) <= 1e-12 * target * target) return false;
+    for (let j = nx[c]; j !== a; j = nx[j]) {
+      const p = P2(j);
+      if (ring[j].id === ring[a].id || ring[j].id === ring[i].id || ring[j].id === ring[c].id) continue;   // (bridge copies)
+      if (orient(A, B, p) >= 0 && orient(B, Cc, p) >= 0 && orient(Cc, A, p) >= 0) return false;
+    }
+    return true;
+  };
+  let left = N, i = 0, stall = 0;
+  while (left > 3) {
+    if (isEar(i)) {
+      tris.push(pv[i], i, nx[i]);
+      nx[pv[i]] = nx[i]; pv[nx[i]] = pv[i]; left--; i = nx[i]; stall = 0;
+    } else {
+      i = nx[i];
+      if (++stall > left) {
+        // nothing clips: drop the flattest corner (a spike from a bridge or collinear points)
+        let best = i, bv = Infinity, j = i;
+        for (let k = 0; k < left; k++, j = nx[j]) { const v = Math.abs(orient(P2(pv[j]), P2(j), P2(nx[j]))); if (v < bv) { bv = v; best = j; } }
+        nx[pv[best]] = nx[best]; pv[nx[best]] = pv[best]; left--; i = nx[best]; stall = 0;
       }
-      if (!flips) return;
+    }
+  }
+  if (left === 3 && orient(P2(pv[i]), P2(i), P2(nx[i])) > 0) tris.push(pv[i], i, nx[i]);
+  // 3. triangles with neighbours; points of a hexagonal lattice inserted with Lawson flips
+  const X = ring.map((r) => r.p.slice()), id = ring.map((r) => r.id);
+  const T = [], NB = [];
+  const ekey = (a, b) => id[a] * 4194304 * 4 + id[b];   // by vertex id: bridge copies share edges
+  const eMap = new Map();
+  const addTri = (a, b, c) => { const t = T.length / 3; T.push(a, b, c); NB.push(-1, -1, -1); return t; };
+  for (let k = 0; k < tris.length; k += 3) addTri(tris[k], tris[k + 1], tris[k + 2]);
+  const link = () => {
+    eMap.clear();
+    for (let t = 0; t < T.length / 3; t++) for (let e = 0; e < 3; e++) eMap.set(ekey(T[t * 3 + e], T[t * 3 + (e + 1) % 3]), t * 3 + e);
+    for (let t = 0; t < T.length / 3; t++) for (let e = 0; e < 3; e++) { const h = eMap.get(ekey(T[t * 3 + (e + 1) % 3], T[t * 3 + e])); NB[t * 3 + e] = h === undefined ? -1 : h; }
+  };
+  link();
+  const inCircle = (a, b, c, p) => {
+    const ax = X[a][0] - X[p][0], ay = X[a][1] - X[p][1], bx = X[b][0] - X[p][0], by = X[b][1] - X[p][1], cx = X[c][0] - X[p][0], cy = X[c][1] - X[p][1];
+    return (ax * ax + ay * ay) * (bx * cy - cx * by) - (bx * bx + by * by) * (ax * cy - cx * ay) + (cx * cx + cy * cy) * (ax * by - bx * ay) > 1e-12 * target ** 4;
+  };
+  const setNB = (h, g) => { NB[h] = g; if (g >= 0) NB[g] = h; };
+  const legalize = (stack) => {
+    let guard = 0;
+    while (stack.length && guard++ < 1e6) {
+      const h = stack.pop(), g = NB[h];
+      if (g < 0) continue;
+      const t = Math.floor(h / 3), e = h % 3, t2 = Math.floor(g / 3), e2 = g % 3;
+      const a = T[t * 3 + e], b = T[t * 3 + (e + 1) % 3], c = T[t * 3 + (e + 2) % 3], p = T[t2 * 3 + (e2 + 2) % 3];
+      if (!inCircle(a, b, c, p)) continue;
+      if (orient(X[c], X[a], X[p]) <= 0 || orient(X[p], X[b], X[c]) <= 0) continue;   // not convex: keep
+      // flip a-b to c-p: t = (c, a, p), t2 = (p, b, c)
+      const hCA = NB[t * 3 + (e + 2) % 3], hBC = NB[t * 3 + (e + 1) % 3], hAP = NB[t2 * 3 + (e2 + 1) % 3], hPB = NB[t2 * 3 + (e2 + 2) % 3];
+      T[t * 3] = c; T[t * 3 + 1] = a; T[t * 3 + 2] = p;
+      T[t2 * 3] = p; T[t2 * 3 + 1] = b; T[t2 * 3 + 2] = c;
+      setNB(t * 3, hCA); setNB(t * 3 + 1, hAP); setNB(t * 3 + 2, t2 * 3 + 2);
+      setNB(t2 * 3, hPB); setNB(t2 * 3 + 1, hBC);
+      stack.push(t * 3 + 1, t2 * 3);
     }
   };
-  flipAll();
-  for (let round = 0; round < 12; round++) {
-    let splits = 0;
-    for (const [kk, ts] of edges()) {
-      if (ts.length !== 2) continue;
-      const a = Math.floor(kk / 4194304), b = kk % 4194304;
-      if (Math.hypot(X[a][0] - X[b][0], X[a][1] - X[b][1]) < target * 1.6) continue;
-      if (!ts.every((k) => T[k].includes(a) && T[k].includes(b))) continue;   // already split this round
-      const m = X.length; X.push([(X[a][0] + X[b][0]) / 2, (X[a][1] + X[b][1]) / 2]);
-      for (const k of ts) {
-        const t = T[k], c = t.find((v) => v !== a && v !== b);
-        const ab = t[(t.indexOf(a) + 1) % 3] === b;
-        T[k] = ab ? [a, m, c] : [b, m, c]; T.push(ab ? [m, b, c] : [m, a, c]);
-      }
-      if (++splits > 4 * L + 64) break;
+  { const st = []; for (let h = 0; h < NB.length; h++) st.push(h); legalize(st); }
+  // boundary segments in a grid, to keep lattice points away from the rim
+  let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+  for (const [x, y] of X) { x0 = Math.min(x0, x); y0 = Math.min(y0, y); x1 = Math.max(x1, x); y1 = Math.max(y1, y); }
+  const cs = target, gw = Math.max(1, Math.ceil((x1 - x0) / cs) + 1), gh = Math.max(1, Math.ceil((y1 - y0) / cs) + 1);
+  if (gw * gh < 4e6) {
+    const grid = new Map();
+    const cell = (x, y) => Math.floor((x - x0) / cs) + Math.floor((y - y0) / cs) * gw;
+    for (let k = 0; k < ring.length; k++) {
+      const p = X[k], q = X[(k + 1) % ring.length];
+      const c0 = Math.floor((Math.min(p[0], q[0]) - x0) / cs), c1 = Math.floor((Math.max(p[0], q[0]) - x0) / cs);
+      const r0 = Math.floor((Math.min(p[1], q[1]) - y0) / cs), r1 = Math.floor((Math.max(p[1], q[1]) - y0) / cs);
+      for (let r = r0; r <= r1; r++) for (let c = c0; c <= c1; c++) { const key = c + r * gw; if (!grid.has(key)) grid.set(key, []); grid.get(key).push(k); }
     }
-    flipAll();
-    if (!splits) break;
+    const nearRim = (x, y, lim) => {
+      const c = Math.floor((x - x0) / cs), r = Math.floor((y - y0) / cs);
+      for (let rr = r - 1; rr <= r + 1; rr++) for (let cc = c - 1; cc <= c + 1; cc++) {
+        const L = grid.get(cc + rr * gw); if (!L) continue;
+        for (const k of L) {
+          const p = X[k], q = X[(k + 1) % ring.length], dx = q[0] - p[0], dy = q[1] - p[1], l2 = dx * dx + dy * dy || 1e-30;
+          const t = Math.max(0, Math.min(1, ((x - p[0]) * dx + (y - p[1]) * dy) / l2));
+          if ((x - p[0] - dx * t) ** 2 + (y - p[1] - dy * t) ** 2 < lim * lim) return k;
+        }
+      }
+      return -1;
+    };
+    // walk from the last triangle toward the point; -1 if it leaves the cap (outside or in a hole)
+    let last = 0;
+    const locate = (pt) => {
+      let t = last;
+      for (let guard = 0; guard < 4 * T.length / 3 + 16; guard++) {
+        let moved = false;
+        for (let e = 0; e < 3; e++) {
+          const a = X[T[t * 3 + e]], b = X[T[t * 3 + (e + 1) % 3]];
+          if (orient(a, b, pt) < 0) { const g = NB[t * 3 + e]; if (g < 0) return -1; t = Math.floor(g / 3); moved = true; break; }
+        }
+        if (!moved) { last = t; return t; }
+      }
+      return -1;
+    };
+    const dyStep = target * Math.sqrt(3) / 2;
+    for (let row = 0, y = y0 + dyStep * 0.5 + target * 0.0137; y < y1; row++, y += dyStep) {
+      for (let x = x0 + (row % 2 ? target * 0.5 : 0) + target * 0.0291; x < x1; x += target) {
+        if (nearRim(x, y, target * 0.62) >= 0) continue;
+        const pt = [x, y], t = locate(pt);
+        if (t < 0) continue;
+        const k = X.length; X.push(pt); id.push(-1 - k);   // (an id of its own until it gets a real vertex)
+        const a = T[t * 3], b = T[t * 3 + 1], c = T[t * 3 + 2];
+        const nAB = NB[t * 3], nBC = NB[t * 3 + 1], nCA = NB[t * 3 + 2];
+        T[t * 3] = a; T[t * 3 + 1] = b; T[t * 3 + 2] = k;
+        const t1 = addTri(b, c, k), t2 = addTri(c, a, k);
+        setNB(t * 3, nAB); setNB(t1 * 3, nBC); setNB(t2 * 3, nCA);
+        setNB(t * 3 + 1, t1 * 3 + 2); setNB(t1 * 3 + 1, t2 * 3 + 2); setNB(t2 * 3 + 1, t * 3 + 2);
+        legalize([t * 3, t1 * 3, t2 * 3]);
+      }
+    }
   }
-  for (let it = 0; it < 10; it++) {
-    const S3 = X.map(() => [0, 0, 0]);
-    for (const t of T) for (let e = 0; e < 3; e++) { const a = t[e], b = t[(e + 1) % 3]; S3[a][0] += X[b][0]; S3[a][1] += X[b][1]; S3[a][2]++; S3[b][0] += X[a][0]; S3[b][1] += X[a][1]; S3[b][2]++; }
-    for (let i = L; i < X.length; i++) if (S3[i][2]) X[i] = [S3[i][0] / S3[i][2], S3[i][1] / S3[i][2]];
-  }
-  flipAll();
-  // 3. inner points to 3D on the plane; colour, mask and group from the nearest boundary point
-  const off = pos[loop[0] * 3] * n[0] + pos[loop[0] * 3 + 1] * n[1] + pos[loop[0] * 3 + 2] * n[2];
-  const ids = X.map((_, i) => (i < L ? loop[i] : -1));
-  for (let i = L; i < X.length; i++) {
-    const [x, y] = X[i];
+  // 4. new points become vertices on the plane; colour, mask and group from the nearest rim point
+  const vid = id.slice();
+  for (let k = 0; k < X.length; k++) {
+    if (id[k] >= 0) continue;
+    const [x, y] = X[k];
     let best = 0, bd = Infinity;
-    for (let j = 0; j < L; j++) { const dd = (X[j][0] - x) ** 2 + (X[j][1] - y) ** 2; if (dd < bd) { bd = dd; best = j; } }
-    ids[i] = pos.length / 3;
-    for (let q = 0; q < 3; q++) pos.push(u[q] * x + w[q] * y + n[q] * off);
-    const s0 = loop[best];
+    for (let j = 0; j < ring.length; j += Math.max(1, Math.floor(ring.length / 512))) { const dd = (X[j][0] - x) ** 2 + (X[j][1] - y) ** 2; if (dd < bd) { bd = dd; best = j; } }
+    vid[k] = pos.length / 3;
+    for (let q = 0; q < 3; q++) pos.push(u[q] * x + w[q] * y - n[q] * d);
+    const s0 = ring[best].id;
     col.push(col[s0 * 3], col[s0 * 3 + 1], col[s0 * 3 + 2]); mask.push(mask[s0]); grp.push(grp[s0]);
   }
-  for (const t of T) out.push(ids[t[0]], ids[t[1]], ids[t[2]]);
+  for (let t = 0; t < T.length / 3; t++) {
+    const a = vid[T[t * 3]], b = vid[T[t * 3 + 1]], c = vid[T[t * 3 + 2]];
+    if (a === b || b === c || a === c) continue;
+    out.push(a, b, c);
+  }
 }
 
 // squared distance from p to triangle (a, b, c) (offsets into P); the closest point goes to out
@@ -2741,6 +2865,8 @@ function processStroke() {
     const s = q[q.length - 1]; q.length = 0;
     const A = stroke.anchor;
     revertStroke();
+    // the normals too, or the new stamp would lean on the shape of the last frame
+    if (frame_.count) mesh.updateNormals(mesh.frList, frame_.count);
     if (b.stroke === 'line') {
       // the surface is back as it was, so picking along the line needs the tree to match it again
       if (!mesh.dyn && geo.boundsTree) { geo.boundsTree.refit(); bvhDirty = false; }
@@ -3078,6 +3204,7 @@ canvas.addEventListener('pointerdown', (e) => {
     if (pointers.size >= 2) {
       // second finger: cancel a just-started finger stroke and switch to pinch navigation
       if (stroke && stroke.pointerType === 'touch') endStroke(false);
+      if (gesture) { gesture = null; drawOverlay(); }   // (a line or a selection that was starting)
       nav = { mode: 'pinch', ...pinchState() };
       return;
     }
@@ -3442,13 +3569,18 @@ function applyCut(g) {
   if (g.base === 'clip') {
     const m = mesh, P = m.pos, MK = m.mask;
     stroke = { uCount: 0, tool: 'clip' }; strokeId++; frame_.tag++;
-    for (const { n, d } of planes) for (let i = 0; i < m.n; i++) {
-      if (m.dyn && !m.vfA[i].length) continue;
-      const sd = n.x * P[i * 3] + n.y * P[i * 3 + 1] + n.z * P[i * 3 + 2] + d;
-      if (sd <= 0) continue;
-      const k = sd * (1 - MK[i]); if (k <= 0) continue;
-      touchVert(i);
-      P[i * 3] -= n.x * k; P[i * 3 + 1] -= n.y * k; P[i * 3 + 2] -= n.z * k;
+    // (with symmetry, flattening onto one plane can push a point past another: repeat until none is)
+    for (let pass = 0, again = true; again && pass < 16; pass++) {
+      again = false;
+      for (const { n, d } of planes) for (let i = 0; i < m.n; i++) {
+        if (m.dyn && !m.vfA[i].length) continue;
+        const sd = n.x * P[i * 3] + n.y * P[i * 3 + 1] + n.z * P[i * 3 + 2] + d;
+        if (sd <= 1e-7) continue;
+        const k = sd * (1 - MK[i]); if (k <= 1e-7) continue;
+        touchVert(i);
+        P[i * 3] -= n.x * k; P[i * 3 + 1] -= n.y * k; P[i * 3 + 2] -= n.z * k;
+        if (planes.length > 1) again = true;
+      }
     }
     const n = stroke.uCount;
     if (n) {

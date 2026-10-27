@@ -33,6 +33,8 @@ for (const dyn of [false, true]) {
     const changed = id === 'mask' ? b.sm !== a.sm : id === 'paint' ? b.sc !== a.sc : b.sp !== a.sp || b.n !== a.n;
     check(`${dyn ? 'dyn ' : ''}${id} changes the model and adds one undo step`, changed && b.undo === a.undo + 1, { undo: [a.undo, b.undo] });
     if (id === 'mask') await page.evaluate(() => window.__glina.maskOp('clear'));
+    // (Clip/Trim take away the area the next brushes stroke over)
+    if (id === 'clip' || id === 'cut') { await page.evaluate(() => window.__glina.undo()); await frames(2); }
   }
   // stroke types and shapes on the standard brush
   for (const conf of [{ stroke: 'dragrect' }, { stroke: 'dragdot' }, { stroke: 'spray' }, { tip: 'square', alpha: 'noise', alphaRot: 'stroke' }, { alpha: 'pores', alphaMid: 0.5 }, { mod: -0.5 }]) {
