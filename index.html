@@ -1507,7 +1507,7 @@ const material = new THREE.ShaderMaterial({
       vec3 x = normalize(vec3(v.z, 0.0, -v.x));
       vec3 y = cross(v, x);
       vec2 uv = vec2(dot(x, n), dot(y, n)) * 0.495 + 0.5;
-      vec3 c = texture2D(matcap, uv).rgb * vC;
+      vec3 c = texture2D(matcap, uv).rgb * clamp(vC, 0.0, 1.0);
       if (showGroups > 0.5) c = mix(c, c * (0.35 + 0.9 * vG), 0.75);
       c = mix(c, c * 0.28 + vec3(0.02, 0.03, 0.08), clamp(vM, 0.0, 1.0) * 0.85);
       gl_FragColor = vec4(c, 1.0);
@@ -1961,6 +1961,8 @@ function dynRemesh(cx, cy, cz, r, L, nx, ny, nz, all = false, front = curFront) 
         const a = A[order[q]], b = Bv[order[q]];
         if (!m.vfA[a].length || !m.vfA[b].length) continue;
         if (m.mask[a] > 0.5 || m.mask[b] > 0.5) continue;
+        // a collapse never crosses a group border (it would move it), nor touches another group
+        if (m.grp[a] !== m.grp[b] || (curGroup >= 0 && m.grp[a] !== curGroup)) continue;
         if (edgeLen2(m.pos, a, b) >= min2) continue;
         if (m.collapseEdge(a, b, max2)) { did++; collapses++; }
       }
@@ -1984,6 +1986,7 @@ function dynRemesh(cx, cy, cz, r, L, nx, ny, nz, all = false, front = curFront) 
       if (m.f + 8 > DYN_MAX_TRIS) { dynHitCap = true; break; }   // a split adds 2 faces (more on non-manifold edges)
       const a = A[order[q]], b = Bv[order[q]];
       if (m.mask[a] > 0.5 && m.mask[b] > 0.5) continue;
+      if (curGroup >= 0 && (m.grp[a] !== curGroup || m.grp[b] !== curGroup)) continue;
       if (edgeLen2(m.pos, a, b) <= max2) continue;
       const v = m.splitEdge(a, b);
       if (v >= 0) { created.push(v); splits++; }
@@ -2357,6 +2360,8 @@ function beginStroke(e, x, y, b, sign) {
     if (!hit) { stroke = null; return false; }
     const r = b.radius * worldPerPx(hit.point);
     stroke.grab = { point: hit.point.clone(), r, normal: hit.normal.clone(), strength: b.strength };
+    // "only one group": each copy keeps the group it starts on for the whole stroke
+    stroke.grab.groups = b.group ? [hit.point, ...SYM.map(({ m }) => symV(m, hit.point))].map((p) => groupNear(p, r)) : null;
     if (tool === 'grab') {
       // soft: every grabbed vertex keeps its position from the start of the stroke and each frame sets
       // position = start + displacement(total pull), so the result does not depend on the frame rate.
@@ -2466,18 +2471,22 @@ function processStroke() {
     if (stroke.tool === 'snake') {
       // snake hook: re-gathers under the moving point, so the pulled tip keeps growing
       const st = g.strength;
-      const doSet = (pt, d, nn) => {
-        const cnt = inGroup(stroke.b, pt, g.r, () => gather(pt.x, pt.y, pt.z, g.r, nn.x, nn.y, nn.z, false));
+      const doSet = (pt, d, nn, k) => {
+        curGroup = g.groups ? g.groups[k] : -1;
+        const cnt = gather(pt.x, pt.y, pt.z, g.r, nn.x, nn.y, nn.z, false);
+        curGroup = -1;
         const P = mesh.pos, MK = mesh.mask, G = mesh.gIdx, F = mesh.gFall;
         for (let k = 0; k < cnt; k++) {
           const i = G[k], w = F[k] * st * (1 - MK[i]); if (w <= 0) continue; touchVert(i);
           P[i * 3] += d.x * w; P[i * 3 + 1] += d.y * w; P[i * 3 + 2] += d.z * w;
         }
       };
-      doSet(g.last, delta, g.normal);
-      for (const { m } of SYM) doSet(symV(m, g.last), symV(m, delta), symV(m, g.normal));
+      doSet(g.last, delta, g.normal, 0);
+      SYM.forEach(({ m }, k) => doSet(symV(m, g.last), symV(m, delta), symV(m, g.normal), k + 1));
       // light relax keeps the pulled strand from collapsing into spikes
+      curGroup = g.groups ? g.groups[0] : -1;
       const cnt = gather(hitPlane.x, hitPlane.y, hitPlane.z, g.r * 1.2, 0, 0, 0, false);
+      curGroup = -1;
       smoothVerts(mesh.gIdx, mesh.gFall, cnt, 0.15);
     } else if (g.elastic) {
       // elastic: the pull is applied in small steps to the current shape, each step a Kelvinlet around
@@ -2495,16 +2504,18 @@ function processStroke() {
       // averaged (at a mirror plane the sideways part cancels), instead of twice as far
       const Ms = [IDENT, ...SYM.map((t) => t.m)], near = e0 * 0.25;   // only images that (nearly) coincide
       const groups = [];
-      for (const m of Ms) {
+      Ms.forEach((m, k) => {
         const c = symV(m, g.cur);
         const grp = groups.find((q) => q.c0.distanceTo(c) < near);
-        if (grp) grp.ms.push(m); else groups.push({ c0: c, ms: [m] });
-      }
+        if (grp) grp.ms.push(m); else groups.push({ c0: c, ms: [m], k });
+      });
       const centre = (grp) => grp.ms.map((m) => symV(m, g.cur)).reduce((a, b) => a.add(b), new THREE.Vector3()).multiplyScalar(1 / grp.ms.length);
       for (const grp of groups) {
         grp.f = grp.ms.map((m) => symA(m, [fx, fy, fz])).reduce((a, b) => [a[0] + b[0], a[1] + b[1], a[2] + b[2]], [0, 0, 0]).map((v) => v / grp.ms.length);
         const c = centre(grp);
-        const cnt = inGroup(stroke.b, c, g.r, () => (g.topo ? gatherConnected(c, reachMax) : gather(c.x, c.y, c.z, reachMax, 0, 0, 0, false)));
+        curGroup = g.groups ? g.groups[grp.k] : -1;
+        const cnt = g.topo ? gatherConnected(c, reachMax) : gather(c.x, c.y, c.z, reachMax, 0, 0, 0, false);
+        curGroup = -1;
         grp.list = mesh.gIdx.slice(0, cnt);
       }
       const mainF = groups[0].f;   // the identity is always first
@@ -2620,13 +2631,19 @@ function dab(x, y, p, o = {}) {
   const copies = SYM.map(({ m }) => ({ m, p: symV(m, hit.point), n: symV(m, hit.normal) }));
   if (mesh.dyn && stroke.snap && DYN_TOOLS.has(tool)) {
     const L = S.detail * wpp;
+    if (b.group) curGroup = stroke.groups && stroke.groups[0] >= 0 ? stroke.groups[0] : groupNear(hit.point, r);
     if (dynRemesh(hit.point.x, hit.point.y, hit.point.z, r, L, hit.normal.x, hit.normal.y, hit.normal.z)) stroke.changed = true;
-    for (const c of copies) if (dynRemesh(c.p.x, c.p.y, c.p.z, r, L, c.n.x, c.n.y, c.n.z)) stroke.changed = true;
+    copies.forEach((c, k) => {
+      if (b.group) curGroup = stroke.groups && stroke.groups[k + 1] >= 0 ? stroke.groups[k + 1] : groupNear(c.p, r);
+      if (dynRemesh(c.p.x, c.p.y, c.p.z, r, L, c.n.x, c.n.y, c.n.z)) stroke.changed = true;
+    });
+    curGroup = -1;
   }
   // keep the picking structure in step with what this dab moved (mask and paint move nothing)
   const moves = tool !== 'mask' && tool !== 'paint';
   // (with "only one group" each copy keeps the group it started the stroke on)
-  const lockGroup = (k, p) => { if (!b.group) return -1; if (!stroke.groups) stroke.groups = []; if (stroke.groups[k] === undefined) stroke.groups[k] = groupNear(p, r); return stroke.groups[k]; };
+  // (a copy that starts off the model tries again at the next dab)
+  const lockGroup = (k, p) => { if (!b.group) return -1; if (!stroke.groups) stroke.groups = []; if (!(stroke.groups[k] >= 0)) stroke.groups[k] = groupNear(p, r); return stroke.groups[k]; };
   curGroup = lockGroup(0, hit.point);
   applyBrush(tool, hit.point, hit.normal, r, s, stroke.sign, info);
   if (mesh.dyn && moves) gridFollowBrush();
@@ -2690,6 +2707,7 @@ function gridFollowBrush() {
 
 function endStroke(commit = true) {
   if (!stroke) return;
+  curGroup = -1;   // (in case a brush threw halfway)
   processStroke(); flushFrame();
   if (commit && stroke.tool === 'grab' && mesh.dyn && stroke.changed) { refineAfterGrab(); flushFrame(); }
   if (stroke.snap) {
@@ -2746,6 +2764,7 @@ function flushDyn() {
     const names = ['position', 'normal'];
     if (frame_.colors || topo) names.push('aColor');
     if (frame_.masks || topo) names.push('aMask');
+    if (topo) names.push('aGroup');   // new vertices take a group
     uploadVerts(names, touched, touched.length);
     if (topo && m.fMarks.length) {
       const runs = toRuns(m.fMarks, m.fMarks.length);
@@ -2804,10 +2823,10 @@ function applyRecord(rec) {
   const cur = snapshot();
   cur.mrBytes = mrBytesOnly(MR, rec.mr || null);
   MR = rec.mr || null;
-  // levels need a fixed mesh: coming back to them turns dynamic topology off (as loading does)
-  if (MR && S.dyntopo) { S.dyntopo = false; saveSettings(); toast('Динамичната топология е изключена: нивата на разделяне се върнаха.'); }
+  // levels and layers need a fixed mesh: coming back to them turns dynamic topology off (as loading does)
+  if ((MR || (rec.layers && rec.layers.length)) && S.dyntopo) { S.dyntopo = false; saveSettings(); toast('Динамичната топология е изключена: нивата или слоевете се върнаха.'); }
   setMesh(new SculptMesh(rec.pos, rec.idx, rec.col, rec.mask, rec.level, rec.grp));
-  LAYERS = rec.layers || []; recLayer = rec.layers ? rec.recLayer : -1;
+  if ('layers' in rec) { LAYERS = rec.layers || []; recLayer = rec.layers ? rec.recLayer : -1; }   // (dynamic-topology records have none)
   syncLevelUI(); renderLayers();
   return cur;
 }
@@ -2914,6 +2933,8 @@ canvas.addEventListener('pointermove', (e) => {
   if (gesture && e.pointerId === gesture.id) {
     gesture.x = x; gesture.y = y;
     const moved = Math.hypot(x - gesture.x0, y - gesture.y0) > 4;
+    // Ctrl+Shift dragged: the same as Ctrl+drag (paint mask, or a mask rectangle on empty space)
+    if (gesture.kind === 'group' && moved) gesture.kind = gesture.hit ? 'maskpaint' : 'maskrect';
     if (gesture.kind === 'maskpaint' && moved) {
       // turn into a mask stroke from the press point
       const g = gesture; gesture = null;
@@ -3287,9 +3308,9 @@ function mrStart() {
 function mrBytesOnly(old, now) {
   if (!old) return 0;
   const keep = new Set();
-  for (const L of (now ? now.levels : [])) for (const a of [L.idx, L.d, L.dc, L.dm]) if (a) keep.add(a);
+  for (const L of (now ? now.levels : [])) for (const a of [L.idx, L.d, L.dc, L.dm, L.g]) if (a) keep.add(a);
   let b = 0;
-  for (const L of old.levels) for (const a of [L.idx, L.d, L.dc, L.dm]) if (a && !keep.has(a)) b += a.byteLength;
+  for (const L of old.levels) for (const a of [L.idx, L.d, L.dc, L.dm, L.g]) if (a && !keep.has(a)) b += a.byteLength;
   return b;
 }
 function mrCommit(next, live, prev = MR) {
@@ -3309,7 +3330,7 @@ function mrUpOnce(state, live) {
   const col = sub.col, mask = sub.mask;
   for (let k = 0; k < col.length; k++) col[k] = Math.min(1, Math.max(0, col[k] + H.dc[k]));
   for (let k = 0; k < mask.length; k++) mask[k] = Math.min(1, Math.max(0, mask[k] + H.dm[k]));
-  return { state: { cur: state.cur + 1, levels: state.levels }, live: { pos, idx: sub.idx, col, mask, grp: sub.grp } };
+  return { state: { cur: state.cur + 1, levels: state.levels }, live: { pos, idx: sub.idx, col, mask, grp: H.g && H.g.length === H.n ? Float32Array.from(H.g) : sub.grp } };
 }
 function mrDownOnce(state, live) {
   const H = state.levels[state.cur], L = state.levels[state.cur - 1];
@@ -3321,7 +3342,8 @@ function mrDownOnce(state, live) {
   const dc = new Float32Array(H.n * 3), dm = new Float32Array(H.n);
   for (let k = 0; k < dc.length; k++) dc[k] = live.col[k] - sub.col[k];
   for (let k = 0; k < dm.length; k++) dm[k] = live.mask[k] - sub.mask[k];
-  const levels = state.levels.slice(); levels[state.cur] = { ...H, d, dc, dm };
+  // (and the groups the higher level had, which subdividing the lower one cannot give back)
+  const levels = state.levels.slice(); levels[state.cur] = { ...H, d, dc, dm, g: live.grp ? Float32Array.from(live.grp.subarray(0, H.n)) : null };
   return { state: { cur: state.cur - 1, levels }, live: { pos, idx: L.idx.slice(), col, mask, grp: live.grp ? Float32Array.from(live.grp.subarray(0, L.n)) : null } };
 }
 let mrPending = false;   // a level change is queued: further requests wait for it (no double clicks)
@@ -3415,14 +3437,25 @@ let recLayer = -1;        // the layer that records strokes, or -1
 const layerBytes = () => LAYERS.reduce((t, L) => t + L.d.byteLength + L.dc.byteLength, 0);
 // add a layer's effect on the mesh, scaled by k (negative removes it)
 function layerApply(L, k) {
-  if (!k) return;
+  if (!k || !layerFits(L)) return;
   const m = mesh, P = m.pos, C = m.col, n = Math.min(m.n * 3, L.d.length);
-  for (let i = 0; i < n; i++) { P[i] += L.d[i] * k; C[i] = Math.min(1, Math.max(0, C[i] + L.dc[i] * k)); }
+  // (colour is not clamped here, or strength 2 then 1 would not give the colour back; the shader clamps)
+  for (let i = 0; i < n; i++) { P[i] += L.d[i] * k; C[i] += L.dc[i] * k; }
   m.computeAllNormals(); for (const a of ['position', 'normal', 'aColor']) uploadAll(geo.attributes[a]);
   bvhDirty = true; requestRender(); scheduleAutosave();
 }
 const layerFx = (L) => (L.on ? L.s : 0);
-function layerStep(doIt, undoIt, bytes = 0) { doIt(); pushUndo({ type: 'fn', undo: () => { undoIt(); renderLayers(); }, redo: () => { doIt(); renderLayers(); }, bytes }); renderLayers(); }
+const layerFits = (L) => !mesh.dyn && L.d.length === mesh.n * 3;
+// layers come back (undo) onto a static mesh only: dynamic topology goes off first, as for levels
+function staticForLayers() {
+  if (!mesh.dyn) return;
+  S.dyntopo = false; saveSettings();
+  const a = mesh.arrays();
+  setMesh(new SculptMesh(a.pos, a.idx, a.col, a.mask, a.level, a.grp), { quiet: true });
+  toast('Динамичната топология е изключена: слоевете се върнаха.');
+}
+function layerStep(doIt, undoIt, bytes = 0, done = false) { if (!done) doIt(); pushUndo({ type: 'fn', undo: () => { undoIt(); renderLayers(); }, redo: () => { doIt(); renderLayers(); }, bytes }); renderLayers(); }
+const layerBusy = () => stroke || mrPending;
 function addLayer() {
   if (stroke || mrPending) return;
   if (mesh.dyn) { toast('Слоевете не работят с динамична топология. Изключете я (D).'); return; }
@@ -3432,19 +3465,24 @@ function addLayer() {
   toast(`„${L.name}“ записва: всичко, което изваяте сега, отива в него.`);
 }
 function deleteLayer(L) {
+  if (layerBusy()) return;
   const at = LAYERS.indexOf(L), wasRec = recLayer === at, fx = layerFx(L);
   layerStep(() => { layerApply(L, -fx); LAYERS.splice(LAYERS.indexOf(L), 1); if (wasRec) recLayer = -1; else if (recLayer > at) recLayer--; },
-    () => { LAYERS.splice(at, 0, L); layerApply(L, fx); if (wasRec) recLayer = at; else if (recLayer >= at) recLayer++; });
+    () => { LAYERS.splice(at, 0, L); layerApply(L, fx); if (wasRec) recLayer = at; else if (recLayer >= at) recLayer++; }, L.d.byteLength * 2);
 }
+// (from: the strength before a slider drag that already applied s; the step is then only recorded)
 function setLayerStrength(L, s, from) {
+  if (layerBusy() && from === undefined) return;
   const was = from === undefined ? L.s : from;
   if (s === was) return;
-  layerStep(() => { if (L.on) layerApply(L, s - L.s); L.s = s; }, () => { if (L.on) layerApply(L, was - L.s); L.s = was; });
+  layerStep(() => { if (L.on) layerApply(L, s - L.s); L.s = s; }, () => { if (L.on) layerApply(L, was - L.s); L.s = was; }, 0, from !== undefined);
 }
 function toggleLayer(L) {
+  if (layerBusy() || recLayer === LAYERS.indexOf(L)) return;   // the recording layer stays visible
   layerStep(() => { L.on = !L.on; layerApply(L, L.on ? L.s : -L.s); }, () => { L.on = !L.on; layerApply(L, L.on ? L.s : -L.s); });
 }
 function recordLayer(L) {
+  if (layerBusy()) return;
   const was = recLayer, to = recLayer === LAYERS.indexOf(L) ? -1 : LAYERS.indexOf(L);
   // recording works at full strength and visible, as in ZBrush
   const s0 = L.s, on0 = L.on;
@@ -3453,14 +3491,17 @@ function recordLayer(L) {
 }
 // the layers become part of the mesh (shape and colour stay as shown)
 function bakeLayers(quiet) {
-  if (!LAYERS.length) return;
+  if (!LAYERS.length || layerBusy()) return;
   const list = LAYERS, rec = recLayer;
-  layerStep(() => { LAYERS = []; recLayer = -1; }, () => { LAYERS = list; recLayer = rec; }, list.reduce((t, L) => t + L.d.byteLength * 2, 0));
+  layerStep(() => { LAYERS = []; recLayer = -1; }, () => {
+    staticForLayers();
+    LAYERS = list.filter(layerFits); recLayer = LAYERS.length === list.length ? rec : -1;
+  }, list.reduce((t, L) => t + L.d.byteLength * 2, 0));
   if (!quiet) toast('Слоевете са приложени към модела.');
 }
 // a finished stroke while a layer records: its change goes into the layer
 function recordStroke(rec) {
-  const L = LAYERS[recLayer]; if (!L) return;
+  const L = LAYERS[recLayer]; if (!L || !L.on || !layerFits(L)) return;
   const m = mesh, inv = 1 / (L.s || 1);
   for (let k = 0; k < rec.idx.length; k++) {
     const i = rec.idx[k];
@@ -3472,8 +3513,11 @@ function layersForSave() { return LAYERS.length ? { list: LAYERS.map((L) => ({ n
 function restoreLayers(data) {
   LAYERS = []; recLayer = -1;
   if (data && Array.isArray(data.list) && !mesh.dyn) {
-    for (const L of data.list) if (L && L.d && L.d.length === mesh.n * 3 && L.dc && L.dc.length === mesh.n * 3) LAYERS.push({ name: String(L.name || 'Слой').slice(0, 30), d: L.d, dc: L.dc, s: Number.isFinite(L.s) ? L.s : 1, on: L.on !== false });
-    if (Number.isInteger(data.rec) && data.rec < LAYERS.length) recLayer = data.rec;
+    data.list.forEach((L, k) => {
+      if (!(L && L.d && L.d.length === mesh.n * 3 && L.dc && L.dc.length === mesh.n * 3)) return;
+      if (k === data.rec) recLayer = LAYERS.length;
+      LAYERS.push({ name: String(L.name || 'Слой').slice(0, 30), d: L.d, dc: L.dc, s: Number.isFinite(L.s) ? L.s : 1, on: L.on !== false });
+    });
   }
   renderLayers();
 }
@@ -3484,14 +3528,24 @@ function renderLayers() {
     const row = document.createElement('div'); row.className = 'layer' + (recLayer === k ? ' rec' : '');
     const recB = document.createElement('button'); recB.className = 'lbtn'; recB.textContent = '●'; recB.title = recLayer === k ? 'Спри записа' : 'Записвай в този слой';
     recB.setAttribute('aria-pressed', recLayer === k); recB.onclick = () => recordLayer(L);
-    const eye = document.createElement('input'); eye.type = 'checkbox'; eye.checked = L.on; eye.title = 'Видим'; eye.onchange = () => toggleLayer(L);
+    const eye = document.createElement('input'); eye.type = 'checkbox'; eye.checked = L.on; eye.disabled = recLayer === k;
+    eye.title = recLayer === k ? 'Записващият слой е винаги видим' : 'Видим'; eye.onchange = () => toggleLayer(L);
     const name = document.createElement('input'); name.type = 'text'; name.value = L.name; name.maxLength = 30;
     name.onchange = () => { L.name = name.value.trim() || L.name; scheduleAutosave(); };
     const sl = document.createElement('input'); sl.type = 'range'; sl.min = -1; sl.max = 2; sl.step = 0.05; sl.value = L.s; sl.disabled = recLayer === k;
     sl.title = 'Сила: ' + Math.round(L.s * 100) + '%';
-    let from = L.s;
-    sl.oninput = () => { if (L.on) layerApply(L, +sl.value - L.s); L.s = +sl.value; sl.title = 'Сила: ' + Math.round(L.s * 100) + '%'; };
-    sl.onchange = () => { const to = L.s; if (L.on) layerApply(L, from - to); L.s = from; setLayerStrength(L, to, from); from = to; };
+    let from = L.s, queued = false;
+    // dragging: at most one update per frame; letting go records the change as one undo step
+    sl.oninput = () => {
+      sl.title = 'Сила: ' + Math.round(+sl.value * 100) + '%';
+      if (queued || layerBusy()) return;
+      queued = true;
+      requestAnimationFrame(() => { queued = false; const v = +sl.value; if (L.on) layerApply(L, v - L.s); L.s = v; });
+    };
+    sl.onchange = () => {
+      const v = +sl.value; if (L.on) layerApply(L, v - L.s); L.s = v;
+      setLayerStrength(L, v, from); from = v;
+    };
     const del = document.createElement('button'); del.className = 'lbtn'; del.textContent = '×'; del.title = 'Изтрий слоя'; del.onclick = () => deleteLayer(L);
     row.append(recB, eye, name, sl, del);
     box.appendChild(row);
@@ -3711,7 +3765,8 @@ function exportOBJ() {
   const painted = m.col.subarray(0, m.n * 3).some((v) => v < 0.999);
   for (let i = 0; i < m.n; i++) {
     const p = `v ${m.pos[i * 3].toFixed(6)} ${m.pos[i * 3 + 1].toFixed(6)} ${m.pos[i * 3 + 2].toFixed(6)}`;
-    parts.push(painted ? `${p} ${m.col[i * 3].toFixed(4)} ${m.col[i * 3 + 1].toFixed(4)} ${m.col[i * 3 + 2].toFixed(4)}\n` : p + '\n');
+    const cl = (v) => Math.min(1, Math.max(0, v)).toFixed(4);
+    parts.push(painted ? `${p} ${cl(m.col[i * 3])} ${cl(m.col[i * 3 + 1])} ${cl(m.col[i * 3 + 2])}\n` : p + '\n');
   }
   for (let t = 0; t < m.f; t++) parts.push(`f ${m.idx[t * 3] + 1} ${m.idx[t * 3 + 1] + 1} ${m.idx[t * 3 + 2] + 1}\n`);
   return new TextEncoder().encode(parts.join(''));

@@ -120,6 +120,38 @@ await page.waitForTimeout(3500);
 await page.reload(); await page.waitForFunction(() => window.__glina && window.__glina.mesh && window.__glina.mesh.n > 1000); await page.waitForTimeout(1500);
 s = await st();
 check('reload: the layer is still there', s.layers === 1 && maxDiff(s.pos, baseStroke.pos) < 1e-5);
+// the review's cases
+await page.click('#bNew'); await page.click('#menu button:nth-child(2)'); await frames(3);
+// a layer and dynamic topology: turning it on applies the layer; undo turns it off again and brings the layer back
+await G(() => window.__glina.addLayer());
+await drag('draw', cx - 60, cy + 20, cx + 60, cy + 30, 10);
+const lay = await st();
+await G(() => window.__glina.setDyntopo(true)); await page.waitForFunction(() => window.__glina.mesh.dyn);
+s = await st();
+check('dynamic topology on: the layer is applied', s.layers === 0 && maxDiff(s.pos, lay.pos) < 1e-6);
+await G(() => window.__glina.undo()); await frames(2);
+s = await st();
+check('undo: the layer is back on a static mesh', s.layers === 1 && !(await G(() => window.__glina.mesh.dyn)) && maxDiff(s.pos, lay.pos) < 1e-6);
+// the recording layer cannot be hidden (a hidden recording layer would take strokes twice)
+await G(() => { const G = window.__glina; G.toggleLayer(G.LAYERS[0]); });
+check('the recording layer stays visible', await G(() => window.__glina.LAYERS[0].on));
+// paint into a layer, strength 2 then back to 1: the colour comes back exactly
+await G(() => { const G = window.__glina; G.selectTool('paint'); G.S.paint = [0.1, 0.8, 0.2]; });
+await drag(null, cx - 60, cy - 60, cx + 60, cy - 50, 10);
+await G(() => { const G = window.__glina; G.recordLayer(G.LAYERS[0]); });
+const colA = await G(() => Array.from(window.__glina.mesh.col.subarray(0, window.__glina.mesh.n * 3)));
+await G(() => { const G = window.__glina; G.setLayerStrength(G.LAYERS[0], 2); G.setLayerStrength(G.LAYERS[0], 1); });
+const colB = await G(() => Array.from(window.__glina.mesh.col.subarray(0, window.__glina.mesh.n * 3)));
+check('layer colour at 200% and back: unchanged', maxDiff(colA, colB) < 1e-5, { err: maxDiff(colA, colB) });
+// groups made at a higher level survive a trip down and up
+await G(() => window.__glina.bakeLayers());
+await page.keyboard.press('Control+d'); await idle();
+await drag(null, cx - 220, cy - 220, cx - 20, cy, 6, ['Control']);
+await G(() => { window.__glina.groupOp('frommask'); window.__glina.maskOp('clear'); });
+const g1 = await G(() => Array.from(window.__glina.mesh.grp.subarray(0, window.__glina.mesh.n)));
+await G(() => window.__glina.setLevel(0)); await idle(); await G(() => window.__glina.setLevel(1)); await idle();
+const g2 = await G(() => Array.from(window.__glina.mesh.grp.subarray(0, window.__glina.mesh.n)));
+check('groups set at level 1 are the same after going to 0 and back', g1.length === g2.length && g1.every((v, i) => v === g2[i]));
 check('no page errors', errors.length === 0, errors.slice(0, 3));
 console.log(`\n${results.filter(Boolean).length}/${results.length} passed`);
 await browser.close();
