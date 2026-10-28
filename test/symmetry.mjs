@@ -10,6 +10,9 @@ const errors = []; page.on('pageerror', (e) => errors.push(String(e)));
 await page.goto(pathToFileURL(path.join(ROOT, 'dist', 'glina.html')).href);
 await page.waitForFunction(() => window.__glina && window.__glina.mesh);
 await page.evaluate(() => document.getElementById('hintClose').click());   // the hint box covers the upper middle
+// the camera as far as a wide window frames the unit sphere, so the brushes cover the same part of it
+// whatever the window's shape (a narrow window now moves the camera back to fit the model across)
+await page.evaluate(() => { const W = window.__glina; W.cam.dist = 1 / Math.sin((19 * Math.PI) / 180) * 1.15; W.orbit(0, 0); });
 const frames = (n) => page.evaluate(async (k) => { for (let i = 0; i < k; i++) await new Promise((r) => requestAnimationFrame(r)); }, n);
 const box = await page.evaluate(() => { const r = document.getElementById('gl').getBoundingClientRect(); return { x: r.left, y: r.top, w: r.width, h: r.height }; });
 let ok = true;
