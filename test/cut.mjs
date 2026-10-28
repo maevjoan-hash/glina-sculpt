@@ -49,14 +49,14 @@ await G(() => window.__glina.maskOp('clear'));
 // (here the left of the screen), so the left part is flattened
 const s0 = await st();
 await G(() => window.__glina.selectTool('clip'));
-await path2(line(cx + 40, box.y + 10, cx + 40, box.y + box.h - 10));
+await path2(line(cx + 40, box.y + 40, cx + 40, box.y + box.h - 10));
 s = await st();
 check('clip flattens one side: the model is narrower, nothing removed', s.n === s0.n && s.mn > s0.mn + 0.1 && Math.abs(s.mx - s0.mx) < 1e-6 && s.open === 0, { mn: [s0.mn, s.mn] });
 await G(() => window.__glina.undo()); s = await st();
 check('clip undo is exact', Math.abs(s.sum - s0.sum) < 1e-6 * Math.abs(s0.sum));
 // trim: the same line cuts the right side away and closes it
 await G(() => window.__glina.selectTool('cut'));
-await path2(line(cx + 40, box.y + 10, cx + 40, box.y + box.h - 10)); await idle(); await frames(2);
+await path2(line(cx + 40, box.y + 40, cx + 40, box.y + box.h - 10)); await idle(); await frames(2);
 s = await st();
 check('trim: closed and manifold', s.open === 0 && s.nonman === 0, { open: s.open, nonman: s.nonman });
 check('trim: the shaded part cut away (volume smaller, the other side untouched)', s.vol < s0.vol * 0.9 && s.mn > s0.mn + 0.1 && Math.abs(s.mx - s0.mx) < 1e-6, { vol: [s0.vol, s.vol] });
@@ -65,7 +65,7 @@ check('trim undo gives the model back', s.n === s0.n && Math.abs(s.vol - s0.vol)
 // trim with X symmetry: a vertical line off the middle cuts both sides
 await G(() => { window.__glina.S.sym = true; window.__glina.syncSym(); });
 const xs = await G(({ w, h }) => { for (let px = Math.round(w / 2); px < w; px++) { const hit = window.__glina.pick(px, h / 2); if (hit && hit.point.x > 0.55) return px; } return -1; }, { w: box.w, h: box.h });
-await path2(line(box.x + xs, box.y + 10, box.x + xs, box.y + box.h - 10)); await idle(); await frames(2);
+await path2(line(box.x + xs, box.y + 40, box.x + xs, box.y + box.h - 10)); await idle(); await frames(2);
 s = await st();
 check('trim with symmetry: both sides cut, the same amount', s.open === 0 && Math.abs(s.mx + s.mn) < 0.05 && s.mx < s0.mx - 0.05, { mx: s.mx, mn: s.mn });
 await G(() => { window.__glina.undo(); window.__glina.S.sym = false; window.__glina.syncSym(); });

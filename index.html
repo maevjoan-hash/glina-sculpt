@@ -93,6 +93,12 @@ button, input, select { font: inherit; color: inherit; }
   background: radial-gradient(ellipse at 50% 38%, #2b3139 0%, #1a1e24 55%, #111317 100%); }
 #gl { position: absolute; inset: 0; width: 100%; height: 100%; display: block; touch-action: none; outline: none; }
 #overlay { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; overflow: visible; }
+#history { position: absolute; top: 8px; left: 50%; transform: translateX(-50%); width: min(60%, 520px); height: 12px; display: flex; justify-content: center; gap: 1px; align-items: stretch; z-index: 3; }
+#history[hidden] { display: none; }
+.hstep { flex: 0 1 12px; min-width: 2px; padding: 0; border: 0; border-radius: 1px; background: var(--muted, #8a8f98); opacity: .45; cursor: pointer; }
+.hstep.ahead { opacity: .15; }
+.hstep.now { background: var(--wax, #e7ad4b); opacity: 1; min-width: 4px; }
+.hstep:hover { opacity: .9; }
 #cursor2d { position: absolute; left: 0; top: 0; border-radius: 50%; border: 1.5px solid rgba(255,255,255,.55); pointer-events: none; transform: translate(-50%,-50%); box-shadow: 0 0 0 1px rgba(0,0,0,.35); }
 #hud {
   position: absolute; left: 12px; bottom: calc(12px + env(safe-area-inset-bottom, 0px)); display: flex; gap: 14px; align-items: center; flex-wrap: wrap;
@@ -212,6 +218,7 @@ input[type=range] { width: 100%; height: 26px; accent-color: var(--wax); backgro
     <button class="btn" id="bSym" aria-pressed="true" title="Симетрия по X"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M12 3v18" stroke-dasharray="2 2"/><path d="M9 7L4 12l5 5V7zM15 7l5 5-5 5V7z"/></svg><span class="lbl">Симетрия</span></button>
     <button class="btn" id="bWire" aria-pressed="false" title="Мрежа (W)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M4 4h16v16H4zM4 12h16M12 4v16M4 4l16 16"/></svg><span class="lbl">Мрежа</span></button>
     <button class="btn" id="bDyn" aria-pressed="false" title="Динамична топология (D)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"><path d="M12 3L3 20h18z"/><path d="M7.5 11.5h9M12 20l-4.5-8.5M12 20l4.5-8.5"/></svg><span class="lbl">Дин. топология</span></button>
+    <button class="btn" id="bPersp" aria-pressed="true" title="Перспектива (Shift+P)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"><path d="M4 6l16-3v18L4 18z"/><path d="M4 12h16" opacity=".5"/></svg><span class="lbl">Перспектива</span></button>
     <button class="btn" id="bFrame" title="Центрирай изгледа (F)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M4 9V4h5M15 4h5v5M20 15v5h-5M9 20H4v-5"/><circle cx="12" cy="12" r="3"/></svg><span class="lbl">Центрирай</span></button>
     <div class="spacer"></div>
     <button class="btn" id="bPanel" aria-pressed="true" title="Настройки"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M4 7h10M18 7h2M4 17h4M12 17h8"/><circle cx="16" cy="7" r="2"/><circle cx="10" cy="17" r="2"/></svg><span class="lbl">Настройки</span></button>
@@ -223,6 +230,7 @@ input[type=range] { width: 100%; height: 26px; accent-color: var(--wax); backgro
     <canvas id="gl" tabindex="0"></canvas>
     <div id="cursor2d" hidden></div>
     <svg id="overlay" aria-hidden="true"></svg>
+    <div id="history" role="toolbar" aria-label="История на стъпките" hidden></div>
     <div id="hint">
       <p><b>Стилус или мишка по модела</b> скулптира. Влачене по празното място или десен бутон върти, среден бутон или два пръста местят, колелцето приближава. <b>Shift</b> изглажда, <b>Alt</b> обръща посоката, <b>Ctrl</b> рисува маска, <b>D</b> включва динамичната топология.</p>
       <button id="hintClose" aria-label="Скрий подсказката">×</button>
@@ -248,6 +256,7 @@ input[type=range] { width: 100%; height: 26px; accent-color: var(--wax); backgro
       <div class="row"><label for="sRadius">Радиус</label><output id="oRadius"></output><input type="range" id="sRadius" min="4" max="320" step="1"></div>
       <div class="row"><label for="sStrength">Сила</label><output id="oStrength"></output><input type="range" id="sStrength" min="0.01" max="1" step="0.01"></div>
       <label class="toggle">Обърната посока (Alt) <input type="checkbox" id="tInvert"></label>
+      <label class="toggle" title="Dynamic: при приближаване четката остава със същия размер върху модела">Размерът следва модела <input type="checkbox" id="tDynSize"></label>
       <details id="brushEdit">
         <summary>Форма и щрих на четката</summary>
         <div class="field"><label for="bName">Име</label><input type="text" id="bName" maxlength="40" autocomplete="off"></div>
@@ -274,6 +283,7 @@ input[type=range] { width: 100%; height: 26px; accent-color: var(--wax); backgro
         <div class="row" id="modRow"><label for="sMod">Притискане ↔ надуване (Brush Mod)</label><output id="oMod"></output><input type="range" id="sMod" min="-1" max="1" step="0.05"></div>
         <label class="toggle" id="frontRow">Само видимата страна <input type="checkbox" id="tFront"></label>
         <label class="toggle" id="topoRow">Само свързаната повърхност <input type="checkbox" id="tTopo"></label>
+        <label class="toggle" id="deepRow" title="Move Infinite Depth: хваща и задната страна">Във всяка дълбочина <input type="checkbox" id="tDeep"></label>
         <label class="toggle" id="groupRow">Само групата под четката <input type="checkbox" id="tGroupOnly"></label>
         <div class="grp" id="grabGrp"><div class="note lab">Хващане</div><div class="chips" id="grabChips"></div></div>
         <div class="grp" id="immGrp"><div class="note lab">Форма за вмъкване</div><div class="chips" id="immChips"></div>
@@ -360,6 +370,11 @@ input[type=range] { width: 100%; height: 26px; accent-color: var(--wax); backgro
       <div class="row"><label for="sVoxel">Плътност на преизграждането</label><output id="oVoxel"></output><input type="range" id="sVoxel" min="48" max="256" step="8"></div>
       <button class="btn wide" id="bRemesh" title="DynaMesh: нова равна мрежа по формата на модела">Преизгради мрежата (DynaMesh)</button>
       <p class="note">Прави нови еднакви триъгълници по цялата форма: оправя разтегнатите места след дълго дърпане и слива частите, които се застъпват. Цветът и маската се запазват; по-фините детайли от плътността изчезват.</p>
+      <div class="two"><button class="btn wide" id="bMirror" title="Deformation > Mirror">Огледай по X</button><button class="btn wide" id="bMirrorWeld" title="Mirror And Weld: страната към вас се копира на другата">Огледай и завари</button></div>
+      <div class="note lab">Шум по повърхността (Surface Noise)</div>
+      <div class="row"><label for="sNoiseScale">Големина на петната</label><output id="oNoiseScale"></output><input type="range" id="sNoiseScale" min="0.02" max="1" step="0.01"></div>
+      <div class="row"><label for="sNoiseAmt">Височина</label><output id="oNoiseAmt"></output><input type="range" id="sNoiseAmt" min="0.02" max="1" step="0.02"></div>
+      <button class="btn wide" id="bNoise">Нанеси шум</button>
     </section>
 
     <section class="sec">
@@ -409,6 +424,12 @@ const ICON = {
   insert: '<circle cx="12" cy="9" r="4.5"/><path d="M3 19c3-2.5 6-3.5 9-3.5s6 1 9 3.5"/><path d="M12 13.5v2" opacity=".5"/>',
   tube: '<path d="M4 19c2-8 7-12 16-13" stroke-width="5" opacity=".25"/><path d="M4 19c2-8 7-12 16-13"/>',
   curve: '<path d="M3 17c4-9 8 2 12-6 1.5-3 3.5-4 6-4"/><circle cx="3" cy="17" r="1.4"/><circle cx="21" cy="7" r="1.4"/>',
+  planar: '<path d="M3 13h18"/><path d="M5 13c1-4 3-6 7-6s6 2 7 6" opacity=".35"/><path d="M8 17h8" opacity=".6"/>',
+  layer: '<path d="M3 18h18"/><path d="M6 18v-5h12v5"/><path d="M9 13V9h6v4" opacity=".5"/>',
+  magnify: '<path d="M8 12H3M21 12h-5"/><path d="M5 9l-3 3 3 3M19 9l3 3-3 3"/><path d="M12 5v14" opacity=".45"/>',
+  blob: '<circle cx="8" cy="13" r="3"/><circle cx="15" cy="10" r="4"/><circle cx="16" cy="17" r="2" opacity=".6"/>',
+  movedeep: '<path d="M12 3v18M3 12h18"/><circle cx="12" cy="12" r="3"/><path d="M9 6l3-3 3 3M9 18l3 3 3-3" opacity=".6"/>',
+  slice: '<path d="M3 21L21 3"/><path d="M4 8c3-4 9-5 12-2" opacity=".5"/><path d="M8 20c4 1 9-1 12-6"/>',
   pose: '<path d="M4 20l7-7"/><path d="M11 13l6-8"/><circle cx="11" cy="13" r="2"/><path d="M14 4h4v4" opacity=".6"/>',
   mask: '<circle cx="12" cy="12" r="8"/><path d="M12 4a8 8 0 010 16z" fill="currentColor"/>',
   paint: '<path d="M12 3c4 5 6 8 6 11a6 6 0 01-12 0c0-3 2-6 6-11z"/>',
@@ -429,7 +450,7 @@ const BASES = [
   { id: 'draw', name: 'Рисуване (Standard)' }, { id: 'clay', name: 'Глина (Clay)' }, { id: 'claystrips', name: 'Глина на ивици (ClayBuildup)' },
   { id: 'inflate', name: 'Надуване (Inflate)' }, { id: 'flatten', name: 'Изравняване (hPolish)' }, { id: 'scrape', name: 'Подрязване (TrimDynamic)' },
   { id: 'pinch', name: 'Притискане (Pinch)' }, { id: 'crease', name: 'Гънка' }, { id: 'smooth', name: 'Изглаждане (Smooth)' },
-  { id: 'grab', name: 'Хващане (Move)' }, { id: 'snake', name: 'Издърпване (SnakeHook)' }, { id: 'pose', name: 'Поза (Pose)' }, { id: 'insert', name: 'Вмъкване на форма (InsertMesh)' }, { id: 'tube', name: 'Тръба по крива (CurveTube)' }, { id: 'clip', name: 'Отсичане (ClipCurve)' }, { id: 'cut', name: 'Отрязване (TrimCurve)' }, { id: 'mask', name: 'Маска' }, { id: 'paint', name: 'Боя' },
+  { id: 'grab', name: 'Хващане (Move)' }, { id: 'snake', name: 'Издърпване (SnakeHook)' }, { id: 'pose', name: 'Поза (Pose)' }, { id: 'insert', name: 'Вмъкване на форма (InsertMesh)' }, { id: 'planar', name: 'Равнина (Planar)' }, { id: 'layer', name: 'Слой (Layer)' }, { id: 'slice', name: 'Разделяне на групи (SliceCurve)' }, { id: 'tube', name: 'Тръба по крива (CurveTube)' }, { id: 'clip', name: 'Отсичане (ClipCurve)' }, { id: 'cut', name: 'Отрязване (TrimCurve)' }, { id: 'mask', name: 'Маска' }, { id: 'paint', name: 'Боя' },
 ];
 // a complete brush; presets only list what differs
 const BRUSH_DEFAULTS = {
@@ -437,6 +458,7 @@ const BRUSH_DEFAULTS = {
   alpha: 'none', alphaMid: 0, alphaRot: 'fixed', alphaAngle: 0,
   stroke: 'dots', spacing: 0.15, mod: 0, front: true, topo: false, grab: 'soft', volume: 0.4,
   group: false,        // only the polygroup under the brush (ZBrush: Auto Masking > Mask By Polygroups)
+  deep: false,         // grab: everything under the brush circle on screen, at any depth (Move Infinite Depth)
   imm: 'sphere',       // the shape Insert puts in
   taper: 0,            // curves and tubes: thinner toward both ends (ZBrush: Curve Falloff)
 };
@@ -456,11 +478,17 @@ const PRESETS = [
   { id: 'grabtopo', name: 'Хващане на част', short: 'Част', key: 'o', base: 'grab', icon: 'grabtopo', topo: true, radius: 90, strength: 1, curve: 'move', front: false, zb: 'Move Topological' },
   { id: 'snake', name: 'Издърпване', short: 'Дърпай', key: 'h', base: 'snake', radius: 45, strength: 0.8, front: false, zb: 'SnakeHook' },
   { id: 'pose', name: 'Поза', short: 'Поза', key: 'q', base: 'pose', radius: 70, strength: 1, front: false, zb: 'Transpose / Pose' },
+  { id: 'planar', name: 'Равнина', short: 'Равн.', base: 'planar', radius: 60, strength: 0.6, tip: 'square', curve: 'flat', zb: 'Planar' },
+  { id: 'layer', name: 'Слой', short: 'Слой', base: 'layer', radius: 45, strength: 0.4, curve: 'flat', zb: 'Layer' },
+  { id: 'magnify', name: 'Раздалечаване', short: 'Разд.', base: 'pinch', icon: 'magnify', dir: -1, radius: 40, zb: 'Magnify' },
+  { id: 'blob', name: 'Буци', short: 'Буци', base: 'inflate', icon: 'blob', radius: 30, strength: 0.5, alpha: 'noise', alphaRot: 'random', spacing: 0.12, zb: 'Blob' },
+  { id: 'movedeep', name: 'Хващане в дълбочина', short: 'Дълб.', base: 'grab', icon: 'movedeep', deep: true, radius: 90, strength: 1, curve: 'move', front: false, zb: 'Move Infinite Depth' },
   { id: 'curvedam', name: 'Гънка по крива', short: 'Крива', icon: 'curve', radius: 12, strength: 0.6, dir: -1, curve: 'sharp', focal: 0.3, mod: 0.6, spacing: 0.08, stroke: 'curve', taper: 0.7, zb: 'Curve Mode + Dam_Standard' },
   { id: 'imm', name: 'Вмъкване на форма', short: 'Вмъкни', key: 'j', base: 'insert', radius: 40, zb: 'InsertMesh (IMM)' },
   { id: 'tube', name: 'Тръба по крива', short: 'Тръба', key: 'l', base: 'tube', radius: 10, stroke: 'curve', zb: 'CurveTube' },
   { id: 'clip', name: 'Отсичане', short: 'Отсечи', key: 'y', base: 'clip', zb: 'ClipCurve' },
   { id: 'cut', name: 'Отрязване', short: 'Отрежи', key: 'u', base: 'cut', zb: 'TrimCurve' },
+  { id: 'slice', name: 'Разделяне на групи', short: 'Групи', key: 'a', base: 'slice', zb: 'SliceCurve' },
   { id: 'mask', name: 'Маска', short: 'Маска', key: 'm', base: 'mask', radius: 45, strength: 0.8, zb: 'MaskPen' },
   { id: 'paint', name: 'Боя', short: 'Боя', key: 'v', base: 'paint', radius: 40, strength: 0.6, front: true },
 ];
@@ -497,6 +525,10 @@ const S = {
   voxel: 96,           // voxel remesh resolution along the longest side
   showGroups: false,   // colour the polygroups
   selShape: 'rect',    // Ctrl+drag on empty space: rect | lasso
+  ortho: false,        // P: (almost) no perspective, as ZBrush's Persp off
+  dynSize: false,      // the brush keeps its size on the model when zooming (ZBrush: Dynamic)
+  dynRef: 4,           // the camera distance at which the brush has its set size
+  noiseScale: 0.5, noiseAmt: 0.3,
 };
 let savedSettings = null;
 try { savedSettings = JSON.parse(localStorage.getItem('glina.settings') || 'null'); } catch (e) { /* storage unavailable */ }
@@ -1559,7 +1591,7 @@ function voxelRemesh(src, res) {
    counter-clockwise seen from +n, holes (a torus, a hollow shell) clockwise. Each outer loop with its
    holes is bridged into one polygon, ear-clipped, and filled with points on a hexagonal lattice by
    incremental Delaunay insertion, so the cap has triangles like the surface around it. */
-function trimByPlane(src, n, d) {
+function trimByPlane(src, n, d, cap = true) {
   const P = src.pos, I = src.idx, nV = P.length / 3, C = src.col, M = src.mask, Gr = src.grp;
   const sdRaw = new Float64Array(nV);
   for (let v = 0; v < nV; v++) sdRaw[v] = n[0] * P[v * 3] + n[1] * P[v * 3 + 1] + n[2] * P[v * 3 + 2] + d;
@@ -1612,6 +1644,7 @@ function trimByPlane(src, n, d) {
     }
     for (let j = 1; j + 1 < poly.length; j++) out.push(poly[0], poly[j], poly[j + 1]);
   }
+  if (!cap) return { pos: Float32Array.from(pos), idx: Uint32Array.from(out), col: Float32Array.from(col), mask: Float32Array.from(mask), grp: Float32Array.from(grp), capped: 0, open: 0 };
   // plane basis: (u, w, n) right-handed, so counter-clockwise in (u, w) faces +n (the cut side)
   const ax = Math.abs(n[0]) < 0.9 ? [1, 0, 0] : [0, 1, 0];
   const u = [n[1] * ax[2] - n[2] * ax[1], n[2] * ax[0] - n[0] * ax[2], n[0] * ax[1] - n[1] * ax[0]], ul = Math.hypot(...u);
@@ -1659,6 +1692,86 @@ function trimByPlane(src, n, d) {
   const capped = capLoops(loops, uv, target, pos, col, mask, grp, out, u, w, n, d);
   return { pos: Float32Array.from(pos), idx: Uint32Array.from(out), col: Float32Array.from(col), mask: Float32Array.from(mask), grp: Float32Array.from(grp), capped, open };
 }
+// Slice (ZBrush: SliceCurve): the triangles across the plane are cut in two along it (nothing moves and
+// nothing is removed), and everything on the shaded side (n·p + d > 0) gets the group gNew
+function sliceByPlane(src, n, d, gNew) {
+  const P = src.pos, I = src.idx, nV = P.length / 3, C = src.col, M = src.mask, Gr = src.grp;
+  const sd = new Float64Array(nV);
+  let ext = 0, lenSum = 0, lenCnt = 0;
+  for (let v = 0; v < nV; v++) sd[v] = n[0] * P[v * 3] + n[1] * P[v * 3 + 1] + n[2] * P[v * 3 + 2] + d;
+  for (let i = 0; i < P.length; i++) ext = Math.max(ext, Math.abs(P[i]));
+  for (let f = 0; f < I.length; f += 3) for (let e = 0; e < 3; e++) {
+    const a = I[f + e], b = I[f + (e + 1) % 3];
+    if (a < b && (sd[a] < 0) !== (sd[b] < 0)) { lenSum += Math.sqrt(edgeLen2(P, a, b)); lenCnt++; }
+  }
+  const eps = Math.max(1e-6 * (ext || 1), (lenCnt ? lenSum / lenCnt : 0) * 0.03);
+  const side = new Int8Array(nV);
+  for (let v = 0; v < nV; v++) side[v] = sd[v] < -eps ? -1 : sd[v] > eps ? 1 : 0;
+  const pos = Array.from(P), col = Array.from(C.subarray(0, nV * 3)), mask = Array.from(M.subarray(0, nV)), grp = Array.from({ length: nV }, (_, v) => (Gr ? Gr[v] : 0));
+  const cut = new Map();
+  const cutV = (a, b) => {
+    const k = a < b ? a * nV + b : b * nV + a;
+    let v = cut.get(k);
+    if (v === undefined) {
+      const t = sd[a] / (sd[a] - sd[b]);
+      v = pos.length / 3; cut.set(k, v);
+      for (let q = 0; q < 3; q++) { pos.push(P[a * 3 + q] + (P[b * 3 + q] - P[a * 3 + q]) * t); col.push(C[a * 3 + q] + (C[b * 3 + q] - C[a * 3 + q]) * t); }
+      mask.push(M[a] + (M[b] - M[a]) * t); grp.push(Gr ? (side[a] <= 0 ? Gr[a] : Gr[b]) : 0);
+    }
+    return v;
+  };
+  const out = [];
+  for (let f = 0; f < I.length; f += 3) {
+    const tri = [I[f], I[f + 1], I[f + 2]], sg = tri.map((v) => side[v]);
+    if (!(sg.includes(1) && sg.includes(-1))) { out.push(...tri); continue; }
+    const neg = [], posP = [];
+    for (let e = 0; e < 3; e++) {
+      const a = tri[e], b = tri[(e + 1) % 3], sa = sg[e], sb = sg[(e + 1) % 3];
+      if (sa <= 0) neg.push(a);
+      if (sa >= 0) posP.push(a);
+      if (sa * sb < 0) { const c = cutV(a, b); neg.push(c); posP.push(c); }
+    }
+    for (const poly of [neg, posP]) for (let j = 1; j + 1 < poly.length; j++) out.push(poly[0], poly[j], poly[j + 1]);
+  }
+  let moved = 0;
+  for (let v = 0; v < nV; v++) if (side[v] > 0 && grp[v] !== gNew) { grp[v] = gNew; moved++; }
+  return { pos: Float32Array.from(pos), idx: Uint32Array.from(out), col: Float32Array.from(col), mask: Float32Array.from(mask), grp: Float32Array.from(grp), moved };
+}
+// Mirror and Weld: the half on the kept side of x = 0, plus its mirror image, joined along the seam
+function mirrorWeldArrays(src, keepPositive) {
+  const r = trimByPlane(src, [keepPositive ? -1 : 1, 0, 0], 0, false);
+  const n0 = r.pos.length / 3;
+  let ext = 0; for (let i = 0; i < r.pos.length; i++) ext = Math.max(ext, Math.abs(r.pos[i]));
+  const tol = 1e-5 * (ext || 1), map = new Int32Array(n0);
+  let extra = 0;
+  for (let v = 0; v < n0; v++) {
+    if (Math.abs(r.pos[v * 3]) <= tol) { r.pos[v * 3] = 0; map[v] = v; }
+    else map[v] = n0 + extra++;
+  }
+  const N = n0 + extra, pos = new Float32Array(N * 3), col = new Float32Array(N * 3), mask = new Float32Array(N), grp = new Float32Array(N);
+  pos.set(r.pos); col.set(r.col); mask.set(r.mask); grp.set(r.grp);
+  for (let v = 0; v < n0; v++) {
+    const u = map[v]; if (u === v) continue;
+    pos[u * 3] = -r.pos[v * 3]; pos[u * 3 + 1] = r.pos[v * 3 + 1]; pos[u * 3 + 2] = r.pos[v * 3 + 2];
+    col[u * 3] = r.col[v * 3]; col[u * 3 + 1] = r.col[v * 3 + 1]; col[u * 3 + 2] = r.col[v * 3 + 2];
+    mask[u] = r.mask[v]; grp[u] = r.grp[v];
+  }
+  const f0 = r.idx.length, idx = new Uint32Array(f0 * 2);
+  idx.set(r.idx);
+  for (let t = 0; t < f0; t += 3) { idx[f0 + t] = map[r.idx[t]]; idx[f0 + t + 1] = map[r.idx[t + 2]]; idx[f0 + t + 2] = map[r.idx[t + 1]]; }
+  return { pos, idx, col, mask, grp };
+}
+// a smooth 3D noise (value noise, three octaves), about −1…1
+function hash3(x, y, z) { let h = (x * 374761393 + y * 668265263 + z * 1274126177) | 0; h = (h ^ (h >>> 13)) * 1274126177; return (((h ^ (h >>> 16)) >>> 0) / 4294967296) * 2 - 1; }
+function vnoise3(x, y, z) {
+  const xi = Math.floor(x), yi = Math.floor(y), zi = Math.floor(z), fx = x - xi, fy = y - yi, fz = z - zi;
+  const u = fx * fx * (3 - 2 * fx), v = fy * fy * (3 - 2 * fy), w = fz * fz * (3 - 2 * fz);
+  const L = (a, b, t) => a + (b - a) * t;
+  const c = (i, j, k) => hash3(xi + i, yi + j, zi + k);
+  return L(L(L(c(0, 0, 0), c(1, 0, 0), u), L(c(0, 1, 0), c(1, 1, 0), u), v), L(L(c(0, 0, 1), c(1, 0, 1), u), L(c(0, 1, 1), c(1, 1, 1), u), v), w);
+}
+function fbm3(x, y, z) { return (vnoise3(x, y, z) + 0.5 * vnoise3(x * 2.03, y * 2.03, z * 2.03) + 0.25 * vnoise3(x * 4.1, y * 4.1, z * 4.1)) / 1.75; }
+
 // all loops of one plane: outer ones (counter-clockwise) with the holes inside them
 function capLoops(loops, uv, target, pos, col, mask, grp, out, u, w, n, d) {
   const polys = loops.map((ids) => {
@@ -2088,11 +2201,29 @@ function uploadVerts(names, list, count) {
    ===================================================================== */
 const cam = { target: new THREE.Vector3(), dist: 4, q: new THREE.Quaternion() };
 const WORLD_UP = new THREE.Vector3(0, 1, 0);
+// cam.dist is the distance a 38° camera would have; with P (no perspective) the camera has a 1.2° field
+// of view and stands as much farther away, so the framing stays and every other formula works unchanged
+const PERSP_FOV = 38, ORTHO_FOV = 1.2;
+const camK = () => (S.ortho ? Math.tan(THREE.MathUtils.degToRad(PERSP_FOV / 2)) / Math.tan(THREE.MathUtils.degToRad(ORTHO_FOV / 2)) : 1);
+function setOrtho(on) {
+  S.ortho = on; camera.fov = on ? ORTHO_FOV : PERSP_FOV; applyCamera(); saveSettings();
+  setPressed('bPersp', !on);
+  toast(on ? 'Без перспектива (P): правите линии остават успоредни.' : 'С перспектива (P).');
+}
+// the nearest view straight along an axis (ZBrush: Shift while turning)
+function snapView() {
+  const back = new THREE.Vector3(0, 0, 1).applyQuaternion(cam.q), up = new THREE.Vector3(0, 1, 0).applyQuaternion(cam.q);
+  const axes = [[1, 0, 0], [0, 1, 0], [0, 0, 1]].map((a) => new THREE.Vector3(...a));
+  const near = (v, not) => { let best = null, bd = -1; for (const a of axes) { if (not && Math.abs(a.dot(not)) > 0.5) continue; const d = Math.abs(v.dot(a)); if (d > bd) { bd = d; best = a.clone().multiplyScalar(Math.sign(v.dot(a)) || 1); } } return best; };
+  const z = near(back), y = near(up, z), x = new THREE.Vector3().crossVectors(y, z);
+  cam.q.setFromRotationMatrix(new THREE.Matrix4().makeBasis(x, y, z));
+  applyCamera();
+}
 function applyCamera() {
-  const off = new THREE.Vector3(0, 0, cam.dist).applyQuaternion(cam.q);
+  const off = new THREE.Vector3(0, 0, cam.dist * camK()).applyQuaternion(cam.q);
   camera.position.copy(cam.target).add(off);
   camera.quaternion.copy(cam.q);
-  camera.near = cam.dist * 0.01; camera.far = cam.dist * 50; camera.updateProjectionMatrix();
+  camera.near = cam.dist * camK() * 0.01; camera.far = cam.dist * camK() * 50; camera.updateProjectionMatrix();
   camera.updateMatrixWorld();
   requestRender();
 }
@@ -2105,7 +2236,7 @@ function orbit(dx, dy) {
 }
 function pan(dx, dy) {
   const h = viewport.h || 1;
-  const s = (2 * Math.tan(THREE.MathUtils.degToRad(camera.fov / 2)) * cam.dist) / h;
+  const s = (2 * Math.tan(THREE.MathUtils.degToRad(camera.fov / 2)) * cam.dist * camK()) / h;
   const right = new THREE.Vector3(1, 0, 0).applyQuaternion(cam.q), up = new THREE.Vector3(0, 1, 0).applyQuaternion(cam.q);
   cam.target.addScaledVector(right, -dx * s).addScaledVector(up, dy * s);
   applyCamera();
@@ -2114,7 +2245,7 @@ function zoom(f) { cam.dist = THREE.MathUtils.clamp(cam.dist * f, 0.05, 80); app
 function frameView() {
   const { c, r } = mesh.bounds();
   cam.target.set(c[0], c[1], c[2]);
-  cam.dist = r / Math.sin(THREE.MathUtils.degToRad(camera.fov / 2)) * 1.15;
+  cam.dist = r / Math.sin(THREE.MathUtils.degToRad(PERSP_FOV / 2)) * 1.15;
   if (cam.q.lengthSq() === 0 || frameView.first !== false) { cam.q.setFromEuler(new THREE.Euler(-0.22, 0.45, 0, 'YXZ')); frameView.first = false; }
   applyCamera();
 }
@@ -2307,8 +2438,26 @@ function gather(cx, cy, cz, r, nx, ny, nz, frontOnly) {
   return c;
 }
 
+// Move Infinite Depth: everything inside the brush circle on screen, however deep (front and back)
+function gatherDeep(pt, r) {
+  const m = mesh, P = m.pos, out = m.gIdx, fall = m.gFall, FL = curLUT, cp = camera.position;
+  const dir = new THREE.Vector3().subVectors(pt, cp), tp = dir.length();
+  dir.divideScalar(tp || 1);
+  let c = 0;
+  for (let i = 0; i < m.n; i++) {
+    if (m.dyn && !m.vfA[i].length) continue;
+    const vx = P[i * 3] - cp.x, vy = P[i * 3 + 1] - cp.y, vz = P[i * 3 + 2] - cp.z;
+    const t = vx * dir.x + vy * dir.y + vz * dir.z; if (t <= 0) continue;
+    const rr = r * t / tp, p2 = vx * vx + vy * vy + vz * vz - t * t;   // (the circle widens with depth, as on screen)
+    if (p2 >= rr * rr) continue;
+    out[c] = i; fall[c] = lut(FL, Math.sqrt(Math.max(0, p2)) / rr); c++;
+  }
+  m.gCount = c;
+  return c;
+}
+
 /* ---------- dynamic topology: split long edges, collapse short ones inside the brush ---------- */
-const DYN_TOOLS = new Set(['draw', 'clay', 'claystrips', 'smooth', 'inflate', 'flatten', 'scrape', 'pinch', 'crease', 'snake']);
+const DYN_TOOLS = new Set(['draw', 'clay', 'claystrips', 'smooth', 'inflate', 'flatten', 'scrape', 'pinch', 'crease', 'snake', 'planar', 'layer']);
 const DYN_FRAME_SPLITS = 5000;      // keeps a fast stroke with a huge brush and tiny detail interactive
 const DYN_FRAME_COLLAPSES = 5000;   // the same for coarse detail on a dense mesh
 const DYN_DAB_EDITS = 2000;         // per dab, so one frame's budget is spread over several dabs
@@ -2713,6 +2862,35 @@ function applyBrush(tool, c, n, r, s, sign, dab = {}) {
       }
       break;
     }
+    case 'planar': {
+      // Planar: the plane where the stroke began (its centre and area normal) holds for the whole stroke
+      if (!stroke.planes) stroke.planes = [];
+      const pl = stroke.planes[dab.copy || 0] || (stroke.planes[dab.copy || 0] = [px, py, pz, ax, ay, az]);
+      const k0 = s * 0.5;
+      for (let k = 0; k < count; k++) {
+        const i = G[k], w = F[k] * (1 - MK[i]); if (w <= 0) continue;
+        const d = (P[i * 3] - pl[0]) * pl[3] + (P[i * 3 + 1] - pl[1]) * pl[4] + (P[i * 3 + 2] - pl[2]) * pl[5];
+        if (Math.abs(d) < 1e-9) continue;
+        touchVert(i);
+        const t = d * w * k0;
+        P[i * 3] -= pl[3] * t; P[i * 3 + 1] -= pl[4] * t; P[i * 3 + 2] -= pl[5] * t;
+      }
+      break;
+    }
+    case 'layer': {
+      // Layer: up to one height and no higher, however often the stroke passes over a spot
+      const h = r * 0.3 * s * sign, nv = m.pos.length / 3;
+      if (!stroke.lh || stroke.lh.length < nv) { const nl = new Float32Array(nv); if (stroke.lh) nl.set(stroke.lh); stroke.lh = nl; }
+      const LH = stroke.lh;
+      for (let k = 0; k < count; k++) {
+        const i = G[k], w = F[k] * (1 - MK[i]); if (w <= 0) continue;
+        const want = h * w, step = sign > 0 ? Math.max(0, want - LH[i]) : Math.min(0, want - LH[i]);
+        if (!step) continue;
+        touchVert(i); LH[i] += step;
+        P[i * 3] += ax * step; P[i * 3 + 1] += ay * step; P[i * 3 + 2] += az * step;
+      }
+      break;
+    }
     case 'smooth': smoothVerts(G, F, count, Math.min(1, s * 1.2)); break;
     case 'pinch': case 'crease': {
       const kp = (tool === 'pinch' ? 0.18 : 0.14) * s * sign;
@@ -2778,7 +2956,9 @@ function smoothVerts(G, F, count, s) {
 }
 
 function pressureOf(p) { return Math.pow(Math.min(1, Math.max(0, p)), S.curve); }
-function radiusPxFor(pr, b = (stroke && stroke.b) || brush()) { return b.radius * (S.prRadius ? 0.12 + 0.88 * pr : 1); }
+function radiusPxFor(pr, b = (stroke && stroke.b) || brush()) { return b.radius * (S.prRadius ? 0.12 + 0.88 * pr : 1) * dynScale(); }
+// Dynamic size: the brush covers as much of the model at any zoom as it did when the option was turned on
+function dynScale() { return S.dynSize ? Math.min(20, Math.max(0.05, S.dynRef / cam.dist)) : 1; }
 // DragRect / DragDot place one stamp that follows the pen until it lifts; topology stays as it is meanwhile
 // (and Line: dabs along a straight line from the press point to the pen, redrawn as it moves)
 const isDragStroke = (b) => b.stroke === 'dragrect' || b.stroke === 'dragdot' || b.stroke === 'line';
@@ -2802,7 +2982,7 @@ function beginStroke(e, x, y, b, sign) {
   if (tool === 'pose') {
     const hit = pick(x, y);
     if (!hit) { stroke = null; return false; }
-    const r = b.radius * worldPerPx(hit.point);
+    const r = radiusPxFor(1, b) * worldPerPx(hit.point);
     const parts = [hit.point, ...SYM.map(({ m }) => symV(m, hit.point))].map((c, k) => ({ m: k ? SYM[k - 1].m : IDENT, ...inGroup(b, c, r, () => poseRegion(c, r)) }));
     // all parts share one list of vertices; where copies overlap (a part on the symmetry plane) each
     // vertex blends their turns by weight, so the overlap bends smoothly instead of tearing
@@ -2822,7 +3002,7 @@ function beginStroke(e, x, y, b, sign) {
   if (tool === 'grab' || tool === 'snake') {
     const hit = pick(x, y);
     if (!hit) { stroke = null; return false; }
-    const r = b.radius * worldPerPx(hit.point);
+    const r = radiusPxFor(1, b) * worldPerPx(hit.point);
     stroke.grab = { point: hit.point.clone(), r, normal: hit.normal.clone(), strength: b.strength };
     // "only one group": each copy keeps the group it starts on for the whole stroke
     stroke.grab.groups = b.group ? [hit.point, ...SYM.map(({ m }) => symV(m, hit.point))].map((p) => groupNear(p, r)) : null;
@@ -2833,7 +3013,7 @@ function beginStroke(e, x, y, b, sign) {
       const elastic = b.grab === 'elastic';
       const reach = elastic ? r * KEL_EPS * KEL_REACH : r;
       const mk = (pt, nn) => {
-        const cnt = b.topo ? gatherConnected(pt, reach) : gather(pt.x, pt.y, pt.z, reach, nn.x, nn.y, nn.z, false);
+        const cnt = b.topo ? gatherConnected(pt, reach) : b.deep ? gatherDeep(pt, reach) : gather(pt.x, pt.y, pt.z, reach, nn.x, nn.y, nn.z, false);
         return { idx: mesh.gIdx.slice(0, cnt), fall: mesh.gFall.slice(0, cnt) };
       };
       stroke.grab.elastic = elastic ? kelvinlet(r * KEL_EPS, b.volume) : null;
@@ -3121,13 +3301,14 @@ function dab(x, y, p, o = {}) {
   // (a copy that starts off the model tries again at the next dab)
   const lockGroup = (k, p) => { if (!b.group) return -1; if (!stroke.groups) stroke.groups = []; if (!(stroke.groups[k] >= 0)) stroke.groups[k] = groupNear(p, r); return stroke.groups[k]; };
   curGroup = lockGroup(0, hit.point);
+  info.copy = 0;
   applyBrush(tool, hit.point, hit.normal, r, s, stroke.sign, info);
   if (mesh.dyn && moves) gridFollowBrush();
   // each copy's brush plane is the transformed main one, so stamps are mirrored / turned with it
   const frame = { u: lastFrame.u.slice(), v: lastFrame.v.slice() }, shaped = b.tip === 'square' || b.alpha !== 'none' || b.mod;
   copies.forEach((c, k) => {
     curGroup = lockGroup(k + 1, c.p);
-    applyBrush(tool, c.p, c.n, r, s, stroke.sign, { b, dir: info.dir ? symV(c.m, info.dir) : null, uv: shaped ? { u: symA(c.m, frame.u), v: symA(c.m, frame.v) } : null });
+    applyBrush(tool, c.p, c.n, r, s, stroke.sign, { b, copy: k + 1, dir: info.dir ? symV(c.m, info.dir) : null, uv: shaped ? { u: symA(c.m, frame.u), v: symA(c.m, frame.v) } : null });
     if (mesh.dyn && moves) gridFollowBrush();
   });
   curGroup = -1;
@@ -3320,6 +3501,32 @@ function undo() { if (stroke || mrPending || !undoStack.length) return; undoSeri
 function redo() { if (stroke || mrPending || !redoStack.length) return; undoSerial++; undoStack.push(applyRecord(redoStack.pop())); updateUndoButtons(); requestRender(); scheduleAutosave(); }
 function updateUndoButtons() {
   $('bUndo').disabled = !undoStack.length; $('qUndo').disabled = !undoStack.length; $('bRedo').disabled = !redoStack.length;
+  renderHistory();
+}
+// Undo History: one mark per step; a click goes back or forward to it (ZBrush: the timeline above the canvas)
+function renderHistory() {
+  const H = $('history'), u = undoStack.length, total = u + redoStack.length;
+  H.hidden = total === 0;
+  if (!total) return;
+  H.textContent = '';
+  for (let i = 0; i <= total; i++) {
+    const el = document.createElement('button');
+    el.className = 'hstep' + (i === u ? ' now' : i > u ? ' ahead' : '');
+    el.title = i === 0 ? 'Началото' : `Стъпка ${i}`;
+    el.onclick = () => historyJump(i);
+    H.appendChild(el);
+  }
+}
+function historyJump(i) {
+  if (stroke || mrPending) return;
+  dropCurve();
+  while (undoStack.length > i && undoStack.length) undo();
+  while (undoStack.length < i && redoStack.length) redo();
+}
+function polyframe() {
+  const on = !(S.wire && S.showGroups);
+  if (S.wire !== on) toggleWire();
+  S.showGroups = on; $('tGroups').checked = on; syncGroupsUI();
 }
 function replaceMesh(newMesh, { frame = false } = {}) {
   const rec = snapshot(); rec.mrBytes = mrBytesOnly(MR, null); pushUndo(rec);
@@ -3395,7 +3602,7 @@ canvas.addEventListener('pointerdown', (e) => {
   if (ctrl) { gesture = { kind: hit ? 'maskpaint' : 'maskrect', x0: x, y0: y, x, y, alt: e.altKey, e, id: e.pointerId, pts: [[x, y]] }; hideRing(); return; }
   // Clip / Trim: a line, from anywhere (on or off the model)
   const cb = brush();
-  if (cb.base === 'clip' || cb.base === 'cut') { gesture = { kind: 'cutline', base: cb.base, x0: x, y0: y, x, y, alt: e.altKey, snap: e.shiftKey, id: e.pointerId }; hideRing(); return; }
+  if (cb.base === 'clip' || cb.base === 'cut' || cb.base === 'slice') { gesture = { kind: 'cutline', base: cb.base, x0: x, y0: y, x, y, alt: e.altKey, snap: e.shiftKey, id: e.pointerId }; hideRing(); return; }
   // a press on the waiting curve bends it (and redoes its stroke on release)
   if (isCurveBrush(cb) && !e.shiftKey && !tempSmooth && liveCurve() && curve.brushId === cb.id) {
     const k = curveHitIndex(x, y);
@@ -3447,7 +3654,7 @@ canvas.addEventListener('pointermove', (e) => {
     }
     if (e.pointerId !== nav.id) return;
     const dx = x - nav.x, dy = y - nav.y; nav.x = x; nav.y = y;
-    if (nav.mode === 'orbit') orbit(dx, dy);
+    if (nav.mode === 'orbit') { if (e.shiftKey) { if (!nav.snapped) { snapView(); nav.snapped = true; } } else { nav.snapped = false; orbit(dx, dy); } }
     else if (nav.mode === 'pan') pan(dx, dy);
     else if (nav.mode === 'zoom') zoom(Math.exp(dy * 0.006));
     return;
@@ -3535,7 +3742,7 @@ function updateHover() {
     placeRing(hit.point, hit.normal, radiusPxFor(pr) * worldPerPx(hit.point));
   } else {
     ring.visible = false; for (const r of symRings) r.visible = false;
-    const c = $('cursor2d'); const d = brush().radius * 2;
+    const c = $('cursor2d'); const d = radiusPxFor(1) * 2;
     c.style.width = c.style.height = d + 'px'; c.style.left = hoverXY.x + 'px'; c.style.top = hoverXY.y + 'px'; c.hidden = false;
   }
 }
@@ -3564,7 +3771,9 @@ window.addEventListener('keydown', (e) => {
   if (e.ctrlKey || e.metaKey || e.altKey) return;
   if (k === '[' || k === ']') { const b = brush(); b.radius = Math.max(4, Math.min(320, Math.round(b.radius * (k === ']' ? 1.15 : 0.87)))); syncBrushUI(); requestRender(); return; }
   if (k === 'w') { toggleWire(); return; }
+  if (k === 'f' && e.shiftKey) { polyframe(); return; }
   if (k === 'f') { frameView(); return; }
+  if (k === 'p' && e.shiftKey) { setOrtho(!S.ortho); return; }
   if (k === 'd') { setDyntopo(!S.dyntopo); return; }
   const b = S.brushes.find((x) => x.key === k);
   if (b) selectTool(b.id);
@@ -3687,7 +3896,7 @@ function drawOverlay() {
     if (pts) el('polygon', { points: pts, fill: colr, 'fill-opacity': 0.12, stroke: colr, 'stroke-width': 1.5, 'stroke-dasharray': '5 4' });
   } else if (g.kind === 'cutline') {
     const L = cutLine(g); if (!L) return;
-    el('polygon', { points: L.shade.map((p) => p.join(',')).join(' '), fill: g.base === 'cut' ? '#ef7a6a' : '#e7ad4b', 'fill-opacity': 0.18 });
+    el('polygon', { points: L.shade.map((p) => p.join(',')).join(' '), fill: g.base === 'cut' ? '#ef7a6a' : g.base === 'slice' ? '#7ec8a6' : '#e7ad4b', 'fill-opacity': 0.18 });
     el('line', { x1: L.a[0], y1: L.a[1], x2: L.b[0], y2: L.b[1], stroke: '#fff', 'stroke-width': 1.5, 'stroke-dasharray': '6 4' });
   }
 }
@@ -3788,6 +3997,7 @@ function applyCut(g) {
     if (!n) toast('Нищо не беше от засенчената страна.');
     return;
   }
+  if (g.base === 'slice') { applySlice(planes); return; }
   // trim: a new mesh, so one level and no layers (as in ZBrush, Trim needs no subdivision levels)
   if (!askDropLevels('Отрязването')) return;
   const src = mesh.dyn ? mesh.arrays() : { pos: mesh.pos.subarray(0, mesh.n * 3), idx: mesh.idx.subarray(0, mesh.f * 3), col: mesh.col, mask: mesh.mask, grp: mesh.grp };
@@ -3822,7 +4032,7 @@ let immPreview = null;
 function insertPlacement(g) {
   const b = g.b, n = g.hit.normal.clone().normalize(), wpp = worldPerPx(g.hit.point);
   const dx = g.x - g.x0, dy = g.y - g.y0, dpx = Math.hypot(dx, dy);
-  const size = dpx > 4 ? dpx * wpp : b.radius * wpp;
+  const size = dpx > 4 ? dpx * wpp : radiusPxFor(1, b) * wpp;
   // the drag direction on screen, on the surface's tangent plane
   const right = new THREE.Vector3(1, 0, 0).applyQuaternion(camera.quaternion), up = new THREE.Vector3(0, 1, 0).applyQuaternion(camera.quaternion);
   let t = dpx > 4 ? right.multiplyScalar(dx).addScaledVector(up, -dy) : right;
@@ -3900,7 +4110,7 @@ function insertShape(g) {
    along the curve instead. */
 let curve = null;   // { brushId, pts: [{ p, n }], sign, r, serial }
 let undoSerial = 0;   // counts every change of the undo stack: a curve is editable only right after its stroke
-const CURVE_TOOLS = new Set(['draw', 'clay', 'claystrips', 'smooth', 'inflate', 'flatten', 'scrape', 'pinch', 'crease', 'mask', 'paint']);
+const CURVE_TOOLS = new Set(['draw', 'clay', 'claystrips', 'smooth', 'inflate', 'flatten', 'scrape', 'pinch', 'crease', 'planar', 'layer', 'mask', 'paint']);
 const isCurveBrush = (b) => b.base === 'tube' || (b.stroke === 'curve' && CURVE_TOOLS.has(b.base));
 function liveCurve() { if (curve && curve.serial !== undoSerial) curve = null; return curve; }
 function dropCurve() { if (curve) { curve = null; drawOverlay(); } }
@@ -3964,7 +4174,7 @@ function finishCurve(g) {
   if (g.b.base === 'tube' && !askDropLevels('Тръбата')) return;
   const pts = curveFromScreen(g.pts, true);
   if (!pts) { toast('Кривата трябва да е върху модела.'); return; }
-  curve = { brushId: g.b.id, pts, sign: g.sign, r: g.b.radius * worldPerPx(pts[0].p), serial: -1 };
+  curve = { brushId: g.b.id, pts, sign: g.sign, r: radiusPxFor(1, g.b) * worldPerPx(pts[0].p), serial: -1 };
   applyCurve(curve);
   drawOverlay();
 }
@@ -4008,6 +4218,60 @@ function cancelGesture() {
   drawOverlay();
 }
 
+
+function applySlice(planes) {
+  if (!askDropLevels('Разделянето на групи')) return;
+  const src = meshArrays();
+  let g = 0; for (let i = 0; i < src.pos.length / 3; i++) if (src.grp[i] >= g) g = src.grp[i] + 1;
+  let r = src, moved = 0;
+  for (const { n, d } of planes) { r = sliceByPlane(r, [n.x, n.y, n.z], d, g); moved += r.moved; }
+  if (!moved) { toast('Нищо не беше от засенчената страна.'); return; }
+  const paused = replaceMesh(new SculptMesh(r.pos, r.idx, r.col, r.mask, 0, r.grp));
+  if (!S.showGroups) { S.showGroups = true; $('tGroups').checked = true; syncGroupsUI(); }
+  toast('Разделено: засенчената страна е нова група.' + (paused ? ' ' + DYN_PAUSED_MSG : ''));
+}
+// keep the half that faces the camera and mirror it onto the other side (ZBrush: Mirror And Weld)
+function mirrorWeld() {
+  if (!askDropLevels('„Огледай и завари“')) return;
+  const keepPositive = camera.position.x >= cam.target.x;
+  const r = mirrorWeldArrays(meshArrays(), keepPositive);
+  if (r.idx.length < 12) { toast('Няма нищо от тази страна на X.'); return; }
+  const paused = replaceMesh(new SculptMesh(r.pos, r.idx, r.col, r.mask, 0, r.grp));
+  toast(`Страната с ${keepPositive ? '+' : '−'}X (към вас) е огледана на другата и съединена по средата.` + (paused ? ' ' + DYN_PAUSED_MSG : ''));
+}
+// the whole model mirrored across X (ZBrush: Deformation > Mirror)
+function mirrorFlip() {
+  if (!askDropLevels('Огледалото')) return;
+  const src = meshArrays(), pos = Float32Array.from(src.pos), idx = Uint32Array.from(src.idx);
+  for (let i = 0; i < pos.length; i += 3) pos[i] = -pos[i];
+  for (let t = 0; t < idx.length; t += 3) { const x = idx[t + 1]; idx[t + 1] = idx[t + 2]; idx[t + 2] = x; }
+  replaceMesh(new SculptMesh(pos, idx, Float32Array.from(src.col.subarray(0, pos.length)), Float32Array.from(src.mask.subarray(0, pos.length / 3)), 0, Float32Array.from(src.grp.subarray(0, pos.length / 3))));
+  toast('Моделът е огледан по X.');
+}
+// Surface noise (ZBrush: Surface > Noise): each point moves along its normal by a 3D noise; the mask holds
+function applyNoise() {
+  const m = mesh, P = m.pos, NR = m.nrm, MK = m.mask, { r } = m.bounds();
+  const size = Math.max(1e-4, S.noiseScale * r * 0.25), amp = S.noiseAmt * r * 0.03;
+  stroke = { uCount: 0, tool: 'noise' }; strokeId++; frame_.tag++;
+  for (let i = 0; i < m.n; i++) {
+    if (m.dyn && !m.vfA[i].length) continue;
+    const w = 1 - MK[i]; if (w <= 0) continue;
+    const k = fbm3(P[i * 3] / size, P[i * 3 + 1] / size, P[i * 3 + 2] / size) * amp * w;
+    touchVert(i);
+    P[i * 3] += NR[i * 3] * k; P[i * 3 + 1] += NR[i * 3 + 1] * k; P[i * 3 + 2] += NR[i * 3 + 2] * k;
+  }
+  const n = stroke.uCount;
+  if (n) {
+    frame_.positions = true;
+    const rec = { type: 'verts', idx: m.uIdx.slice(0, n), pos: m.uPos.slice(0, n * 3), col: m.uCol.slice(0, n * 3), mask: m.uMask.slice(0, n) };
+    if (recLayer >= 0) recordStroke(rec);
+    pushUndo(rec);
+  }
+  flushFrame();
+  stroke = null; bvhDirty = true; if (m.dyn) m.gridMaybeRebuild();
+  requestRender(); scheduleAutosave();
+  toast(n ? 'Шумът е нанесен (Ctrl+Z го маха).' : 'Всичко е маскирано.');
+}
 
 /* =====================================================================
    Subdivision levels (ZBrush: SDiv, Blender: Multires)
@@ -4809,7 +5073,7 @@ $('bName').addEventListener('input', () => {
 function syncBrushUI() {
   syncRadius(); syncStrength();
   const b = brush(), base = b.base;
-  const moves = base === 'grab' || base === 'snake' || base === 'pose' || base === 'clip' || base === 'cut' || base === 'insert' || base === 'tube';
+  const moves = base === 'grab' || base === 'snake' || base === 'pose' || base === 'clip' || base === 'cut' || base === 'slice' || base === 'insert' || base === 'tube';
   $('bName').value = b.name; $('bName').disabled = b.builtin;
   $('bName').title = b.builtin ? 'Готовите четки не се преименуват; „Нова от тази“ прави ваше копие' : '';
   $('bBase').value = base;
@@ -4817,7 +5081,7 @@ function syncBrushUI() {
   $('tipGrp').hidden = $('alphaGrp').hidden = moves;
   $('strokeGrp').hidden = moves;
   $('modRow').hidden = base !== 'draw';
-  $('topoRow').hidden = base !== 'grab';
+  $('topoRow').hidden = $('deepRow').hidden = base !== 'grab';
   $('grabGrp').hidden = base !== 'grab';
   $('volRow').hidden = !(base === 'grab' && b.grab === 'elastic');
   $('curveGrp').hidden = (base === 'grab' && b.grab === 'elastic') || base === 'pose' || base === 'insert' || base === 'tube';
@@ -4826,11 +5090,14 @@ function syncBrushUI() {
   $('sAngle').closest('.row').hidden = b.alphaRot === 'random';
   $('bBrushReset').textContent = b.builtin ? 'Нулирай' : 'Изтрий';
   for (const f of brushSyncs) f();
-  $('tFront').checked = b.front; $('tTopo').checked = b.topo; $('tGroupOnly').checked = b.group;
+  $('tFront').checked = b.front; $('tTopo').checked = b.topo; $('tDeep').checked = b.deep; $('tGroupOnly').checked = b.group;
   renderAlphas(); drawCurve();
 }
+$('tDynSize').checked = S.dynSize;
+$('tDynSize').addEventListener('change', () => { S.dynSize = $('tDynSize').checked; S.dynRef = cam.dist; saveSettings(); requestRender(); });
 $('tFront').addEventListener('change', () => { brush().front = $('tFront').checked; saveSettings(); });
 $('tTopo').addEventListener('change', () => { brush().topo = $('tTopo').checked; saveSettings(); });
+$('tDeep').addEventListener('change', () => { brush().deep = $('tDeep').checked; saveSettings(); });
 $('tGroupOnly').addEventListener('change', () => { brush().group = $('tGroupOnly').checked; saveSettings(); });
 $('tGroups').addEventListener('change', () => { S.showGroups = $('tGroups').checked; syncGroupsUI(); });
 $('bGrpMask').onclick = () => groupOp('frommask');
@@ -5061,6 +5328,13 @@ $('bDelLower').onclick = deleteLower;
 $('bDelHigher').onclick = deleteHigher;
 $('bSmoothAll').onclick = smoothAll;
 $('bRemesh').onclick = remesh;
+$('bPersp').onclick = () => setOrtho(!S.ortho);
+$('bMirror').onclick = mirrorFlip;
+$('bMirrorWeld').onclick = mirrorWeld;
+$('bNoise').onclick = applyNoise;
+bindRange('sNoiseScale', 'oNoiseScale', () => S.noiseScale, (v) => (S.noiseScale = v), pct);
+bindRange('sNoiseAmt', 'oNoiseAmt', () => S.noiseAmt, (v) => (S.noiseAmt = v), pct);
+if (S.ortho) { camera.fov = ORTHO_FOV; setPressed('bPersp', false); }
 bindRange('sVoxel', 'oVoxel', () => S.voxel, (v) => (S.voxel = v), (v) => String(v));
 $('bMaskClear').onclick = () => maskOp('clear');
 $('bMaskInvert').onclick = () => maskOp('invert');
@@ -5157,5 +5431,5 @@ loadAutosave().then((d) => {
     toast('Продължавате последния модел. „Нов“ започва отначало.');
   }
 });
-window.__glina = { trimByPlane, applyCut, tubeArrays, immShape, hasOpenEdges, get curve() { return liveCurve(); }, dropCurve, get immFile() { return immFile; }, set immFile(v) { immFile = v; }, get LAYERS() { return LAYERS; }, get recLayer() { return recLayer; }, addLayer, deleteLayer, toggleLayer, recordLayer, setLayerStrength, bakeLayers, groupOp, maskAllBut, groupNear, get mesh() { return mesh; }, get stroke() { return stroke; }, get gesture() { return gesture; }, get nav() { return nav; }, get MR() { return MR; }, syncSym, get SYM() { return SYM; }, setLevel, divide, deleteLower, deleteHigher, camera, orbit, pick, selectTool, brush, brushById, maskOp, remesh, undo, redo, subdivide, setDyntopo, floodDetail, S, get undoStack() { return undoStack; } };
+window.__glina = { sliceByPlane, mirrorWeldArrays, mirrorWeld, mirrorFlip, applyNoise, snapView, setOrtho, historyJump, polyframe, get cam() { return cam; }, trimByPlane, applyCut, tubeArrays, immShape, hasOpenEdges, get curve() { return liveCurve(); }, dropCurve, get immFile() { return immFile; }, set immFile(v) { immFile = v; }, get LAYERS() { return LAYERS; }, get recLayer() { return recLayer; }, addLayer, deleteLayer, toggleLayer, recordLayer, setLayerStrength, bakeLayers, groupOp, maskAllBut, groupNear, get mesh() { return mesh; }, get stroke() { return stroke; }, get gesture() { return gesture; }, get nav() { return nav; }, get MR() { return MR; }, syncSym, get SYM() { return SYM; }, setLevel, divide, deleteLower, deleteHigher, camera, orbit, pick, selectTool, brush, brushById, maskOp, remesh, undo, redo, subdivide, setDyntopo, floodDetail, S, get undoStack() { return undoStack; } };
 </script>
