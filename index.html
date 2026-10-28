@@ -95,6 +95,10 @@ button, input, select { font: inherit; color: inherit; }
 #overlay { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; overflow: visible; }
 #history { position: absolute; top: 8px; left: 50%; transform: translateX(-50%); width: min(60%, 520px); height: 12px; display: flex; justify-content: center; gap: 1px; align-items: stretch; z-index: 3; }
 #history[hidden] { display: none; }
+#gizmoBar { position: absolute; left: 12px; top: 30px; display: flex; flex-wrap: wrap; gap: 6px; max-width: calc(100% - 24px); z-index: 3; }
+#gizmoBar[hidden] { display: none; }
+#gizmoBar .btn { height: 38px; padding: 0 12px; background: rgba(26,30,36,.9); border-color: var(--line); }
+#gizmoBar .btn[aria-pressed=true] { border-color: var(--wax); color: var(--wax); }
 .hstep { flex: 0 1 12px; min-width: 2px; padding: 0; border: 0; border-radius: 1px; background: var(--muted, #8a8f98); opacity: .45; cursor: pointer; }
 .hstep.ahead { opacity: .15; }
 .hstep.now { background: var(--wax, #e7ad4b); opacity: 1; min-width: 4px; }
@@ -238,6 +242,13 @@ input[type=range] { width: 100%; height: 26px; accent-color: var(--wax); backgro
     <div id="cursor2d" hidden></div>
     <svg id="overlay" aria-hidden="true"></svg>
     <div id="history" role="toolbar" aria-label="История на стъпките" hidden></div>
+    <div id="gizmoBar" role="toolbar" aria-label="Gizmo" hidden>
+      <button class="btn" data-gz="move" title="Местене">Мести</button>
+      <button class="btn" data-gz="rotate" title="Завъртане">Върти</button>
+      <button class="btn" data-gz="scale" title="Мащаб">Мащаб</button>
+      <button class="btn" id="gzPin" aria-pressed="false" title="Следващото докосване на модела поставя центъра (или Alt+щракване)">Център</button>
+      <button class="btn" id="gzReset" title="Центърът отново в средата на незамаскираното">Нулирай</button>
+    </div>
     <div id="hint">
       <p><b>Стилус или мишка по модела</b> скулптира. Влачене по празното място или десен бутон върти, среден бутон или два пръста местят, колелцето приближава. <b>Shift</b> изглажда, <b>Alt</b> обръща посоката, <b>Ctrl</b> рисува маска, <b>D</b> включва динамичната топология.</p>
       <button id="hintClose" aria-label="Скрий подсказката">×</button>
@@ -309,6 +320,7 @@ input[type=range] { width: 100%; height: 26px; accent-color: var(--wax); backgro
       <h2>Подобекти <em>SubTools</em></h2>
       <div id="toolList"></div>
       <div class="two"><button class="btn wide" id="bToolAdd" aria-haspopup="true">+ Нов</button><button class="btn wide" id="bToolDup">Копие</button></div>
+      <button class="btn wide" id="bToolMirror" title="Огледално копие по X: второ око, ухо, ръка">Огледано копие</button>
       <div class="two"><button class="btn wide" id="bToolUp" title="Нагоре в списъка">▲ Нагоре</button><button class="btn wide" id="bToolDown" title="Надолу в списъка">▼ Надолу</button></div>
       <div class="two"><button class="btn wide" id="bToolMerge" title="Merge Down: активният и този под него стават един">Слей надолу</button><button class="btn wide" id="bToolDel">Изтрий</button></div>
       <div class="two"><button class="btn wide" id="bSolo" aria-pressed="false" title="Solo: само активният се вижда">Само този</button><button class="btn wide" id="bToolSplit" title="Groups Split: всяка група става подобект">Раздели по групи</button></div>
@@ -316,6 +328,24 @@ input[type=range] { width: 100%; height: 26px; accent-color: var(--wax); backgro
       <button class="btn wide" id="bExtract" title="Extract: дреха, броня или панел от маскираното">Извади от маската</button>
       <button class="btn wide" id="bBoolean" title="Make Boolean Mesh: видимите подобекти, по ред, с + − ∩">Булево от видимите</button>
       <p class="note">Щракване върху друг подобект на модела го прави активен. „+ − ∩“ до името казва как участва в „Булево“: добавя, изважда или оставя общото. Gizmo (Z) мести, върти и мащабира.</p>
+    </section>
+
+    <section class="sec">
+      <h2>Деформации <em>Deformers</em></h2>
+      <p class="note">Върху незамаскираната част на активния подобект, по избраната ос. Плъзгачът показва промяната; като го пуснете, тя остава (Ctrl+Z я връща).</p>
+      <div><div class="note lab">Ос</div><div class="chips" id="defAxisChips"></div></div>
+      <div class="row"><label for="sBend">Огъване</label><output id="oBend"></output><input type="range" id="sBend" min="-180" max="180" step="2"></div>
+      <div><div class="note lab">Огъване към</div><div class="chips" id="defToChips"></div></div>
+      <div class="row"><label for="sTwist">Усукване</label><output id="oTwist"></output><input type="range" id="sTwist" min="-360" max="360" step="5"></div>
+      <div class="row"><label for="sTaperD">Стесняване ↔ разширяване</label><output id="oTaperD"></output><input type="range" id="sTaperD" min="-1" max="1" step="0.02"></div>
+      <h2 style="margin-top:14px">Масив <em>Array Mesh</em></h2>
+      <div class="chips" id="arrModeChips"></div>
+      <div><div class="note lab">Ос</div><div class="chips" id="arrAxisChips"></div></div>
+      <div class="row"><label for="sArrCount">Брой</label><output id="oArrCount"></output><input type="range" id="sArrCount" min="2" max="36" step="1"></div>
+      <div class="row" id="arrGapRow"><label for="sArrGap">Разстояние</label><output id="oArrGap"></output><input type="range" id="sArrGap" min="-0.9" max="3" step="0.05"></div>
+      <div class="row"><label for="sArrScale">Мащаб на всяко следващо</label><output id="oArrScale"></output><input type="range" id="sArrScale" min="0.5" max="1.5" step="0.01"></div>
+      <button class="btn wide" id="bArray">Направи масив</button>
+      <p class="note">„В кръг“ нарежда копията около оста през центъра на сцената (зъбно колело, венец, колони).</p>
     </section>
 
     <section class="sec">
@@ -555,6 +585,8 @@ const S = {
   dynRef: 4,           // the camera distance at which the brush has its set size
   noiseScale: 0.5, noiseAmt: 0.3,
   extract: 0.3,        // Extract: thickness of the shell
+  defAxis: 1, defTo: 0,  // deformers: along which axis, and (bend) toward which of the other two
+  arrCount: 6, arrMode: 'line', arrAxis: 0, arrGap: 0.2, arrScale: 1,
 };
 let savedSettings = null;
 try { savedSettings = JSON.parse(localStorage.getItem('glina.settings') || 'null'); } catch (e) { /* storage unavailable */ }
@@ -2280,7 +2312,9 @@ function frameView() {
     c = [c[0] + (sph.center.x - c[0]) * t, c[1] + (sph.center.y - c[1]) * t, c[2] + (sph.center.z - c[2]) * t]; r = R;
   }
   cam.target.set(c[0], c[1], c[2]);
-  cam.dist = r / Math.sin(THREE.MathUtils.degToRad(PERSP_FOV / 2)) * 1.15;
+  // the narrower of the two fields of view (a phone held upright is narrow across)
+  const halfV = THREE.MathUtils.degToRad(PERSP_FOV / 2), halfH = Math.atan(Math.tan(halfV) * (viewport.w / viewport.h || 1));
+  cam.dist = r / Math.sin(Math.min(halfV, halfH)) * 1.15;
   if (cam.q.lengthSq() === 0 || frameView.first !== false) { cam.q.setFromEuler(new THREE.Euler(-0.22, 0.45, 0, 'YXZ')); frameView.first = false; }
   applyCamera();
 }
@@ -3642,8 +3676,14 @@ canvas.addEventListener('pointerdown', (e) => {
   const cb = brush();
   if (cb.base === 'clip' || cb.base === 'cut' || cb.base === 'slice') { gesture = { kind: 'cutline', base: cb.base, x0: x, y0: y, x, y, alt: e.altKey, snap: e.shiftKey, id: e.pointerId }; hideRing(); return; }
   if (cb.base === 'gizmo' && !e.shiftKey) {
-    const hd = gizmoHandle(x, y);
+    if ((gizmoPinNext || e.altKey) && hit) {
+      gizmoPin = { tool: TOOLS[curTool], p: hit.point.clone() }; gizmoPinNext = false;
+      syncGizmoBar(); drawOverlay(); toast('Центърът на Gizmo е тук. „Нулирай“ го връща в средата.'); return;
+    }
+    const hd = gizmoHandle(x, y, e.pointerType === 'touch');
     if (hd !== null) { startGizmo(e, x, y, hd); hideRing(); drawOverlay(); return; }
+    const og = pickOther(x, y);
+    if (og && (!hit || og.distance < camera.position.distanceTo(hit.point))) { gesture = { kind: 'picktool', tool: og.tool, x0: x, y0: y, x, y, id: e.pointerId }; hideRing(); return; }
     nav = { mode: e.altKey ? 'pan' : 'orbit', x, y, id: e.pointerId }; hideRing(); return;
   }
   // another subtool in front: a click selects it, a drag turns the view
@@ -3958,10 +3998,21 @@ function appendPrimitive(kind) {
   frameView();
   toast('Нов подобект до модела. Местете го с Gizmo (Z).');
 }
-function duplicateTool() {
+// a copy beside the original (to the right as seen now), or its mirror image across X (a second eye, ear, arm)
+function duplicateTool(mirror = false) {
   const t = TOOLS[curTool];
   stashActive();
-  addTool(meshFromArrays(toolArrays(t)), t.name + ' (копие)');
+  const m = meshFromArrays(toolArrays(t)), P = m.pos;
+  if (mirror) {
+    for (let i = 0; i < P.length; i += 3) P[i] = -P[i];
+    for (let f = 0; f < m.idx.length; f += 3) { const x = m.idx[f + 1]; m.idx[f + 1] = m.idx[f + 2]; m.idx[f + 2] = x; }
+  } else {
+    const { r } = mesh.bounds(), d = new THREE.Vector3(1, 0, 0).applyQuaternion(camera.quaternion).multiplyScalar(r * 2.1);
+    for (let i = 0; i < P.length; i += 3) { P[i] += d.x; P[i + 1] += d.y; P[i + 2] += d.z; }
+  }
+  addTool(m, t.name + (mirror ? ' (огледано)' : ' (копие)'));
+  frameView();
+  toast(mirror ? 'Огледано копие от другата страна на X: работи отделно от оригинала.' : 'Копие до оригинала: работи отделно. Gizmo (Z) го мести.');
 }
 function deleteTool() {
   if (TOOLS.length < 2) return;
@@ -4086,7 +4137,10 @@ function makeBoolean() {
    works along that axis, dragging the middle works on screen (move in the view plane, turn freely,
    scale evenly). Dragging anywhere else turns the view. */
 let gizmoCache = null;
+// a centre set by hand (Alt+click, or „Център“ then a tap on the model) holds until it is reset
+let gizmoPin = null, gizmoPinNext = false;
 function gizmoPivot() {
+  if (gizmoPin && gizmoPin.tool === TOOLS[curTool]) return gizmoPin.p;
   const key = undoSerial + ':' + curTool + ':' + mesh.n;
   if (gizmoCache && gizmoCache.key === key) return gizmoCache.p;
   const m = mesh, P = m.pos, MK = m.mask;
@@ -4102,19 +4156,39 @@ function gizmoScreen() {
   const p = gizmoPivot(); if (!p) return null;
   camera.updateMatrixWorld();
   const c = toScreen(p), L = 80 * worldPerPx(p);
-  return { p, c, L, ends: AXES.map((a) => toScreen(p.clone().addScaledVector(a, L))) };
+  const G = { p, c, L, ends: AXES.map((a) => toScreen(p.clone().addScaledVector(a, L))) };
+  // turning: a ring around each axis (in the plane square to it)
+  if ((brush().gz || 'move') === 'rotate') {
+    G.rings = AXES.map((a, k) => {
+      const u = AXES[(k + 1) % 3], v = AXES[(k + 2) % 3], pts = [];
+      for (let i = 0; i <= 48; i++) { const t = (i / 48) * Math.PI * 2; pts.push(toScreen(p.clone().addScaledVector(u, Math.cos(t) * L).addScaledVector(v, Math.sin(t) * L))); }
+      return pts;
+    });
+  }
+  return G;
 }
-function gizmoHandle(x, y) {
+// which part of the gizmo is under the pointer: an axis (0, 1, 2), 'free' (the middle) or null
+function gizmoHandle(x, y, finger = false) {
   const G = gizmoScreen(); if (!G) return null;
-  if (Math.hypot(x - G.c[0], y - G.c[1]) < 16) return 'free';
-  let best = null, bd = 12;
-  G.ends.forEach((e, k) => {
-    const dx = e[0] - G.c[0], dy = e[1] - G.c[1], l2 = dx * dx + dy * dy || 1;
-    const t = Math.max(0, Math.min(1, ((x - G.c[0]) * dx + (y - G.c[1]) * dy) / l2));
-    const d = Math.hypot(x - (G.c[0] + dx * t), y - (G.c[1] + dy * t));
-    if (d < bd) { bd = d; best = k; }
-  });
+  if (Math.hypot(x - G.c[0], y - G.c[1]) < (finger ? 26 : 16)) return 'free';
+  let best = null, bd = finger ? 22 : 12;
+  const seg = (ax, ay, bx, by) => {
+    const dx = bx - ax, dy = by - ay, l2 = dx * dx + dy * dy || 1;
+    const t = Math.max(0, Math.min(1, ((x - ax) * dx + (y - ay) * dy) / l2));
+    return Math.hypot(x - (ax + dx * t), y - (ay + dy * t));
+  };
+  if (G.rings) G.rings.forEach((pts, k) => { for (let i = 1; i < pts.length; i++) { const d = seg(pts[i - 1][0], pts[i - 1][1], pts[i][0], pts[i][1]); if (d < bd) { bd = d; best = k; } } });
+  else G.ends.forEach((e, k) => { const d = seg(G.c[0], G.c[1], e[0], e[1]); if (d < bd) { bd = d; best = k; } });
   return best;
+}
+function setGizmoMode(mode) { brush().gz = mode; gizmoCache = null; syncBrushUI(); syncGizmoBar(); saveSettings(); drawOverlay(); }
+function syncGizmoBar() {
+  const on = brush().base === 'gizmo';
+  $('gizmoBar').hidden = !on;
+  if (!on) return;
+  for (const el of $('gizmoBar').querySelectorAll('[data-gz]')) el.setAttribute('aria-pressed', el.dataset.gz === (brush().gz || 'move'));
+  setPressed('gzPin', gizmoPinNext);
+  $('gzReset').disabled = !(gizmoPin && gizmoPin.tool === TOOLS[curTool]);
 }
 function startGizmo(e, x, y, handle) {
   const m = mesh, G = gizmoScreen();
@@ -4177,18 +4251,128 @@ function endGizmo(g, commit) {
   m.updateNormals(g.idx, g.idx.length);
   uploadAll(geo.attributes.position); uploadAll(geo.attributes.normal);
   bvhDirty = true; if (m.dyn) { m.gridMaybeRebuild(); }
+  if (commit && gizmoPin && gizmoPin.tool === TOOLS[curTool] && g.idx.length) {
+    const { M, t } = gizmoTransform(g), v = gizmoPin.p.clone().sub(g.G.p).applyMatrix3(M);
+    gizmoPin.p = v.add(g.G.p).add(t);
+  }
   gizmoCache = null;
+  syncGizmoBar();
   requestRender();
 }
 function drawGizmo(el) {
   const G = gizmoScreen(); if (!G) return;
   const g = gesture && gesture.kind === 'gizmo' ? gesture : null;
-  G.ends.forEach((e, k) => {
+  if (G.rings) G.rings.forEach((pts, k) => {
+    const hot = g && g.handle === k;
+    el('polyline', { points: pts.map((q) => q[0].toFixed(1) + ',' + q[1].toFixed(1)).join(' '), fill: 'none', stroke: AXIS_COL[k], 'stroke-width': hot ? 4 : 2.2, 'stroke-opacity': 0.9 });
+  });
+  else G.ends.forEach((e, k) => {
     const hot = g && g.handle === k;
     el('line', { x1: G.c[0], y1: G.c[1], x2: e[0], y2: e[1], stroke: AXIS_COL[k], 'stroke-width': hot ? 4 : 2.5, 'stroke-linecap': 'round' });
     el('circle', { cx: e[0], cy: e[1], r: hot ? 6 : 4.5, fill: AXIS_COL[k] });
   });
   el('circle', { cx: G.c[0], cy: G.c[1], r: 11, fill: 'none', stroke: '#fff', 'stroke-width': g && g.handle === 'free' ? 3 : 1.6 });
+}
+
+/* ---------- Deformers (ZBrush: Gizmo 3D > Customize: Bend, Twist, Taper) ----------
+   On the unmasked part of the active subtool, along one axis through its middle. A slider shows the
+   change while it is dragged; letting go keeps it as one undo step and the slider returns to 0. */
+let deformLive = null;
+function deformAxes() {
+  const A = AXES[S.defAxis], others = [AXES[(S.defAxis + 1) % 3], AXES[(S.defAxis + 2) % 3]];
+  const B = others[S.defTo], C = new THREE.Vector3().crossVectors(A, B);
+  return { A, B, C };
+}
+function deformStart() {
+  const m = mesh, ids = [], w = [];
+  for (let i = 0; i < m.n; i++) { if (m.dyn && !m.vfA[i].length) continue; const k = 1 - m.mask[i]; if (k > 0) { ids.push(i); w.push(k); } }
+  if (!ids.length) return null;
+  const idx = Uint32Array.from(ids), orig = new Float32Array(idx.length * 3);
+  let cx = 0, cy = 0, cz = 0;
+  idx.forEach((i, q) => { for (let c = 0; c < 3; c++) orig[q * 3 + c] = m.pos[i * 3 + c]; cx += orig[q * 3]; cy += orig[q * 3 + 1]; cz += orig[q * 3 + 2]; });
+  const c = new THREE.Vector3(cx / idx.length, cy / idx.length, cz / idx.length), { A } = deformAxes();
+  let lo = Infinity, hi = -Infinity;
+  for (let q = 0; q < idx.length; q++) { const a = (orig[q * 3] - c.x) * A.x + (orig[q * 3 + 1] - c.y) * A.y + (orig[q * 3 + 2] - c.z) * A.z; lo = Math.min(lo, a); hi = Math.max(hi, a); }
+  return { idx, w: Float32Array.from(w), orig, c, lo, len: Math.max(1e-6, hi - lo) };
+}
+// kind: bend (degrees), twist (degrees), taper (−1…1: the far end shrinks to a point … doubles)
+function deformApply(D, kind, val) {
+  const m = mesh, P = m.pos, { A, B, C } = deformAxes(), c = D.c, L = D.len;
+  const th = (val * Math.PI) / 180;
+  for (let q = 0; q < D.idx.length; q++) {
+    const ox = D.orig[q * 3] - c.x, oy = D.orig[q * 3 + 1] - c.y, oz = D.orig[q * 3 + 2] - c.z;
+    let a = ox * A.x + oy * A.y + oz * A.z, b = ox * B.x + oy * B.y + oz * B.z, cc = ox * C.x + oy * C.y + oz * C.z;
+    const t = (a - D.lo) / L;   // 0 at the near end … 1 at the far end
+    if (kind === 'bend' && Math.abs(th) > 1e-6) {
+      // the near end stays; the rest follows an arc of the whole angle (Barr's bend)
+      const R = L / th, ph = th * t;
+      a = D.lo + (R - b) * Math.sin(ph); b = R - (R - b) * Math.cos(ph);
+    } else if (kind === 'twist') {
+      const ph = th * t, cs = Math.cos(ph), sn = Math.sin(ph);
+      const nb = b * cs - cc * sn; cc = b * sn + cc * cs; b = nb;
+    } else if (kind === 'taper') {
+      const k = Math.max(0.02, 1 + val * t); b *= k; cc *= k;
+    }
+    const w = D.w[q], i = D.idx[q];
+    const x = c.x + A.x * a + B.x * b + C.x * cc, y = c.y + A.y * a + B.y * b + C.y * cc, z = c.z + A.z * a + B.z * b + C.z * cc;
+    P[i * 3] = D.orig[q * 3] + (x - D.orig[q * 3]) * w; P[i * 3 + 1] = D.orig[q * 3 + 1] + (y - D.orig[q * 3 + 1]) * w; P[i * 3 + 2] = D.orig[q * 3 + 2] + (z - D.orig[q * 3 + 2]) * w;
+  }
+  m.updateNormals(D.idx, D.idx.length);
+  uploadAll(geo.attributes.position); uploadAll(geo.attributes.normal);
+  bvhDirty = true; requestRender();
+}
+function deformCommit(D) {
+  const m = mesh, n = D.idx.length, col = new Float32Array(n * 3), mask = new Float32Array(n);
+  let moved = false;
+  D.idx.forEach((i, q) => { for (let c = 0; c < 3; c++) { col[q * 3 + c] = m.col[i * 3 + c]; if (m.pos[i * 3 + c] !== D.orig[q * 3 + c]) moved = true; } mask[q] = m.mask[i]; });
+  if (moved) { pushUndo({ type: 'verts', idx: D.idx, pos: D.orig, col, mask }); scheduleAutosave(); }
+  if (m.dyn) m.gridMaybeRebuild();
+  gizmoCache = null;
+}
+// one call, for buttons and tests: the whole change at once
+function deform(kind, val) { if (stroke || working) return; const D = deformStart(); if (!D) { toast('Всичко е маскирано.'); return; } deformApply(D, kind, val); deformCommit(D); }
+function bindDeform(id, out, kind, fmtv) {
+  const el = $(id), o = $(out);
+  const show = () => { o.textContent = fmtv(+el.value); };
+  el.value = 0; show();
+  el.addEventListener('input', () => {
+    if (stroke || working) return;
+    if (!deformLive) { deformLive = deformStart(); if (!deformLive) { toast('Всичко е маскирано.'); return; } }
+    show(); deformApply(deformLive, kind, +el.value);
+  });
+  el.addEventListener('change', () => { if (deformLive) { deformCommit(deformLive); deformLive = null; } el.value = 0; show(); });
+}
+
+/* ---------- Array Mesh: copies of the active subtool in a row or around a circle ---------- */
+function arrayArrays(a, opt) {
+  const n = a.pos.length / 3, f = a.idx.length / 3, N = opt.count;
+  const A = AXES[opt.axis];
+  let lo = Infinity, hi = -Infinity, cx = 0, cy = 0, cz = 0;
+  for (let i = 0; i < n; i++) { const v = a.pos[i * 3] * A.x + a.pos[i * 3 + 1] * A.y + a.pos[i * 3 + 2] * A.z; lo = Math.min(lo, v); hi = Math.max(hi, v); cx += a.pos[i * 3]; cy += a.pos[i * 3 + 1]; cz += a.pos[i * 3 + 2]; }
+  const c = [cx / n, cy / n, cz / n], step = (hi - lo) * (1 + opt.gap);
+  const pos = new Float32Array(n * 3 * N), idx = new Uint32Array(f * 3 * N), col = new Float32Array(n * 3 * N), mask = new Float32Array(n * N), grp = new Float32Array(n * N);
+  for (let k = 0; k < N; k++) {
+    const sc = Math.pow(opt.scale, k), q = new THREE.Quaternion().setFromAxisAngle(A, opt.mode === 'circle' ? (2 * Math.PI * k) / N : 0), v = new THREE.Vector3();
+    for (let i = 0; i < n; i++) {
+      v.set(a.pos[i * 3] - c[0], a.pos[i * 3 + 1] - c[1], a.pos[i * 3 + 2] - c[2]).multiplyScalar(sc);
+      if (opt.mode === 'circle') { v.add(new THREE.Vector3(c[0], c[1], c[2])).applyQuaternion(q); }   // around the axis through the world centre
+      else v.add(new THREE.Vector3(c[0] + A.x * step * k, c[1] + A.y * step * k, c[2] + A.z * step * k));
+      pos[(k * n + i) * 3] = v.x; pos[(k * n + i) * 3 + 1] = v.y; pos[(k * n + i) * 3 + 2] = v.z;
+    }
+    col.set(a.col.subarray(0, n * 3), k * n * 3); mask.set(a.mask.subarray(0, n), k * n); grp.set(a.grp.subarray(0, n), k * n);
+    for (let t = 0; t < f * 3; t++) idx[k * f * 3 + t] = a.idx[t] + k * n;
+  }
+  return { pos, idx, col, mask, grp };
+}
+function makeArray() {
+  if (stroke || working) return;
+  if (!askDropLevels('Масивът')) return;
+  const a = toolArrays(TOOLS[curTool]);
+  if ((a.idx.length / 3) * S.arrCount > MAX_TRIS) { toast('Масивът би бил твърде голям: намалете броя.'); return; }
+  const r = arrayArrays(a, { count: S.arrCount, mode: S.arrMode, axis: S.arrAxis, gap: S.arrGap, scale: S.arrScale });
+  const paused = replaceMesh(new SculptMesh(r.pos, r.idx, r.col, r.mask, 0, r.grp));
+  frameView();
+  toast(`Масив от ${S.arrCount} копия (Ctrl+Z го връща). „Раздели по групи“ не ги разделя: те са с еднакви групи; за отделни части ползвайте „Копие“.` + (paused ? ' ' + DYN_PAUSED_MSG : ''));
 }
 
 /* ---------- the Rust core (../core, WebAssembly) ----------
@@ -5570,7 +5754,7 @@ brushSyncs.push(
     { id: 'line', name: 'Линия', title: 'Права линия от мястото на натискане до писалката; виждате я, докато я опъвате' },
     { id: 'curve', name: 'Крива', title: 'Curve Mode: линия по повърхността, която после може да огъвате; щрихът се прави наново' },
   ], 'stroke'),
-  brushChips('gzChips', [{ id: 'move', name: 'Местене' }, { id: 'rotate', name: 'Завъртане' }, { id: 'scale', name: 'Мащаб' }], 'gz', () => { gizmoCache = null; drawOverlay(); }),
+  brushChips('gzChips', [{ id: 'move', name: 'Местене' }, { id: 'rotate', name: 'Завъртане' }, { id: 'scale', name: 'Мащаб' }], 'gz', () => { gizmoCache = null; syncGizmoBar(); drawOverlay(); }),
   brushChips('immChips', IMM.map((x) => ({ id: x.id, name: x.name, title: x.id === 'file' ? 'Своя форма от файл .obj или .stl (за тази сесия)' : '' })), 'imm', () => { if (brush().imm === 'file') $('immIn').click(); }),
   brushChips('grabChips', [{ id: 'soft', name: 'Меко (Move)' }, { id: 'elastic', name: 'Еластично (Move Elastic)' }], 'grab'),
 );
@@ -5605,6 +5789,7 @@ function syncBrushUI() {
   $('curveGrp').hidden = (base === 'grab' && b.grab === 'elastic') || base === 'pose' || base === 'insert' || base === 'tube' || base === 'gizmo';
   $('immGrp').hidden = base !== 'insert';
   $('gzGrp').hidden = base !== 'gizmo';
+  syncGizmoBar();
   $('taperRow').hidden = $('curveNote').hidden = !isCurveBrush(b);
   $('sAngle').closest('.row').hidden = b.alphaRot === 'random';
   $('bBrushReset').textContent = b.builtin ? 'Нулирай' : 'Изтрий';
@@ -5853,7 +6038,11 @@ $('bToolAdd').onclick = () => openMenu($('bToolAdd'), [
   ...IMM.filter((x) => x.id !== 'file').map((x) => ({ label: x.name, run: () => appendPrimitive(x.id) })),
   { label: 'От файл…', hint: '.obj, .stl', run: () => { appendFromFile = true; $('fileIn').click(); } },
 ]);
-$('bToolDup').onclick = duplicateTool;
+$('bToolDup').onclick = () => duplicateTool(false);
+$('bToolMirror').onclick = () => duplicateTool(true);
+for (const el of $('gizmoBar').querySelectorAll('[data-gz]')) el.onclick = () => setGizmoMode(el.dataset.gz);
+$('gzPin').onclick = () => { gizmoPinNext = !gizmoPinNext; syncGizmoBar(); if (gizmoPinNext) toast('Докоснете модела там, където да е центърът.'); };
+$('gzReset').onclick = () => { gizmoPin = null; gizmoPinNext = false; gizmoCache = null; syncGizmoBar(); drawOverlay(); };
 $('bToolDel').onclick = deleteTool;
 $('bToolUp').onclick = () => moveTool(-1);
 $('bToolDown').onclick = () => moveTool(1);
@@ -5861,6 +6050,23 @@ $('bToolMerge').onclick = mergeDown;
 $('bToolSplit').onclick = splitGroups;
 $('bSolo').onclick = () => { solo = !solo; renderTools(); renderOthers(); };
 $('bExtract').onclick = extractTool;
+bindDeform('sBend', 'oBend', 'bend', (v) => v + '°');
+bindDeform('sTwist', 'oTwist', 'twist', (v) => v + '°');
+bindDeform('sTaperD', 'oTaperD', 'taper', (v) => (v > 0 ? '+' : '') + Math.round(v * 100) + '%');
+// (chips compare string ids)
+chips('defToChips', [0, 1].map((k) => ({ id: String(k), name: '' })), () => String(S.defTo), (v) => (S.defTo = +v));
+chips('defAxisChips', [0, 1, 2].map((k) => ({ id: String(k), name: 'XYZ'[k] })), () => String(S.defAxis), (v) => {
+  S.defAxis = +v;
+  [...$('defToChips').children].forEach((el, k) => (el.textContent = 'XYZ'[(S.defAxis + 1 + k) % 3]));
+});
+[...$('defToChips').children].forEach((el, k) => (el.textContent = 'XYZ'[(S.defAxis + 1 + k) % 3]));
+chips('arrModeChips', [{ id: 'line', name: 'В редица' }, { id: 'circle', name: 'В кръг' }], () => S.arrMode, (v) => { S.arrMode = v; $('arrGapRow').hidden = v === 'circle'; });
+$('arrGapRow').hidden = S.arrMode === 'circle';
+chips('arrAxisChips', [0, 1, 2].map((k) => ({ id: String(k), name: 'XYZ'[k] })), () => String(S.arrAxis), (v) => (S.arrAxis = +v));
+bindRange('sArrCount', 'oArrCount', () => S.arrCount, (v) => (S.arrCount = v), (v) => String(v));
+bindRange('sArrGap', 'oArrGap', () => S.arrGap, (v) => (S.arrGap = v), pct);
+bindRange('sArrScale', 'oArrScale', () => S.arrScale, (v) => (S.arrScale = v), (v) => '×' + v.toFixed(2));
+$('bArray').onclick = makeArray;
 $('bBoolean').onclick = makeBoolean;
 bindRange('sExtract', 'oExtract', () => S.extract, (v) => (S.extract = v), pct);
 $('bMirrorWeld').onclick = mirrorWeld;
@@ -5958,6 +6164,7 @@ selectTool(S.tool);
 setMesh(makeSphere(6), { frame: true });
 TOOLS = [makeTool(mesh, 'Сфера')]; renderTools();
 resize();
+frameView();   // (again, now that the canvas has its real shape)
 loadAutosave().then((d) => {
   if (d && d.pos && d.idx && d.pos.length > 9) {
     // subdivision levels come back too, if they still match the saved mesh
@@ -5985,5 +6192,5 @@ loadAutosave().then((d) => {
     toast('Продължавате последния модел. „Нов“ започва отначало.');
   }
 });
-window.__glina = { exportOBJ, scheduleAutosave, get TOOLS() { return TOOLS; }, get curTool() { return curTool; }, activateTool, addTool, appendPrimitive, duplicateTool, deleteTool, moveTool, mergeDown, splitGroups, extractTool, extractShell, makeBoolean, newScene, gizmoHandle, gizmoScreen, get solo() { return solo; }, set solo(v) { solo = v; renderOthers(); }, toolArrays, voxelCombine, voxelRemesh, coreStart, get working() { return working; }, sliceByPlane, mirrorWeldArrays, mirrorWeld, mirrorFlip, applyNoise, snapView, setOrtho, historyJump, polyframe, get cam() { return cam; }, trimByPlane, applyCut, tubeArrays, immShape, hasOpenEdges, get curve() { return liveCurve(); }, dropCurve, get immFile() { return immFile; }, set immFile(v) { immFile = v; }, get LAYERS() { return LAYERS; }, get recLayer() { return recLayer; }, addLayer, deleteLayer, toggleLayer, recordLayer, setLayerStrength, bakeLayers, groupOp, maskAllBut, groupNear, get mesh() { return mesh; }, get stroke() { return stroke; }, get gesture() { return gesture; }, get nav() { return nav; }, get MR() { return MR; }, syncSym, get SYM() { return SYM; }, setLevel, divide, deleteLower, deleteHigher, camera, orbit, pick, selectTool, brush, brushById, maskOp, remesh, undo, redo, subdivide, setDyntopo, floodDetail, S, get undoStack() { return undoStack; } };
+window.__glina = { deform, makeArray, arrayArrays, setGizmoMode, get gizmoPin() { return gizmoPin; }, set gizmoPin(v) { gizmoPin = v; }, exportOBJ, scheduleAutosave, get TOOLS() { return TOOLS; }, get curTool() { return curTool; }, activateTool, addTool, appendPrimitive, duplicateTool, deleteTool, moveTool, mergeDown, splitGroups, extractTool, extractShell, makeBoolean, newScene, gizmoHandle, gizmoScreen, get solo() { return solo; }, set solo(v) { solo = v; renderOthers(); }, toolArrays, voxelCombine, voxelRemesh, coreStart, get working() { return working; }, sliceByPlane, mirrorWeldArrays, mirrorWeld, mirrorFlip, applyNoise, snapView, setOrtho, historyJump, polyframe, get cam() { return cam; }, trimByPlane, applyCut, tubeArrays, immShape, hasOpenEdges, get curve() { return liveCurve(); }, dropCurve, get immFile() { return immFile; }, set immFile(v) { immFile = v; }, get LAYERS() { return LAYERS; }, get recLayer() { return recLayer; }, addLayer, deleteLayer, toggleLayer, recordLayer, setLayerStrength, bakeLayers, groupOp, maskAllBut, groupNear, get mesh() { return mesh; }, get stroke() { return stroke; }, get gesture() { return gesture; }, get nav() { return nav; }, get MR() { return MR; }, syncSym, get SYM() { return SYM; }, setLevel, divide, deleteLower, deleteHigher, camera, orbit, pick, selectTool, brush, brushById, maskOp, remesh, undo, redo, subdivide, setDyntopo, floodDetail, S, get undoStack() { return undoStack; } };
 </script>
