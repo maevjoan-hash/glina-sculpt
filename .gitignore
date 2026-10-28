@@ -15,3 +15,4 @@ android/android/local.properties
 *.jks
 !android/android/app/glina-debug.keystore
 .DS_Store
+core/target/

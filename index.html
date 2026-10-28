@@ -175,7 +175,14 @@ input[type=range] { width: 100%; height: 26px; accent-color: var(--wax); backgro
 .alpha[aria-pressed="true"] { border-color: var(--wax); }
 .tool.mine::after { content: ""; position: absolute; left: 5px; top: 5px; width: 5px; height: 5px; border-radius: 50%; background: var(--wax); }
 .tool.add { color: var(--muted); }
-#layerList { display: grid; gap: 6px; }
+#layerList, #toolList { display: grid; gap: 6px; }
+#toolList { margin-bottom: 8px; max-height: 260px; overflow-y: auto; }
+.subtool { display: grid; grid-template-columns: 18px 1fr 26px auto; gap: 6px; align-items: center; padding: 4px 6px; border-radius: 8px; background: var(--panel-2); border: 1px solid var(--line); cursor: pointer; }
+.subtool.on { border-color: var(--wax); }
+.subtool input[type=text] { min-width: 0; height: 26px; padding: 0 6px; border-radius: 5px; border: 1px solid var(--line); background: var(--bg); color: var(--fg); font: inherit; }
+.subtool input[type=checkbox] { accent-color: var(--wax); margin: 0; }
+.subtool .tinfo { font: 11px var(--mono, monospace); color: var(--muted); }
+.subtool .op { font-weight: 600; }
 .layer { display: grid; grid-template-columns: 26px 18px 1fr 70px 24px; gap: 6px; align-items: center; padding: 4px 6px; border-radius: 8px; background: var(--panel-2); border: 1px solid var(--line); }
 .layer.rec { border-color: var(--danger); }
 .layer input[type=text] { min-width: 0; height: 26px; padding: 0 6px; border-radius: 5px; border: 1px solid var(--line); background: var(--bg); color: var(--fg); font: inherit; }
@@ -286,6 +293,8 @@ input[type=range] { width: 100%; height: 26px; accent-color: var(--wax); backgro
         <label class="toggle" id="deepRow" title="Move Infinite Depth: хваща и задната страна">Във всяка дълбочина <input type="checkbox" id="tDeep"></label>
         <label class="toggle" id="groupRow">Само групата под четката <input type="checkbox" id="tGroupOnly"></label>
         <div class="grp" id="grabGrp"><div class="note lab">Хващане</div><div class="chips" id="grabChips"></div></div>
+        <div class="grp" id="gzGrp"><div class="note lab">Gizmo</div><div class="chips" id="gzChips"></div>
+          <p class="note">Стрелките X, Y, Z работят по оста, кръгчето в средата — по екрана. Мести се незамаскираната част на активния подобект; влачене другаде върти изгледа.</p></div>
         <div class="grp" id="immGrp"><div class="note lab">Форма за вмъкване</div><div class="chips" id="immChips"></div>
           <p class="note">Натиснете върху модела и влачете: дължината е размерът, посоката я завърта. Щракване вмъква с размера на четката.</p></div>
         <div class="row" id="taperRow"><label for="sTaper">Изтъняване към краищата на кривата</label><output id="oTaper"></output><input type="range" id="sTaper" min="0" max="1" step="0.05"></div>
@@ -294,6 +303,19 @@ input[type=range] { width: 100%; height: 26px; accent-color: var(--wax); backgro
         <div class="two"><button class="btn wide" id="bBrushNew">Нова от тази</button><button class="btn wide" id="bBrushReset">Нулирай</button></div>
         <div class="two"><button class="btn wide" id="bBrushExport">Изнеси</button><button class="btn wide" id="bBrushImport">Внеси</button></div>
       </details>
+    </section>
+
+    <section class="sec">
+      <h2>Подобекти <em>SubTools</em></h2>
+      <div id="toolList"></div>
+      <div class="two"><button class="btn wide" id="bToolAdd" aria-haspopup="true">+ Нов</button><button class="btn wide" id="bToolDup">Копие</button></div>
+      <div class="two"><button class="btn wide" id="bToolUp" title="Нагоре в списъка">▲ Нагоре</button><button class="btn wide" id="bToolDown" title="Надолу в списъка">▼ Надолу</button></div>
+      <div class="two"><button class="btn wide" id="bToolMerge" title="Merge Down: активният и този под него стават един">Слей надолу</button><button class="btn wide" id="bToolDel">Изтрий</button></div>
+      <div class="two"><button class="btn wide" id="bSolo" aria-pressed="false" title="Solo: само активният се вижда">Само този</button><button class="btn wide" id="bToolSplit" title="Groups Split: всяка група става подобект">Раздели по групи</button></div>
+      <div class="row"><label for="sExtract">Дебелина при изваждане</label><output id="oExtract"></output><input type="range" id="sExtract" min="0.02" max="1" step="0.02"></div>
+      <button class="btn wide" id="bExtract" title="Extract: дреха, броня или панел от маскираното">Извади от маската</button>
+      <button class="btn wide" id="bBoolean" title="Make Boolean Mesh: видимите подобекти, по ред, с + − ∩">Булево от видимите</button>
+      <p class="note">Щракване върху друг подобект на модела го прави активен. „+ − ∩“ до името казва как участва в „Булево“: добавя, изважда или оставя общото. Gizmo (Z) мести, върти и мащабира.</p>
     </section>
 
     <section class="sec">
@@ -430,6 +452,7 @@ const ICON = {
   blob: '<circle cx="8" cy="13" r="3"/><circle cx="15" cy="10" r="4"/><circle cx="16" cy="17" r="2" opacity=".6"/>',
   movedeep: '<path d="M12 3v18M3 12h18"/><circle cx="12" cy="12" r="3"/><path d="M9 6l3-3 3 3M9 18l3 3 3-3" opacity=".6"/>',
   slice: '<path d="M3 21L21 3"/><path d="M4 8c3-4 9-5 12-2" opacity=".5"/><path d="M8 20c4 1 9-1 12-6"/>',
+  gizmo: '<path d="M12 12h8M12 12V4M12 12l-6 6"/><circle cx="12" cy="12" r="2.2"/><path d="M18 10l2 2-2 2M10 6l2-2 2 2" opacity=".6"/>',
   pose: '<path d="M4 20l7-7"/><path d="M11 13l6-8"/><circle cx="11" cy="13" r="2"/><path d="M14 4h4v4" opacity=".6"/>',
   mask: '<circle cx="12" cy="12" r="8"/><path d="M12 4a8 8 0 010 16z" fill="currentColor"/>',
   paint: '<path d="M12 3c4 5 6 8 6 11a6 6 0 01-12 0c0-3 2-6 6-11z"/>',
@@ -450,7 +473,7 @@ const BASES = [
   { id: 'draw', name: 'Рисуване (Standard)' }, { id: 'clay', name: 'Глина (Clay)' }, { id: 'claystrips', name: 'Глина на ивици (ClayBuildup)' },
   { id: 'inflate', name: 'Надуване (Inflate)' }, { id: 'flatten', name: 'Изравняване (hPolish)' }, { id: 'scrape', name: 'Подрязване (TrimDynamic)' },
   { id: 'pinch', name: 'Притискане (Pinch)' }, { id: 'crease', name: 'Гънка' }, { id: 'smooth', name: 'Изглаждане (Smooth)' },
-  { id: 'grab', name: 'Хващане (Move)' }, { id: 'snake', name: 'Издърпване (SnakeHook)' }, { id: 'pose', name: 'Поза (Pose)' }, { id: 'insert', name: 'Вмъкване на форма (InsertMesh)' }, { id: 'planar', name: 'Равнина (Planar)' }, { id: 'layer', name: 'Слой (Layer)' }, { id: 'slice', name: 'Разделяне на групи (SliceCurve)' }, { id: 'tube', name: 'Тръба по крива (CurveTube)' }, { id: 'clip', name: 'Отсичане (ClipCurve)' }, { id: 'cut', name: 'Отрязване (TrimCurve)' }, { id: 'mask', name: 'Маска' }, { id: 'paint', name: 'Боя' },
+  { id: 'grab', name: 'Хващане (Move)' }, { id: 'snake', name: 'Издърпване (SnakeHook)' }, { id: 'pose', name: 'Поза (Pose)' }, { id: 'insert', name: 'Вмъкване на форма (InsertMesh)' }, { id: 'gizmo', name: 'Местене, завъртане, мащаб (Gizmo 3D)' }, { id: 'planar', name: 'Равнина (Planar)' }, { id: 'layer', name: 'Слой (Layer)' }, { id: 'slice', name: 'Разделяне на групи (SliceCurve)' }, { id: 'tube', name: 'Тръба по крива (CurveTube)' }, { id: 'clip', name: 'Отсичане (ClipCurve)' }, { id: 'cut', name: 'Отрязване (TrimCurve)' }, { id: 'mask', name: 'Маска' }, { id: 'paint', name: 'Боя' },
 ];
 // a complete brush; presets only list what differs
 const BRUSH_DEFAULTS = {
@@ -458,6 +481,7 @@ const BRUSH_DEFAULTS = {
   alpha: 'none', alphaMid: 0, alphaRot: 'fixed', alphaAngle: 0,
   stroke: 'dots', spacing: 0.15, mod: 0, front: true, topo: false, grab: 'soft', volume: 0.4,
   group: false,        // only the polygroup under the brush (ZBrush: Auto Masking > Mask By Polygroups)
+  gz: 'move',          // Gizmo: move | rotate | scale
   deep: false,         // grab: everything under the brush circle on screen, at any depth (Move Infinite Depth)
   imm: 'sphere',       // the shape Insert puts in
   taper: 0,            // curves and tubes: thinner toward both ends (ZBrush: Curve Falloff)
@@ -484,6 +508,7 @@ const PRESETS = [
   { id: 'blob', name: 'Буци', short: 'Буци', base: 'inflate', icon: 'blob', radius: 30, strength: 0.5, alpha: 'noise', alphaRot: 'random', spacing: 0.12, zb: 'Blob' },
   { id: 'movedeep', name: 'Хващане в дълбочина', short: 'Дълб.', base: 'grab', icon: 'movedeep', deep: true, radius: 90, strength: 1, curve: 'move', front: false, zb: 'Move Infinite Depth' },
   { id: 'curvedam', name: 'Гънка по крива', short: 'Крива', icon: 'curve', radius: 12, strength: 0.6, dir: -1, curve: 'sharp', focal: 0.3, mod: 0.6, spacing: 0.08, stroke: 'curve', taper: 0.7, zb: 'Curve Mode + Dam_Standard' },
+  { id: 'gizmo', name: 'Gizmo: местене, завъртане, мащаб', short: 'Gizmo', key: 'z', base: 'gizmo', zb: 'Gizmo 3D' },
   { id: 'imm', name: 'Вмъкване на форма', short: 'Вмъкни', key: 'j', base: 'insert', radius: 40, zb: 'InsertMesh (IMM)' },
   { id: 'tube', name: 'Тръба по крива', short: 'Тръба', key: 'l', base: 'tube', radius: 10, stroke: 'curve', zb: 'CurveTube' },
   { id: 'clip', name: 'Отсичане', short: 'Отсечи', key: 'y', base: 'clip', zb: 'ClipCurve' },
@@ -529,13 +554,14 @@ const S = {
   dynSize: false,      // the brush keeps its size on the model when zooming (ZBrush: Dynamic)
   dynRef: 4,           // the camera distance at which the brush has its set size
   noiseScale: 0.5, noiseAmt: 0.3,
+  extract: 0.3,        // Extract: thickness of the shell
 };
 let savedSettings = null;
 try { savedSettings = JSON.parse(localStorage.getItem('glina.settings') || 'null'); } catch (e) { /* storage unavailable */ }
 if (savedSettings) for (const k of Object.keys(savedSettings)) if (k in S && k !== 'penSeen' && k !== 'brushes') S[k] = savedSettings[k];
 // one brush field from settings or a file: right type and range, or undefined
 const ENUMS = { tip: ['round', 'square'], alphaRot: ['fixed', 'stroke', 'random'], stroke: ['dots', 'dragrect', 'dragdot', 'spray', 'line', 'curve'], grab: ['soft', 'elastic'],
-  imm: ['sphere', 'cube', 'cylinder', 'cone', 'torus', 'file'] };
+  imm: ['sphere', 'cube', 'cylinder', 'cone', 'torus', 'file'], gz: ['move', 'rotate', 'scale'] };
 const RANGES = { radius: [4, 320], strength: [0.01, 1], focal: [-1, 1], alphaMid: [0, 1], alphaAngle: [0, 360], spacing: [0.03, 0.6], mod: [-1, 1], volume: [0, 0.49], taper: [0, 1] };
 function brushField(k, v) {
   if (k === 'curve') return Array.isArray(v) && v.length >= 2 && v.length <= 32 && v.every((p) => Array.isArray(p) && p.length === 2 && p.every((x) => Number.isFinite(x) && x >= 0 && x <= 1)) ? v.map((p) => p.slice()) : undefined;
@@ -2124,7 +2150,7 @@ function setMesh(m, { frame = false, quiet = false } = {}) {
   mesh = m;
   const paused = S.dyntopo && m.f > DYN_MAX_TRIS;
   if (paused && !quiet) toast(DYN_PAUSED_MSG);
-  if (S.dyntopo && !paused) m.initDynamic();
+  if (S.dyntopo && !paused && !m.dyn) m.initDynamic();
   buildGeometry();
   bvhDirty = false;
   updateStats(); syncDynUI();
@@ -2243,7 +2269,16 @@ function pan(dx, dy) {
 }
 function zoom(f) { cam.dist = THREE.MathUtils.clamp(cam.dist * f, 0.05, 80); applyCamera(); }
 function frameView() {
-  const { c, r } = mesh.bounds();
+  // everything that is shown: the active subtool and the visible others
+  let { c, r } = mesh.bounds();
+  if (typeof TOOLS !== 'undefined' && !solo) for (const [, o] of others) {
+    const sph = o.obj.geometry.boundingSphere; if (!sph) continue;
+    const d = Math.hypot(sph.center.x - c[0], sph.center.y - c[1], sph.center.z - c[2]);
+    if (d + sph.radius <= r) continue;
+    if (d + r <= sph.radius) { c = sph.center.toArray(); r = sph.radius; continue; }
+    const R = (d + r + sph.radius) / 2, t = (R - r) / d;
+    c = [c[0] + (sph.center.x - c[0]) * t, c[1] + (sph.center.y - c[1]) * t, c[2] + (sph.center.z - c[2]) * t]; r = R;
+  }
   cam.target.set(c[0], c[1], c[2]);
   cam.dist = r / Math.sin(THREE.MathUtils.degToRad(PERSP_FOV / 2)) * 1.15;
   if (cam.q.lengthSq() === 0 || frameView.first !== false) { cam.q.setFromEuler(new THREE.Euler(-0.22, 0.45, 0, 'YXZ')); frameView.first = false; }
@@ -3474,10 +3509,12 @@ function recBytes(r) {
   return r.pos.byteLength + r.idx.byteLength + r.col.byteLength + r.mask.byteLength + (r.grp ? r.grp.byteLength : 0) + (r.mrBytes || 0) + (r.layerBytes || 0);
 }
 function applyRecord(rec) {
+  // a step of another subtool: that one becomes the active one first (as in ZBrush)
+  if (rec.tool && rec.tool !== TOOLS[curTool]) { const k = TOOLS.indexOf(rec.tool); if (k >= 0) activateTool(k); }
   if (rec.type === 'verts') { swapVerts(rec); return rec; }
-  // an operation that knows how to undo and redo itself (groups, layers)
-  if (rec.type === 'fn') { rec.undo(); return { type: 'fn', undo: rec.redo, redo: rec.undo, bytes: rec.bytes }; }
-  const cur = snapshot();
+  // an operation that knows how to undo and redo itself (groups, layers, subtools)
+  if (rec.type === 'fn') { rec.undo(); return { type: 'fn', undo: rec.redo, redo: rec.undo, bytes: rec.bytes, tool: rec.tool }; }
+  const cur = snapshot(); cur.tool = rec.tool;
   cur.mrBytes = mrBytesOnly(MR, rec.mr || null);
   MR = rec.mr || null;
   // levels and layers need a fixed mesh: coming back to them turns dynamic topology off (as loading does)
@@ -3488,6 +3525,7 @@ function applyRecord(rec) {
   return cur;
 }
 function pushUndo(rec) {
+  if (rec.tool === undefined) rec.tool = TOOLS[curTool] || null;   // (structural steps set null: they span subtools)
   undoStack.push(rec); redoStack.length = 0; undoSerial++;
   // keep the newest steps within a memory budget (dynamic-topology strokes store whole meshes)
   let total = 0;
@@ -3497,8 +3535,8 @@ function pushUndo(rec) {
   }
   updateUndoButtons();
 }
-function undo() { if (stroke || mrPending || !undoStack.length) return; undoSerial++; redoStack.push(applyRecord(undoStack.pop())); updateUndoButtons(); requestRender(); scheduleAutosave(); }
-function redo() { if (stroke || mrPending || !redoStack.length) return; undoSerial++; undoStack.push(applyRecord(redoStack.pop())); updateUndoButtons(); requestRender(); scheduleAutosave(); }
+function undo() { if (stroke || mrPending || working || !undoStack.length) return; undoSerial++; redoStack.push(applyRecord(undoStack.pop())); updateUndoButtons(); requestRender(); scheduleAutosave(); }
+function redo() { if (stroke || mrPending || working || !redoStack.length) return; undoSerial++; undoStack.push(applyRecord(redoStack.pop())); updateUndoButtons(); requestRender(); scheduleAutosave(); }
 function updateUndoButtons() {
   $('bUndo').disabled = !undoStack.length; $('qUndo').disabled = !undoStack.length; $('bRedo').disabled = !redoStack.length;
   renderHistory();
@@ -3587,7 +3625,7 @@ canvas.addEventListener('pointerdown', (e) => {
   } else {
     capture(e);
   }
-  if (stroke || nav || gesture) return;
+  if (stroke || nav || gesture || working) return;
   const barrel = e.pointerType === 'pen' && (e.buttons & 2);
   if (e.button === 2 || barrel) { nav = { mode: e.shiftKey ? 'pan' : (e.ctrlKey ? 'zoom' : 'orbit'), x, y, id: e.pointerId }; return; }
   if (e.button === 1) { nav = { mode: 'pan', x, y, id: e.pointerId }; e.preventDefault(); return; }
@@ -3603,6 +3641,14 @@ canvas.addEventListener('pointerdown', (e) => {
   // Clip / Trim: a line, from anywhere (on or off the model)
   const cb = brush();
   if (cb.base === 'clip' || cb.base === 'cut' || cb.base === 'slice') { gesture = { kind: 'cutline', base: cb.base, x0: x, y0: y, x, y, alt: e.altKey, snap: e.shiftKey, id: e.pointerId }; hideRing(); return; }
+  if (cb.base === 'gizmo' && !e.shiftKey) {
+    const hd = gizmoHandle(x, y);
+    if (hd !== null) { startGizmo(e, x, y, hd); hideRing(); drawOverlay(); return; }
+    nav = { mode: e.altKey ? 'pan' : 'orbit', x, y, id: e.pointerId }; hideRing(); return;
+  }
+  // another subtool in front: a click selects it, a drag turns the view
+  const oh = pickOther(x, y);
+  if (oh && (!hit || oh.distance < camera.position.distanceTo(hit.point))) { gesture = { kind: 'picktool', tool: oh.tool, x0: x, y0: y, x, y, id: e.pointerId }; hideRing(); return; }
   // a press on the waiting curve bends it (and redoes its stroke on release)
   if (isCurveBrush(cb) && !e.shiftKey && !tempSmooth && liveCurve() && curve.brushId === cb.id) {
     const k = curveHitIndex(x, y);
@@ -3633,6 +3679,8 @@ canvas.addEventListener('pointermove', (e) => {
     if (gesture.kind === 'group' && moved) { gesture.kind = gesture.hit ? 'maskpaint' : 'maskrect'; gesture.pts = [[gesture.x0, gesture.y0]]; }
     if (gesture.kind === 'cutline') { gesture.alt = e.altKey; gesture.snap = e.shiftKey; drawOverlay(); return; }
     if (gesture.kind === 'insert') { showInsertPreview(gesture); return; }
+    if (gesture.kind === 'gizmo') { applyGizmo(gesture); drawOverlay(); return; }
+    if (gesture.kind === 'picktool') { if (gesture.moved) { nav = { mode: 'orbit', x, y, id: gesture.id }; gesture = null; } return; }
     if (gesture.kind === 'curveedit') { drawOverlay(); return; }
     if (gesture.kind === 'curvedraw') { const lp = gesture.pts[gesture.pts.length - 1]; if (Math.hypot(x - lp[0], y - lp[1]) > 2) { gesture.pts.push([x, y]); drawOverlay(); } return; }
     if (gesture.kind === 'maskrect' && gesture.pts) { const lp = gesture.pts[gesture.pts.length - 1]; if (Math.hypot(x - lp[0], y - lp[1]) > 3) gesture.pts.push([x, y]); }
@@ -3679,6 +3727,8 @@ function endPointer(e) {
     const moved = !!g.moved || Math.hypot(g.x - g.x0, g.y - g.y0) > 4;
     if (g.kind === 'cutline') { if (moved) applyCut(g); }
     else if (g.kind === 'insert') insertShape(g);
+    else if (g.kind === 'gizmo') endGizmo(g, true);
+    else if (g.kind === 'picktool') { const k = TOOLS.indexOf(g.tool); if (k >= 0) { activateTool(k); toast(`Активен подобект: ${g.tool.name}`); } }
     else if (g.kind === 'curvedraw') { if (moved) finishCurve(g); }
     else if (g.kind === 'curveedit') finishCurveEdit(g, false);
     else if (g.kind === 'group') { if (!moved) { if (g.hit) maskAllBut(groupNear(g.hit.point, worldPerPx(g.hit.point) * 20)); else maskOp('clear'); } }
@@ -3736,6 +3786,7 @@ function placeRing(point, normal, r) {
 function hideRing() { ring.visible = false; for (const r of symRings) r.visible = false; $('cursor2d').hidden = true; }
 function updateHover() {
   if (!hoverXY || stroke || nav) return;
+  if (brush().base === 'gizmo') { hideRing(); return; }
   const hit = pick(hoverXY.x, hoverXY.y);
   if (hit) {
     const pr = S.prRadius ? pressureOf(Math.max(lastPressure, 0.5)) : 1;
@@ -3753,7 +3804,7 @@ function frame() {
   if (stroke) { refitBVH(); dynSplitsLeft = DYN_FRAME_SPLITS; dynCollapsesLeft = DYN_FRAME_COLLAPSES; processStroke(); flushFrame(); }
   else updateHover();
   renderer.render(scene, camera);
-  if (curve && !gesture) drawOverlay();
+  if ((curve && !gesture) || brush().base === 'gizmo') drawOverlay();
   if (stroke && stroke.queue.length) requestRender();
 }
 
@@ -3785,23 +3836,454 @@ window.addEventListener('keydown', (e) => {
 const MAX_TRIS = 3_000_000;
 function busy(on) { $('busy').hidden = !on; }
 const subdivide = () => divide();
+/* =====================================================================
+   SubTools: separate objects in one scene (ZBrush: SubTool)
+   The active one is the live `mesh` (with its levels MR and layers LAYERS); the others keep theirs in
+   their records and are drawn darker. Each undo step remembers its subtool, so undoing a step of
+   another one makes that one active first. Adding, removing, merging and the booleans are undo steps of
+   the whole list.
+   ===================================================================== */
+let TOOLS = [];
+let curTool = 0, toolSeq = 0, solo = false;
+const others = new Map();   // tool → { obj, mesh, f }: what is drawn for the inactive ones
+function makeTool(m, name) { return { id: ++toolSeq, name, visible: true, op: 'add', mesh: m, MR: null, LAYERS: [], recLayer: -1 }; }
+function stashActive() { const t = TOOLS[curTool]; if (t) { t.mesh = mesh; t.MR = MR; t.LAYERS = LAYERS; t.recLayer = recLayer; } }
+// make the k-th subtool the live one (the current one is stashed first, unless `fresh`)
+function activateTool(k, fresh = false) {
+  if (!TOOLS[k] || (!fresh && k === curTool)) return;
+  if (!fresh) stashActive();
+  curTool = k;
+  const t = TOOLS[k];
+  MR = t.MR; LAYERS = t.LAYERS; recLayer = t.recLayer;
+  if ((MR || LAYERS.length) && S.dyntopo) { S.dyntopo = false; saveSettings(); }
+  let m = t.mesh;
+  if (m.dyn && !S.dyntopo) { const a = m.arrays(); m = new SculptMesh(a.pos, a.idx, a.col, a.mask, a.level, a.grp); }
+  t.mesh = m; t.visible = true;
+  dropCurve();
+  setMesh(m, { quiet: true });
+  syncLevelUI(); renderLayers(); renderTools(); renderOthers();
+}
+function toolArrays(t) {
+  const m = t === TOOLS[curTool] ? mesh : t.mesh;
+  return m.dyn ? m.arrays() : { pos: m.pos.subarray(0, m.n * 3), idx: m.idx.subarray(0, m.f * 3), col: m.col.subarray(0, m.n * 3), mask: m.mask.subarray(0, m.n), grp: m.grp.subarray(0, m.n) };
+}
+const meshFromArrays = (a) => new SculptMesh(Float32Array.from(a.pos), Uint32Array.from(a.idx), Float32Array.from(a.col), Float32Array.from(a.mask), 0, Float32Array.from(a.grp));
+// one undo step for a change of the list (which subtools, their order, which is active)
+function toolsStep(change) {
+  stashActive();
+  const before = { list: TOOLS.slice(), cur: curTool, vis: TOOLS.map((t) => t.visible) };
+  change();
+  const after = { list: TOOLS.slice(), cur: curTool, vis: TOOLS.map((t) => t.visible) };
+  const go = (st) => { stashActive(); TOOLS = st.list.slice(); TOOLS.forEach((t, k) => (t.visible = st.vis[k])); activateTool(st.cur, true); };
+  pushUndo({ type: 'fn', undo: () => go(before), redo: () => go(after), bytes: 0, tool: null });
+  activateTool(after.cur, true);
+  scheduleAutosave();
+}
+// the inactive subtools, drawn a little darker with their own geometry
+function renderOthers() {
+  const keep = new Set();
+  TOOLS.forEach((t, k) => {
+    if (k === curTool || !t.visible || solo) return;
+    keep.add(t);
+    const m = t.mesh;
+    let o = others.get(t);
+    if (o && (o.mesh !== m || o.f !== m.f)) { scene.remove(o.obj); o.obj.geometry.dispose(); o = null; }
+    if (!o) {
+      const a = toolArrays(t), g = new THREE.BufferGeometry();
+      g.setAttribute('position', new THREE.BufferAttribute(Float32Array.from(a.pos), 3));
+      g.setIndex(new THREE.BufferAttribute(Uint32Array.from(a.idx), 1));
+      g.computeVertexNormals();
+      const c = Float32Array.from(a.col); for (let i = 0; i < c.length; i++) c[i] *= 0.72;
+      g.setAttribute('aColor', new THREE.BufferAttribute(c, 3));
+      g.setAttribute('aMask', new THREE.BufferAttribute(new Float32Array(a.pos.length / 3), 1));
+      g.setAttribute('aGroup', new THREE.BufferAttribute(Float32Array.from(a.grp), 1));
+      g.computeBoundingSphere();
+      const obj = new THREE.Mesh(g, material);
+      scene.add(obj);
+      o = { obj, mesh: m, f: m.f };
+      others.set(t, o);
+    }
+  });
+  for (const [t, o] of others) if (!keep.has(t)) { scene.remove(o.obj); o.obj.geometry.dispose(); others.delete(t); }
+  requestRender();
+}
+// the nearest inactive subtool under the pointer, if it is nearer than the active one
+function pickOther(x, y) {
+  if (!others.size) return null;
+  ndc.set((x / viewport.w) * 2 - 1, -(y / viewport.h) * 2 + 1);
+  raycaster.setFromCamera(ndc, camera);
+  let best = null;
+  for (const [t, o] of others) {
+    const h = raycaster.intersectObject(o.obj, false)[0];
+    if (h && (!best || h.distance < best.distance)) best = { tool: t, distance: h.distance };
+  }
+  return best;
+}
+function renderTools() {
+  const box = $('toolList'); if (!box) return;
+  box.textContent = '';
+  TOOLS.forEach((t, k) => {
+    const row = document.createElement('div'); row.className = 'subtool' + (k === curTool ? ' on' : '');
+    const eye = document.createElement('input'); eye.type = 'checkbox'; eye.checked = t.visible || k === curTool; eye.disabled = k === curTool;
+    eye.title = k === curTool ? 'Активният подобект е винаги видим' : 'Видим';
+    eye.onchange = () => { t.visible = eye.checked; renderOthers(); scheduleAutosave(); };
+    const name = document.createElement('input'); name.type = 'text'; name.value = t.name; name.maxLength = 30;
+    name.onchange = () => { t.name = name.value.trim() || t.name; scheduleAutosave(); };
+    name.onfocus = () => { if (k !== curTool) activateTool(k); };
+    const op = document.createElement('button'); op.className = 'lbtn op';
+    const OPS = [['add', '+', 'Добавя обем при „Булево“'], ['subtract', '−', 'Изважда обем при „Булево“'], ['intersect', '∩', 'Оставя само общото при „Булево“']];
+    const cur = OPS.find((q) => q[0] === t.op) || OPS[0];
+    op.textContent = cur[1]; op.title = cur[2];
+    op.onclick = () => { t.op = OPS[(OPS.indexOf(cur) + 1) % 3][0]; renderTools(); scheduleAutosave(); };
+    const info = document.createElement('span'); info.className = 'tinfo'; info.textContent = fmt((k === curTool ? mesh : t.mesh).f);
+    row.onclick = (e) => { if (e.target === row || e.target === info) activateTool(k); };
+    row.append(eye, name, op, info);
+    box.appendChild(row);
+  });
+  $('bToolDel').disabled = TOOLS.length < 2;
+  $('bToolMerge').disabled = curTool >= TOOLS.length - 1;
+  $('bToolUp').disabled = curTool === 0; $('bToolDown').disabled = curTool >= TOOLS.length - 1;
+  setPressed('bSolo', solo);
+}
+function addTool(m, name, { after = true } = {}) {
+  toolsStep(() => { const t = makeTool(m, name); const at = after ? curTool + 1 : TOOLS.length; TOOLS.splice(at, 0, t); curTool = at; });
+}
+function appendPrimitive(kind) {
+  // beside the model, to the right as it is seen now (in the middle it could be hidden inside)
+  const { c, r } = mesh.bounds(), sh = immShape(kind, 0.03), k = r * 0.45;
+  const right = new THREE.Vector3(1, 0, 0).applyQuaternion(camera.quaternion).multiplyScalar(r * 1.35);
+  const M = [k, 0, 0, 0, k, 0, 0, 0, k], part = placePart(sh, M, [c[0] + right.x, c[1] + right.y, c[2] + right.z]);
+  const nv = part.pos.length / 3;
+  addTool(new SculptMesh(part.pos, Uint32Array.from(part.idx), new Float32Array(nv * 3).fill(1), new Float32Array(nv), 0, new Float32Array(nv)), (IMM.find((x) => x.id === kind) || IMM[0]).name);
+  frameView();
+  toast('Нов подобект до модела. Местете го с Gizmo (Z).');
+}
+function duplicateTool() {
+  const t = TOOLS[curTool];
+  stashActive();
+  addTool(meshFromArrays(toolArrays(t)), t.name + ' (копие)');
+}
+function deleteTool() {
+  if (TOOLS.length < 2) return;
+  toolsStep(() => { TOOLS.splice(curTool, 1); curTool = Math.min(curTool, TOOLS.length - 1); });
+}
+function moveTool(dir) {
+  const j = curTool + dir; if (j < 0 || j >= TOOLS.length) return;
+  toolsStep(() => { const t = TOOLS[curTool]; TOOLS[curTool] = TOOLS[j]; TOOLS[j] = t; curTool = j; });
+}
+// the active subtool and the one below it become one (ZBrush: Merge Down); levels and layers go
+function mergeDown() {
+  if (curTool >= TOOLS.length - 1) return;
+  if (!askDropLevels('Сливането')) return;
+  stashActive();
+  const A = TOOLS[curTool], B = TOOLS[curTool + 1], a = toolArrays(A), b = toolArrays(B);
+  let off = 0; for (let i = 0; i < a.grp.length; i++) off = Math.max(off, a.grp[i] + 1);
+  const r = appendParts(a, [{ pos: b.pos, idx: b.idx }], false);
+  r.col.set(b.col, a.pos.length); r.mask.set(b.mask, a.pos.length / 3);
+  for (let i = 0; i < b.grp.length; i++) r.grp[a.pos.length / 3 + i] = b.grp[i] + off;
+  toolsStep(() => { TOOLS.splice(curTool, 2, makeTool(new SculptMesh(r.pos, r.idx, r.col, r.mask, 0, r.grp), A.name)); });
+  toast('Двата подобекта са един (без да се сливат повърхностите; за това е „Булево“ или „Преизгради мрежата“).');
+}
+// every polygroup becomes its own subtool (ZBrush: Split > Groups Split)
+function splitGroups() {
+  stashActive();
+  const t = TOOLS[curTool], a = toolArrays(t), n = a.pos.length / 3;
+  const faceG = (f) => { const g0 = a.grp[a.idx[f * 3]], g1 = a.grp[a.idx[f * 3 + 1]], g2 = a.grp[a.idx[f * 3 + 2]]; return g1 === g2 ? g1 : g0; };
+  const byG = new Map();
+  for (let f = 0; f < a.idx.length / 3; f++) { const g = faceG(f); if (!byG.has(g)) byG.set(g, []); byG.get(g).push(f); }
+  if (byG.size < 2) { toast('Подобектът има само една група: първо направете групи (Настройки → Групи) или ги разделете с „Групи“ (A).'); return; }
+  if (!askDropLevels('Разделянето по групи')) return;
+  const parts = [];
+  for (const [g, faces] of byG) {
+    const map = new Int32Array(n).fill(-1), pos = [], col = [], mask = [], grp = [], idx = [];
+    for (const f of faces) for (let e = 0; e < 3; e++) {
+      const v = a.idx[f * 3 + e];
+      if (map[v] < 0) { map[v] = pos.length / 3; pos.push(a.pos[v * 3], a.pos[v * 3 + 1], a.pos[v * 3 + 2]); col.push(a.col[v * 3], a.col[v * 3 + 1], a.col[v * 3 + 2]); mask.push(a.mask[v]); grp.push(g); }
+      idx.push(map[v]);
+    }
+    parts.push(makeTool(new SculptMesh(Float32Array.from(pos), Uint32Array.from(idx), Float32Array.from(col), Float32Array.from(mask), 0, Float32Array.from(grp)), `${t.name} · ${parts.length + 1}`));
+  }
+  toolsStep(() => { TOOLS.splice(curTool, 1, ...parts); });
+  toast(`Разделено на ${parts.length} подобекта.`);
+}
+// a shell from the masked area, as a new subtool (ZBrush: Extract): the area lifted by the thickness,
+// its underside just off the surface, the rim closed with a wall
+function extractShell(a, thick) {
+  const n = a.pos.length / 3, sel = [];
+  for (let f = 0; f < a.idx.length / 3; f++) if (a.mask[a.idx[f * 3]] >= 0.5 && a.mask[a.idx[f * 3 + 1]] >= 0.5 && a.mask[a.idx[f * 3 + 2]] >= 0.5) sel.push(f);
+  if (!sel.length) return null;
+  // vertex normals of the whole surface (area weighted)
+  const N = new Float64Array(n * 3);
+  for (let f = 0; f < a.idx.length / 3; f++) {
+    const i = a.idx[f * 3], j = a.idx[f * 3 + 1], k = a.idx[f * 3 + 2], P = a.pos;
+    const ux = P[j * 3] - P[i * 3], uy = P[j * 3 + 1] - P[i * 3 + 1], uz = P[j * 3 + 2] - P[i * 3 + 2];
+    const vx = P[k * 3] - P[i * 3], vy = P[k * 3 + 1] - P[i * 3 + 1], vz = P[k * 3 + 2] - P[i * 3 + 2];
+    const nx = uy * vz - uz * vy, ny = uz * vx - ux * vz, nz = ux * vy - uy * vx;
+    for (const v of [i, j, k]) { N[v * 3] += nx; N[v * 3 + 1] += ny; N[v * 3 + 2] += nz; }
+  }
+  const map = new Int32Array(n).fill(-1), used = [];
+  for (const f of sel) for (let e = 0; e < 3; e++) { const v = a.idx[f * 3 + e]; if (map[v] < 0) { map[v] = used.length; used.push(v); } }
+  const m = used.length, pos = new Float32Array(m * 6), col = new Float32Array(m * 6), mask = new Float32Array(m * 2), grp = new Float32Array(m * 2);
+  used.forEach((v, q) => {
+    const l = Math.hypot(N[v * 3], N[v * 3 + 1], N[v * 3 + 2]) || 1;
+    for (let c = 0; c < 3; c++) {
+      const nn = N[v * 3 + c] / l;
+      pos[q * 3 + c] = a.pos[v * 3 + c] + nn * thick;                 // outer
+      pos[(m + q) * 3 + c] = a.pos[v * 3 + c] + nn * thick * 0.12;    // inner, just off the surface
+      col[q * 3 + c] = col[(m + q) * 3 + c] = a.col[v * 3 + c];
+    }
+  });
+  const idx = [], edges = new Set();
+  for (const f of sel) for (let e = 0; e < 3; e++) edges.add(map[a.idx[f * 3 + e]] * 4294967296 + map[a.idx[f * 3 + (e + 1) % 3]]);
+  for (const f of sel) {
+    const i = map[a.idx[f * 3]], j = map[a.idx[f * 3 + 1]], k = map[a.idx[f * 3 + 2]];
+    idx.push(i, j, k, m + i, m + k, m + j);
+    for (const [p, q] of [[i, j], [j, k], [k, i]]) if (!edges.has(q * 4294967296 + p)) idx.push(q, p, m + p, q, m + p, m + q);   // the rim's wall
+  }
+  return { pos, idx: Uint32Array.from(idx), col, mask, grp };
+}
+function extractTool() {
+  stashActive();
+  const a = toolArrays(TOOLS[curTool]), { r } = mesh.bounds();
+  const out = extractShell(a, S.extract * r * 0.08);
+  if (!out) { toast('Първо маскирайте (Ctrl+рисуване) мястото, от което да стане дрехата или бронята.'); return; }
+  addTool(new SculptMesh(out.pos, out.idx, out.col, out.mask, 0, out.grp), 'Извадено');
+  toast('Нов подобект от маската. Изгладете ръба му с „Изглаждане“ или го преизградете за равна мрежа.');
+}
+// the visible subtools combined, in order, by their + − ∩, into a new one (ZBrush: Live Boolean > Make Boolean Mesh)
+function makeBoolean() {
+  if (working) return;
+  stashActive();
+  const vis = TOOLS.filter((t, k) => t.visible || k === curTool);
+  if (vis.length < 2) { toast('Нужни са поне два видими подобекта: „+“ добавя, „−“ изважда, „∩“ оставя общото.'); return; }
+  if (vis[0].op !== 'add') { toast('Най-горният видим подобект трябва да е „+“.'); return; }
+  const parts = [];
+  let off = 0;
+  for (const t of vis) {
+    const a = toolArrays(t);
+    if (hasOpenEdges(a.idx)) { toast(`„${t.name}“ не е затворен (има отвори), затова не може да участва.`); return; }
+    const grp = Float32Array.from(a.grp); let mx = 0; for (let i = 0; i < grp.length; i++) { grp[i] += off; mx = Math.max(mx, grp[i] + 1); } off = mx;
+    parts.push({ pos: a.pos, idx: a.idx, col: a.col, mask: new Float32Array(a.pos.length / 3), grp, op: t.op });
+  }
+  busy(true); working = true;
+  const t0 = performance.now();
+  voxelCombine(parts, S.voxel)
+    .then((r) => {
+      if (r.idx.length < 12) { toast('Нищо не остана: проверете „−“ и „∩“.'); return; }
+      toolsStep(() => {
+        for (const t of vis) t.visible = false;
+        TOOLS.push(makeTool(new SculptMesh(r.pos, r.idx, r.col, r.mask, 0, r.grp), 'Булево'));
+        curTool = TOOLS.length - 1;
+      });
+      toast(`Булево: ${fmt(r.idx.length / 3)} триъгълника за ${((performance.now() - t0) / 1000).toFixed(1)} с. Частите са скрити, не изтрити.`);
+    })
+    .catch((e) => toast('Булевото не успя: ' + e.message))
+    .finally(() => { working = false; busy(false); });
+}
+
+/* ---------- Gizmo 3D: move, turn and scale the unmasked part of the active subtool ----------
+   Arrows along X (red), Y (green) and Z (blue) from the centre of what is not masked: dragging an arrow
+   works along that axis, dragging the middle works on screen (move in the view plane, turn freely,
+   scale evenly). Dragging anywhere else turns the view. */
+let gizmoCache = null;
+function gizmoPivot() {
+  const key = undoSerial + ':' + curTool + ':' + mesh.n;
+  if (gizmoCache && gizmoCache.key === key) return gizmoCache.p;
+  const m = mesh, P = m.pos, MK = m.mask;
+  let x = 0, y = 0, z = 0, w = 0;
+  for (let i = 0; i < m.n; i++) { if (m.dyn && !m.vfA[i].length) continue; const k = 1 - MK[i]; if (k <= 0) continue; x += P[i * 3] * k; y += P[i * 3 + 1] * k; z += P[i * 3 + 2] * k; w += k; }
+  const p = w > 0 ? new THREE.Vector3(x / w, y / w, z / w) : null;
+  gizmoCache = { key, p };
+  return p;
+}
+const AXES = [new THREE.Vector3(1, 0, 0), new THREE.Vector3(0, 1, 0), new THREE.Vector3(0, 0, 1)];
+const AXIS_COL = ['#ef6a5a', '#7ccf6e', '#6aa0ef'];
+function gizmoScreen() {
+  const p = gizmoPivot(); if (!p) return null;
+  camera.updateMatrixWorld();
+  const c = toScreen(p), L = 80 * worldPerPx(p);
+  return { p, c, L, ends: AXES.map((a) => toScreen(p.clone().addScaledVector(a, L))) };
+}
+function gizmoHandle(x, y) {
+  const G = gizmoScreen(); if (!G) return null;
+  if (Math.hypot(x - G.c[0], y - G.c[1]) < 16) return 'free';
+  let best = null, bd = 12;
+  G.ends.forEach((e, k) => {
+    const dx = e[0] - G.c[0], dy = e[1] - G.c[1], l2 = dx * dx + dy * dy || 1;
+    const t = Math.max(0, Math.min(1, ((x - G.c[0]) * dx + (y - G.c[1]) * dy) / l2));
+    const d = Math.hypot(x - (G.c[0] + dx * t), y - (G.c[1] + dy * t));
+    if (d < bd) { bd = d; best = k; }
+  });
+  return best;
+}
+function startGizmo(e, x, y, handle) {
+  const m = mesh, G = gizmoScreen();
+  const ids = [], w = [];
+  for (let i = 0; i < m.n; i++) { if (m.dyn && !m.vfA[i].length) continue; const k = 1 - m.mask[i]; if (k > 0) { ids.push(i); w.push(k); } }
+  const idx = Uint32Array.from(ids), orig = new Float32Array(idx.length * 3);
+  idx.forEach((i, q) => { orig[q * 3] = m.pos[i * 3]; orig[q * 3 + 1] = m.pos[i * 3 + 1]; orig[q * 3 + 2] = m.pos[i * 3 + 2]; });
+  gesture = { kind: 'gizmo', handle, mode: brush().gz || 'move', x0: x, y0: y, x, y, id: e.pointerId, idx, w: Float32Array.from(w), orig, G, camN: new THREE.Vector3(0, 0, 1).applyQuaternion(camera.quaternion) };
+}
+// the transform of the drag so far: point → M·(point − pivot) + pivot + t
+function gizmoTransform(g) {
+  const G = g.G, dx = g.x - g.x0, dy = g.y - g.y0, M = new THREE.Matrix3(), t = new THREE.Vector3();
+  const ax = typeof g.handle === 'number' ? AXES[g.handle] : null;
+  const u = ax ? [G.ends[g.handle][0] - G.c[0], G.ends[g.handle][1] - G.c[1]] : null;
+  const along = u ? (dx * u[0] + dy * u[1]) / (u[0] * u[0] + u[1] * u[1] || 1) : 0;   // in arrow lengths
+  if (g.mode === 'move') {
+    if (ax) t.copy(ax).multiplyScalar(along * G.L);
+    else { const a = screenToPlane(g.x0, g.y0, G.p, g.camN), b = screenToPlane(g.x, g.y, G.p, g.camN); if (a && b) t.subVectors(b, a); }
+  } else if (g.mode === 'rotate') {
+    let q;
+    if (ax) {
+      const a0 = Math.atan2(g.y0 - G.c[1], g.x0 - G.c[0]), a1 = Math.atan2(g.y - G.c[1], g.x - G.c[0]);
+      let ang = a1 - a0; while (ang > Math.PI) ang -= 2 * Math.PI; while (ang < -Math.PI) ang += 2 * Math.PI;
+      // screen y points down: a turn clockwise on screen is about the axis toward the viewer
+      const toward = ax.dot(g.camN) >= 0 ? -1 : 1;
+      q = new THREE.Quaternion().setFromAxisAngle(ax, ang * toward);
+    } else {
+      const up = new THREE.Vector3(0, 1, 0).applyQuaternion(camera.quaternion), right = new THREE.Vector3(1, 0, 0).applyQuaternion(camera.quaternion);
+      q = new THREE.Quaternion().setFromAxisAngle(up, dx * 0.01).premultiply(new THREE.Quaternion().setFromAxisAngle(right, dy * 0.01));
+    }
+    M.setFromMatrix4(new THREE.Matrix4().makeRotationFromQuaternion(q));
+  } else {
+    if (ax) { const f = Math.max(0.02, 1 + along); const e = M.elements; for (let i = 0; i < 3; i++) for (let j = 0; j < 3; j++) e[j * 3 + i] = (i === j ? 1 : 0) + (f - 1) * ax.getComponent(i) * ax.getComponent(j); }
+    else { const f = Math.max(0.02, Math.exp((dx - dy) * 0.005)); M.multiplyScalar(f); }
+  }
+  return { M, t };
+}
+function applyGizmo(g) {
+  const m = mesh, P = m.pos, { M, t } = gizmoTransform(g), e = M.elements, p = g.G.p, v = new THREE.Vector3();
+  for (let q = 0; q < g.idx.length; q++) {
+    const i = g.idx[q], w = g.w[q];
+    v.set(g.orig[q * 3] - p.x, g.orig[q * 3 + 1] - p.y, g.orig[q * 3 + 2] - p.z);
+    const x = e[0] * v.x + e[3] * v.y + e[6] * v.z + p.x + t.x, y = e[1] * v.x + e[4] * v.y + e[7] * v.z + p.y + t.y, z = e[2] * v.x + e[5] * v.y + e[8] * v.z + p.z + t.z;
+    P[i * 3] = g.orig[q * 3] + (x - g.orig[q * 3]) * w; P[i * 3 + 1] = g.orig[q * 3 + 1] + (y - g.orig[q * 3 + 1]) * w; P[i * 3 + 2] = g.orig[q * 3 + 2] + (z - g.orig[q * 3 + 2]) * w;
+  }
+  m.updateNormals(g.idx, g.idx.length);
+  uploadAll(geo.attributes.position); uploadAll(geo.attributes.normal);
+  bvhDirty = true;
+  requestRender();
+}
+function endGizmo(g, commit) {
+  const m = mesh;
+  if (!commit) { for (let q = 0; q < g.idx.length; q++) { const i = g.idx[q]; m.pos[i * 3] = g.orig[q * 3]; m.pos[i * 3 + 1] = g.orig[q * 3 + 1]; m.pos[i * 3 + 2] = g.orig[q * 3 + 2]; } }
+  else if (g.idx.length && (g.x !== g.x0 || g.y !== g.y0)) {
+    const n = g.idx.length, col = new Float32Array(n * 3), mask = new Float32Array(n);
+    g.idx.forEach((i, q) => { col[q * 3] = m.col[i * 3]; col[q * 3 + 1] = m.col[i * 3 + 1]; col[q * 3 + 2] = m.col[i * 3 + 2]; mask[q] = m.mask[i]; });
+    pushUndo({ type: 'verts', idx: g.idx, pos: g.orig, col, mask });
+    scheduleAutosave();
+  }
+  m.updateNormals(g.idx, g.idx.length);
+  uploadAll(geo.attributes.position); uploadAll(geo.attributes.normal);
+  bvhDirty = true; if (m.dyn) { m.gridMaybeRebuild(); }
+  gizmoCache = null;
+  requestRender();
+}
+function drawGizmo(el) {
+  const G = gizmoScreen(); if (!G) return;
+  const g = gesture && gesture.kind === 'gizmo' ? gesture : null;
+  G.ends.forEach((e, k) => {
+    const hot = g && g.handle === k;
+    el('line', { x1: G.c[0], y1: G.c[1], x2: e[0], y2: e[1], stroke: AXIS_COL[k], 'stroke-width': hot ? 4 : 2.5, 'stroke-linecap': 'round' });
+    el('circle', { cx: e[0], cy: e[1], r: hot ? 6 : 4.5, fill: AXIS_COL[k] });
+  });
+  el('circle', { cx: G.c[0], cy: G.c[1], r: 11, fill: 'none', stroke: '#fff', 'stroke-width': g && g.handle === 'free' ? 3 : 1.6 });
+}
+
+/* ---------- the Rust core (../core, WebAssembly) ----------
+   The voxel remesh and the booleans run in Rust, in a worker, so the page keeps drawing meanwhile. If
+   workers are not allowed the module runs on the page; if WebAssembly is not allowed either, the
+   JavaScript voxelRemesh does the work (without booleans). */
+const OP = { add: 0, subtract: 1, intersect: 2 };
+// copies the inputs into the module's memory, runs it, copies the result out (also runs in the worker,
+// so it may use nothing from outside)
+function coreCall(X, m) {
+  const ins = [m.pos, m.idx, m.col, m.mask, m.grp, m.parts];
+  const ptrs = ins.map((a) => { const p = X.mem_alloc(a.byteLength); new Uint8Array(X.memory.buffer, p, a.byteLength).set(new Uint8Array(a.buffer, a.byteOffset, a.byteLength)); return p; });
+  const rc = X.voxel_csg_raw(ptrs[0], m.pos.length / 3, ptrs[1], m.idx.length / 3, ptrs[2], ptrs[3], ptrs[4], ptrs[5], m.parts.length / 3, m.res);
+  ins.forEach((a, k) => X.mem_free(ptrs[k], a.byteLength));
+  if (rc !== 0) throw new Error('the core refused the input');
+  const get = (k, T) => new T(X.memory.buffer, X.out_ptr(k), X.out_len(k)).slice();
+  const out = { pos: get(0, Float32Array), idx: get(1, Uint32Array), col: get(2, Float32Array), mask: get(3, Float32Array), grp: get(4, Float32Array), res: X.out_res() };
+  X.out_clear();
+  return out;
+}
+const CORE_WORKER = `const coreCall = (${coreCall.toString()});
+let X = null;
+onmessage = async (e) => {
+  const d = e.data;
+  if (d.init) { try { X = (await WebAssembly.instantiate(d.init, {})).instance.exports; postMessage({ ready: true }); } catch (err) { postMessage({ error: String(err) }); } return; }
+  try { const o = coreCall(X, d); postMessage({ id: d.id, out: o }, [o.pos.buffer, o.idx.buffer, o.col.buffer, o.mask.buffer, o.grp.buffer]); }
+  catch (err) { postMessage({ id: d.id, error: String((err && err.message) || err) }); }
+};`;
+let corePromise = null;
+function coreStart() {
+  if (corePromise) return corePromise;
+  corePromise = (async () => {
+    let bytes;
+    if (window.GLINA_WASM) bytes = Uint8Array.from(atob(window.GLINA_WASM), (c) => c.charCodeAt(0));
+    else { const r = await fetch('build/glina-core.wasm'); if (!r.ok) throw new Error('no core'); bytes = new Uint8Array(await r.arrayBuffer()); }
+    try {
+      const w = new Worker(URL.createObjectURL(new Blob([CORE_WORKER], { type: 'text/javascript' })));
+      await new Promise((ok, bad) => {
+        w.onmessage = (e) => (e.data.ready ? ok() : bad(new Error(e.data.error)));
+        w.onerror = (e) => bad(new Error(e.message || 'worker'));
+        w.postMessage({ init: bytes });
+        setTimeout(() => bad(new Error('the worker did not start')), 8000);
+      });
+      const jobs = new Map();
+      let seq = 0;
+      w.onmessage = (e) => { const j = jobs.get(e.data.id); if (!j) return; jobs.delete(e.data.id); if (e.data.error) j.bad(new Error(e.data.error)); else j.ok(e.data.out); };
+      w.onerror = (e) => { for (const j of jobs.values()) j.bad(new Error(e.message || 'worker')); jobs.clear(); };
+      return { where: 'worker', run: (msg) => new Promise((ok, bad) => { const id = ++seq; jobs.set(id, { ok, bad }); w.postMessage({ ...msg, id }, [msg.pos.buffer, msg.idx.buffer, msg.col.buffer, msg.mask.buffer, msg.grp.buffer, msg.parts.buffer]); }) };
+    } catch (err) {
+      const X = (await WebAssembly.instantiate(bytes, {})).instance.exports;
+      return { where: 'page', run: async (msg) => coreCall(X, msg) };
+    }
+  })();
+  return corePromise;
+}
+// Remesh (and combine) parts: [{ pos, idx, col, mask, grp, op }] → one new mesh. Without the core only a
+// single part can be remeshed (the JavaScript voxelRemesh).
+async function voxelCombine(parts, res) {
+  let core = null;
+  try { core = await coreStart(); } catch (e) { console.warn('Глина: the Rust core is not available, using JavaScript', e); }
+  if (!core) {
+    if (parts.length > 1) throw new Error('булевите операции не са достъпни тук (няма WebAssembly).');
+    return voxelRemesh(parts[0], res);
+  }
+  let nv = 0, nt = 0;
+  for (const p of parts) { nv += p.pos.length / 3; nt += p.idx.length / 3; }
+  const pos = new Float32Array(nv * 3), idx = new Uint32Array(nt * 3), col = new Float32Array(nv * 3), mask = new Float32Array(nv), grp = new Float32Array(nv), list = new Uint32Array(parts.length * 3);
+  let v = 0, t = 0;
+  parts.forEach((p, k) => {
+    const n = p.pos.length / 3, f = p.idx.length / 3;
+    pos.set(p.pos, v * 3); col.set(p.col.subarray(0, n * 3), v * 3); mask.set(p.mask.subarray(0, n), v); if (p.grp) grp.set(p.grp.subarray(0, n), v);
+    for (let q = 0; q < f * 3; q++) idx[t * 3 + q] = p.idx[q] + v;
+    list[k * 3] = t; list[k * 3 + 1] = t + f; list[k * 3 + 2] = OP[p.op] ?? 0;
+    v += n; t += f;
+  });
+  return core.run({ pos, idx, col, mask, grp, parts: list, res });
+}
+let working = false;   // a long job is running: the model must not change under it
 function remesh() {
-  if (stroke || mrPending) return;
+  if (stroke || mrPending || working) return;
   const src = mesh.dyn ? mesh.arrays() : mesh;
   if (hasOpenEdges(src.idx.subarray ? src.idx.subarray(0, mesh.f * 3) : src.idx)) { toast('Преизграждането работи само със затворен модел (без отвори, например не с равнината).'); return; }
   // (replaceMesh drops the levels after its undo step, so undo brings them back)
   if (!askDropLevels('Преизграждането на мрежата')) return;
-  busy(true);
-  setTimeout(() => {
-    const t0 = performance.now();
-    let r;
-    try { r = voxelRemesh({ pos: src.pos.subarray(0, mesh.n * 3), idx: src.idx.subarray(0, mesh.f * 3), col: src.col, mask: src.mask, grp: src.grp }, S.voxel); }
-    catch (e) { busy(false); toast('Преизграждането не успя: ' + e.message); return; }
-    if (r.idx.length < 12) { busy(false); toast('Моделът е твърде тънък за тази плътност. Увеличете плътността.'); return; }
-    const paused = replaceMesh(new SculptMesh(r.pos, r.idx, r.col, r.mask, 0, r.grp));
-    busy(false);
-    toast(`Нова мрежа: ${fmt(mesh.f)} триъгълника за ${((performance.now() - t0) / 1000).toFixed(1)} с.` + (r.res < S.voxel ? ` Плътността е намалена до ${r.res}, за да стигне паметта.` : '') + (paused ? ' ' + DYN_PAUSED_MSG : ''));
-  }, 30);
+  busy(true); working = true;
+  const t0 = performance.now();
+  const n = mesh.n, f = mesh.f;
+  voxelCombine([{ pos: src.pos.subarray(0, n * 3), idx: src.idx.subarray(0, f * 3), col: src.col, mask: src.mask, grp: src.grp, op: 'add' }], S.voxel)
+    .then((r) => {
+      if (r.idx.length < 12) { toast('Моделът е твърде тънък за тази плътност. Увеличете плътността.'); return; }
+      const paused = replaceMesh(new SculptMesh(r.pos, r.idx, r.col, r.mask, 0, r.grp));
+      toast(`Нова мрежа: ${fmt(mesh.f)} триъгълника за ${((performance.now() - t0) / 1000).toFixed(1)} с.` + (r.res < S.voxel ? ` Плътността е намалена до ${r.res}, за да стигне паметта.` : '') + (paused ? ' ' + DYN_PAUSED_MSG : ''));
+    })
+    .catch((e) => toast('Преизграждането не успя: ' + e.message))
+    .finally(() => { working = false; busy(false); });
 }
 function smoothAll() {
   if (stroke) return;
@@ -3883,6 +4365,7 @@ function drawOverlay() {
   if (g && g.kind === 'curvedraw') line = g.pts;
   else if (g && g.kind === 'curveedit') line = bentCurve(g);
   else if (!g && liveCurve()) { camera.updateMatrixWorld(); line = curve.pts.map((q) => toScreen(q.p)).filter((q) => q[2] < 1); }
+  if (brush().base === 'gizmo' && (!g || g.kind === 'gizmo')) drawGizmo(el);
   if (line && line.length > 1) {
     const pts = line.map((q) => q[0].toFixed(1) + ',' + q[1].toFixed(1)).join(' ');
     el('polyline', { points: pts, fill: 'none', stroke: '#000', 'stroke-opacity': 0.45, 'stroke-width': 4, 'stroke-linejoin': 'round', 'stroke-linecap': 'round' });
@@ -4215,6 +4698,7 @@ function cancelGesture() {
   if (!g) return;
   if (g.kind === 'insert') hideInsertPreview();
   if (g.kind === 'curveedit') finishCurveEdit(g, true);
+  if (g.kind === 'gizmo') endGizmo(g, false);
   drawOverlay();
 }
 
@@ -4818,10 +5302,11 @@ function normalizeArrays(pos) {
   const tmp = new SculptMesh(pos, new Uint32Array(0)); const { c, r } = tmp.bounds();
   for (let i = 0; i < pos.length; i += 3) { pos[i] = (pos[i] - c[0]) / r; pos[i + 1] = (pos[i + 1] - c[1]) / r; pos[i + 2] = (pos[i + 2] - c[2]) / r; }
 }
-$('bImport').onclick = () => $('fileIn').click();
+$('bImport').onclick = () => { appendFromFile = false; $('fileIn').click(); };
+let appendFromFile = false;
 $('fileIn').onchange = async () => {
   const file = $('fileIn').files[0]; $('fileIn').value = '';
-  if (!file) return;
+  if (!file) { appendFromFile = false; return; }
   busy(true);
   try {
     let r;
@@ -4831,11 +5316,20 @@ $('fileIn').onchange = async () => {
     else throw new Error('изберете файл .obj или .stl.');
     if (!r.idx.length) throw new Error('Файлът няма триъгълници.');
     dropUnusedVerts(r);
+    if (appendFromFile) {
+      // as a new subtool, the size of the model it joins and in its middle
+      const tmp = new SculptMesh(r.pos, new Uint32Array(0)), b = tmp.bounds(), tb = mesh.bounds(), k = tb.r * 0.6 / b.r;
+      for (let i = 0; i < r.pos.length; i += 3) for (let q = 0; q < 3; q++) r.pos[i + q] = (r.pos[i + q] - b.c[q]) * k + tb.c[q];
+      const nv = r.pos.length / 3;
+      addTool(new SculptMesh(r.pos, r.idx, r.col || new Float32Array(nv * 3).fill(1), new Float32Array(nv), 0, new Float32Array(nv)), file.name.replace(/\.[^.]+$/, '').slice(0, 30));
+      toast(`Добавен подобект ${file.name}: ${fmt(mesh.f)} триъгълника.`);
+      return;
+    }
     normalizeArrays(r.pos);
     const paused = replaceMesh(new SculptMesh(r.pos, r.idx, r.col || null), { frame: true });
     toast(`Отворен ${file.name}: ${fmt(mesh.f)} триъгълника.` + (paused ? ' ' + DYN_PAUSED_MSG : ''));
   } catch (err) { toast('Файлът не може да се отвори: ' + (err.message || err)); }
-  busy(false);
+  finally { appendFromFile = false; busy(false); }
 };
 
 $('immIn').onchange = async () => {
@@ -4856,24 +5350,40 @@ $('immIn').onchange = async () => {
 };
 
 /* ---------- export ---------- */
+// every visible subtool (OBJ keeps each as its own object)
+function exportParts() { stashActive(); return TOOLS.filter((t, k) => t.visible || k === curTool).filter((t) => !solo || t === TOOLS[curTool]).map((t) => ({ name: t.name, a: toolArrays(t) })); }
 function exportOBJ() {
-  const m = mesh, parts = ['# Глина Sculpt\n'];
-  const painted = m.col.subarray(0, m.n * 3).some((v) => v < 0.999);
-  for (let i = 0; i < m.n; i++) {
-    const p = `v ${m.pos[i * 3].toFixed(6)} ${m.pos[i * 3 + 1].toFixed(6)} ${m.pos[i * 3 + 2].toFixed(6)}`;
-    const cl = (v) => Math.min(1, Math.max(0, v)).toFixed(4);
-    parts.push(painted ? `${p} ${cl(m.col[i * 3])} ${cl(m.col[i * 3 + 1])} ${cl(m.col[i * 3 + 2])}\n` : p + '\n');
+  const parts = ['# Глина Sculpt\n'], list = exportParts();
+  const painted = list.some(({ a }) => a.col.some((v) => v < 0.999));
+  const cl = (v) => Math.min(1, Math.max(0, v)).toFixed(4);
+  let base = 1;
+  for (const { name, a } of list) {
+    parts.push(`o ${name.replace(/\s+/g, '_') || 'part'}\n`);
+    const n = a.pos.length / 3;
+    for (let i = 0; i < n; i++) {
+      const p = `v ${a.pos[i * 3].toFixed(6)} ${a.pos[i * 3 + 1].toFixed(6)} ${a.pos[i * 3 + 2].toFixed(6)}`;
+      parts.push(painted ? `${p} ${cl(a.col[i * 3])} ${cl(a.col[i * 3 + 1])} ${cl(a.col[i * 3 + 2])}\n` : p + '\n');
+    }
+    for (let t = 0; t < a.idx.length; t += 3) parts.push(`f ${a.idx[t] + base} ${a.idx[t + 1] + base} ${a.idx[t + 2] + base}\n`);
+    base += n;
   }
-  for (let t = 0; t < m.f; t++) parts.push(`f ${m.idx[t * 3] + 1} ${m.idx[t * 3 + 1] + 1} ${m.idx[t * 3 + 2] + 1}\n`);
   return new TextEncoder().encode(parts.join(''));
 }
 function exportSTL() {
-  const m = mesh, buf = new ArrayBuffer(84 + m.f * 50), dv = new DataView(buf);
-  dv.setUint32(80, m.f, true);
-  for (let t = 0; t < m.f; t++) {
-    const o = 84 + t * 50; const fl = Math.hypot(m.fn[t * 3], m.fn[t * 3 + 1], m.fn[t * 3 + 2]) || 1;
-    for (let k = 0; k < 3; k++) dv.setFloat32(o + k * 4, m.fn[t * 3 + k] / fl, true);
-    for (let v = 0; v < 3; v++) { const i = m.idx[t * 3 + v]; for (let k = 0; k < 3; k++) dv.setFloat32(o + 12 + v * 12 + k * 4, m.pos[i * 3 + k], true); }
+  const list = exportParts(), f = list.reduce((s, { a }) => s + a.idx.length / 3, 0);
+  const buf = new ArrayBuffer(84 + f * 50), dv = new DataView(buf);
+  dv.setUint32(80, f, true);
+  let o = 84;
+  for (const { a } of list) {
+    const P = a.pos;
+    for (let t = 0; t < a.idx.length; t += 3) {
+      const i = a.idx[t] * 3, j = a.idx[t + 1] * 3, k = a.idx[t + 2] * 3;
+      const ux = P[j] - P[i], uy = P[j + 1] - P[i + 1], uz = P[j + 2] - P[i + 2], vx = P[k] - P[i], vy = P[k + 1] - P[i + 1], vz = P[k + 2] - P[i + 2];
+      const nx = uy * vz - uz * vy, ny = uz * vx - ux * vz, nz = ux * vy - uy * vx, l = Math.hypot(nx, ny, nz) || 1;
+      dv.setFloat32(o, nx / l, true); dv.setFloat32(o + 4, ny / l, true); dv.setFloat32(o + 8, nz / l, true);
+      [i, j, k].forEach((v, q) => { for (let c = 0; c < 3; c++) dv.setFloat32(o + 12 + q * 12 + c * 4, P[v + c], true); });
+      o += 50;
+    }
   }
   return new Uint8Array(buf);
 }
@@ -4954,10 +5464,17 @@ function scheduleAutosave() {
   clearTimeout(autosaveT);
   autosaveT = setTimeout(async () => {
     if (stroke) { scheduleAutosave(); return; }
+    if (working) { scheduleAutosave(); return; }
     try {
       const a = mesh.dyn ? mesh.arrays() : mesh;
+      // the other subtools (the active one is stored as before, so older versions can still open it)
+      const rest = TOOLS.map((t, k) => {
+        if (k === curTool) return { name: t.name, visible: true, op: t.op, active: true };
+        const b = toolArrays(t);
+        return { name: t.name, visible: t.visible, op: t.op, pos: b.pos.slice(), idx: b.idx.slice(), col: b.col.slice(), mask: b.mask.slice(), grp: b.grp.slice(), level: t.mesh.level, mr: t.MR, layers: t.LAYERS.length ? { list: t.LAYERS.map((L) => ({ name: L.name, d: L.d, dc: L.dc, s: L.s, on: L.on })), rec: t.recLayer } : null };
+      });
       const db = await idb(); const tx = db.transaction('mesh', 'readwrite');
-      tx.objectStore('mesh').put({ pos: a.pos, idx: a.idx, col: a.col, mask: a.mask, grp: mesh.dyn ? a.grp : mesh.grp, level: mesh.level, mr: MR, layers: layersForSave(), t: Date.now() }, 'last');
+      tx.objectStore('mesh').put({ pos: a.pos, idx: a.idx, col: a.col, mask: a.mask, grp: mesh.dyn ? a.grp : mesh.grp, level: mesh.level, mr: MR, layers: layersForSave(), tools: rest, t: Date.now() }, 'last');
     } catch (e) { /* storage unavailable */ }
   }, 2500);
 }
@@ -5053,6 +5570,7 @@ brushSyncs.push(
     { id: 'line', name: 'Линия', title: 'Права линия от мястото на натискане до писалката; виждате я, докато я опъвате' },
     { id: 'curve', name: 'Крива', title: 'Curve Mode: линия по повърхността, която после може да огъвате; щрихът се прави наново' },
   ], 'stroke'),
+  brushChips('gzChips', [{ id: 'move', name: 'Местене' }, { id: 'rotate', name: 'Завъртане' }, { id: 'scale', name: 'Мащаб' }], 'gz', () => { gizmoCache = null; drawOverlay(); }),
   brushChips('immChips', IMM.map((x) => ({ id: x.id, name: x.name, title: x.id === 'file' ? 'Своя форма от файл .obj или .stl (за тази сесия)' : '' })), 'imm', () => { if (brush().imm === 'file') $('immIn').click(); }),
   brushChips('grabChips', [{ id: 'soft', name: 'Меко (Move)' }, { id: 'elastic', name: 'Еластично (Move Elastic)' }], 'grab'),
 );
@@ -5073,7 +5591,7 @@ $('bName').addEventListener('input', () => {
 function syncBrushUI() {
   syncRadius(); syncStrength();
   const b = brush(), base = b.base;
-  const moves = base === 'grab' || base === 'snake' || base === 'pose' || base === 'clip' || base === 'cut' || base === 'slice' || base === 'insert' || base === 'tube';
+  const moves = base === 'grab' || base === 'snake' || base === 'pose' || base === 'clip' || base === 'cut' || base === 'slice' || base === 'insert' || base === 'tube' || base === 'gizmo';
   $('bName').value = b.name; $('bName').disabled = b.builtin;
   $('bName').title = b.builtin ? 'Готовите четки не се преименуват; „Нова от тази“ прави ваше копие' : '';
   $('bBase').value = base;
@@ -5084,8 +5602,9 @@ function syncBrushUI() {
   $('topoRow').hidden = $('deepRow').hidden = base !== 'grab';
   $('grabGrp').hidden = base !== 'grab';
   $('volRow').hidden = !(base === 'grab' && b.grab === 'elastic');
-  $('curveGrp').hidden = (base === 'grab' && b.grab === 'elastic') || base === 'pose' || base === 'insert' || base === 'tube';
+  $('curveGrp').hidden = (base === 'grab' && b.grab === 'elastic') || base === 'pose' || base === 'insert' || base === 'tube' || base === 'gizmo';
   $('immGrp').hidden = base !== 'insert';
+  $('gzGrp').hidden = base !== 'gizmo';
   $('taperRow').hidden = $('curveNote').hidden = !isCurveBrush(b);
   $('sAngle').closest('.row').hidden = b.alphaRot === 'random';
   $('bBrushReset').textContent = b.builtin ? 'Нулирай' : 'Изтрий';
@@ -5330,6 +5849,20 @@ $('bSmoothAll').onclick = smoothAll;
 $('bRemesh').onclick = remesh;
 $('bPersp').onclick = () => setOrtho(!S.ortho);
 $('bMirror').onclick = mirrorFlip;
+$('bToolAdd').onclick = () => openMenu($('bToolAdd'), [
+  ...IMM.filter((x) => x.id !== 'file').map((x) => ({ label: x.name, run: () => appendPrimitive(x.id) })),
+  { label: 'От файл…', hint: '.obj, .stl', run: () => { appendFromFile = true; $('fileIn').click(); } },
+]);
+$('bToolDup').onclick = duplicateTool;
+$('bToolDel').onclick = deleteTool;
+$('bToolUp').onclick = () => moveTool(-1);
+$('bToolDown').onclick = () => moveTool(1);
+$('bToolMerge').onclick = mergeDown;
+$('bToolSplit').onclick = splitGroups;
+$('bSolo').onclick = () => { solo = !solo; renderTools(); renderOthers(); };
+$('bExtract').onclick = extractTool;
+$('bBoolean').onclick = makeBoolean;
+bindRange('sExtract', 'oExtract', () => S.extract, (v) => (S.extract = v), pct);
 $('bMirrorWeld').onclick = mirrorWeld;
 $('bNoise').onclick = applyNoise;
 bindRange('sNoiseScale', 'oNoiseScale', () => S.noiseScale, (v) => (S.noiseScale = v), pct);
@@ -5400,12 +5933,18 @@ function outside(e) { if (!e.target.closest('#menu')) closeMenu(); }
 function closeMenu() { const m = $('menu'); if (m) m.remove(); window.removeEventListener('pointerdown', outside, { capture: true }); }
 window.addEventListener('keydown', (e) => { if (e.key === 'Escape') { closeMenu(); if (!gesture) dropCurve(); } });
 $('bNew').onclick = () => openMenu($('bNew'), [
-  { label: 'Сфера', hint: '82 хил.', run: () => replaceMesh(makeSphere(6), { frame: true }) },
-  { label: 'Сфера, по-лека', hint: '20 хил.', run: () => replaceMesh(makeSphere(5), { frame: true }) },
-  { label: 'Куб', hint: '19 хил.', run: () => replaceMesh(makeCube(40), { frame: true }) },
-  { label: 'Тор', hint: '20 хил.', run: () => replaceMesh(makeTorus(), { frame: true }) },
-  { label: 'Равнина', hint: '39 хил.', run: () => replaceMesh(makePlane(140), { frame: true }) },
+  { label: 'Сфера', hint: '82 хил.', run: () => newScene(makeSphere(6), 'Сфера') },
+  { label: 'Сфера, по-лека', hint: '20 хил.', run: () => newScene(makeSphere(5), 'Сфера') },
+  { label: 'Куб', hint: '19 хил.', run: () => newScene(makeCube(40), 'Куб') },
+  { label: 'Тор', hint: '20 хил.', run: () => newScene(makeTorus(), 'Тор') },
+  { label: 'Равнина', hint: '39 хил.', run: () => newScene(makePlane(140), 'Равнина') },
 ]);
+// a new model: one subtool (one undo step, so the old scene comes back with Ctrl+Z)
+function newScene(m, name) {
+  if (working) return;
+  toolsStep(() => { TOOLS = [makeTool(m, name)]; curTool = 0; solo = false; });
+  frameView();
+}
 $('bExport').onclick = () => openMenu($('bExport'), [
   { label: 'OBJ с цветовете', hint: 'Blender, ZBrush', run: () => offerFile('glina-model.obj', exportOBJ()) },
   { label: 'STL', hint: '3D печат', run: () => offerFile('glina-model.stl', exportSTL()) },
@@ -5417,6 +5956,7 @@ $('bExport').onclick = () => openMenu($('bExport'), [
 renderRail();
 selectTool(S.tool);
 setMesh(makeSphere(6), { frame: true });
+TOOLS = [makeTool(mesh, 'Сфера')]; renderTools();
 resize();
 loadAutosave().then((d) => {
   if (d && d.pos && d.idx && d.pos.length > 9) {
@@ -5428,8 +5968,22 @@ loadAutosave().then((d) => {
     if (MR && S.dyntopo) { S.dyntopo = false; saveSettings(); }
     setMesh(new SculptMesh(d.pos, d.idx, d.col, d.mask, MR ? MR.cur : 0, d.grp && d.grp.length === d.pos.length / 3 ? d.grp : null), { frame: true });
     restoreLayers(d.layers);
+    if (Array.isArray(d.tools) && d.tools.some((t) => t.active)) {
+      TOOLS = d.tools.map((t) => {
+        if (t.active) { const at = makeTool(mesh, t.name || 'Подобект'); at.op = t.op || 'add'; return at; }
+        const ok = t.pos && t.idx && t.pos.length === (t.col || []).length && t.mask && t.mask.length * 3 === t.pos.length;
+        if (!ok) return null;
+        const mr = t.mr, mrOk = mr && Array.isArray(mr.levels) && mr.levels[mr.cur] && mr.levels[mr.cur].n * 3 === t.pos.length;
+        const tt = makeTool(new SculptMesh(t.pos, t.idx, t.col, t.mask, mrOk ? mr.cur : 0, t.grp && t.grp.length * 3 === t.pos.length ? t.grp : null), t.name || 'Подобект');
+        tt.visible = t.visible !== false; tt.op = t.op || 'add'; tt.MR = mrOk ? mr : null;
+        if (t.layers && Array.isArray(t.layers.list)) { tt.LAYERS = t.layers.list.filter((L) => L.d && L.d.length === t.pos.length).map((L) => ({ name: L.name, d: L.d, dc: L.dc, s: L.s, on: L.on })); tt.recLayer = -1; }
+        return tt;
+      }).filter(Boolean);
+      curTool = TOOLS.findIndex((t) => t.mesh === mesh);
+      renderTools(); renderOthers();
+    } else { TOOLS = [makeTool(mesh, 'Модел')]; curTool = 0; renderTools(); }
     toast('Продължавате последния модел. „Нов“ започва отначало.');
   }
 });
-window.__glina = { sliceByPlane, mirrorWeldArrays, mirrorWeld, mirrorFlip, applyNoise, snapView, setOrtho, historyJump, polyframe, get cam() { return cam; }, trimByPlane, applyCut, tubeArrays, immShape, hasOpenEdges, get curve() { return liveCurve(); }, dropCurve, get immFile() { return immFile; }, set immFile(v) { immFile = v; }, get LAYERS() { return LAYERS; }, get recLayer() { return recLayer; }, addLayer, deleteLayer, toggleLayer, recordLayer, setLayerStrength, bakeLayers, groupOp, maskAllBut, groupNear, get mesh() { return mesh; }, get stroke() { return stroke; }, get gesture() { return gesture; }, get nav() { return nav; }, get MR() { return MR; }, syncSym, get SYM() { return SYM; }, setLevel, divide, deleteLower, deleteHigher, camera, orbit, pick, selectTool, brush, brushById, maskOp, remesh, undo, redo, subdivide, setDyntopo, floodDetail, S, get undoStack() { return undoStack; } };
+window.__glina = { exportOBJ, scheduleAutosave, get TOOLS() { return TOOLS; }, get curTool() { return curTool; }, activateTool, addTool, appendPrimitive, duplicateTool, deleteTool, moveTool, mergeDown, splitGroups, extractTool, extractShell, makeBoolean, newScene, gizmoHandle, gizmoScreen, get solo() { return solo; }, set solo(v) { solo = v; renderOthers(); }, toolArrays, voxelCombine, voxelRemesh, coreStart, get working() { return working; }, sliceByPlane, mirrorWeldArrays, mirrorWeld, mirrorFlip, applyNoise, snapView, setOrtho, historyJump, polyframe, get cam() { return cam; }, trimByPlane, applyCut, tubeArrays, immShape, hasOpenEdges, get curve() { return liveCurve(); }, dropCurve, get immFile() { return immFile; }, set immFile(v) { immFile = v; }, get LAYERS() { return LAYERS; }, get recLayer() { return recLayer; }, addLayer, deleteLayer, toggleLayer, recordLayer, setLayerStrength, bakeLayers, groupOp, maskAllBut, groupNear, get mesh() { return mesh; }, get stroke() { return stroke; }, get gesture() { return gesture; }, get nav() { return nav; }, get MR() { return MR; }, syncSym, get SYM() { return SYM; }, setLevel, divide, deleteLower, deleteHigher, camera, orbit, pick, selectTool, brush, brushById, maskOp, remesh, undo, redo, subdivide, setDyntopo, floodDetail, S, get undoStack() { return undoStack; } };
 </script>

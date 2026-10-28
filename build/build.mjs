@@ -38,6 +38,10 @@ const bundled = await esbuild.build({
 let js = bundled.outputFiles[0].text;
 if (js.includes('</script')) js = js.replace(/<\/script/gi, '<\\/script');
 
+// ---------- the Rust core (node wasm.mjs builds it), embedded so the page needs no other file ----------
+const wasmB64 = fs.readFileSync(path.join(HERE, 'glina-core.wasm')).toString('base64');
+js = `window.GLINA_WASM=${JSON.stringify(wasmB64)};\n` + js;
+
 // ---------- fonts as data URIs (Cyrillic + Latin subsets of the weights the page uses) ----------
 const FONTS = [
   ['ibm-plex-sans', [400, 500, 600]],

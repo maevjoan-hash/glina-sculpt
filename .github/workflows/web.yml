@@ -27,6 +27,10 @@ jobs:
           node-version: 22
           cache: npm
           cache-dependency-path: build/package-lock.json
+      # the Rust core (the pages embed the built build/glina-core.wasm; node build/wasm.mjs rebuilds it)
+      - name: Test the Rust core
+        working-directory: core
+        run: cargo test --release
       - name: Build offline versions
         working-directory: build
         run: |
