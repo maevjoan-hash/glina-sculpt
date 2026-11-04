@@ -162,7 +162,8 @@ const model = (page) => page.evaluate(() => {
 });
 async function exportFromMenu(page, label) {
   await page.click('#bExport');
-  await page.locator('#menu button', { hasText: label }).click();
+  // (the first item whose name starts so: „OBJ с цветовете“ before „OBJ с UV и текстури“)
+  await page.locator('#menu button', { hasText: label }).first().click();
 }
 
 // ---------- file checks ----------

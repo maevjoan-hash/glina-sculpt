@@ -1,6 +1,6 @@
 {
   "name": "glina-android",
-  "version": "1.17.0",
+  "version": "2.0.0",
   "description": "Глина за Android: Capacitor обвивка около ../dist/web",
   "private": true,
   "scripts": {
