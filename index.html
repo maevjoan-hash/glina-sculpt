@@ -518,6 +518,8 @@ input[type=range] { width: 100%; height: 26px; accent-color: var(--wax); backgro
     <section class="sec">
       <h2>Материал</h2>
       <div class="swatches" id="matcaps"></div>
+      <div class="two"><button class="btn wide" id="bMatOwn" title="Снимка на осветена топка (matcap) или каквато и да е картинка: взема се средният квадрат">Свой от снимка…</button><button class="btn wide" id="bMatDrop" hidden>Махни своя</button></div>
+      <input type="file" id="matIn" accept="image/*" hidden>
       <label class="toggle">Плоско засенчване <input type="checkbox" id="tFlat"></label>
     </section>
   </aside>
@@ -541,6 +543,8 @@ import { MeshBVH, acceleratedRaycast, INTERSECTED, NOT_INTERSECTED } from 'three
 import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
 import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { GTAOPass } from 'three/addons/postprocessing/GTAOPass.js';
+import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
+import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 
 const $ = (id) => document.getElementById(id);
 
@@ -5939,6 +5943,149 @@ async function saveSnapshot() {
   offerFile('glina-snimka.png', u8);
 }
 
+/* ---------- Studio picture (ZBrush: BPR render with a shadow): real light instead of the matcap ----------
+   The visible subtools get a physical material in the matcap's colour (times their polypaint), a soft
+   room light all around, one key light from above that casts a shadow onto a floor under the model, and
+   ambient occlusion in the creases. The view itself is left as it was. */
+function studioColour() {
+  const m = MATCAPS[S.matcap];
+  if (m && m.chrome) return { base: [0.86, 0.87, 0.9], metal: 1, rough: 0.22 };
+  if (m) return { base: m.base, metal: 0, rough: Math.max(0.25, 0.75 - m.ks * 0.6) };
+  return { base: customMatcap ? customMatcap.base : [0.8, 0.8, 0.8], metal: 0, rough: 0.5 };
+}
+async function studioPNG(scale = 2) {
+  const w = Math.round(viewport.w * scale), h = Math.round(viewport.h * scale);
+  const keep = { ring: ring.visible, syms: symRings.map((r) => r.visible), pr: renderer.getPixelRatio(), tm: renderer.toneMapping, exp: renderer.toneMappingExposure, sh: renderer.shadowMap.enabled, sht: renderer.shadowMap.type, bg: scene.background, env: scene.environment, wire: wmesh ? wmesh.visible : false };
+  ring.visible = false; for (const r of symRings) r.visible = false;
+  if (wmesh) wmesh.visible = false;
+  const prev = immPreview ? immPreview.group.visible : null; if (immPreview) immPreview.group.visible = false;
+  const sc = studioColour();
+  const make = (k) => {
+    const mt = new THREE.MeshStandardMaterial({ color: new THREE.Color().setRGB(sc.base[0] * k, sc.base[1] * k, sc.base[2] * k, THREE.SRGBColorSpace), vertexColors: true, roughness: sc.rough, metalness: sc.metal, envMapIntensity: 0.6, flatShading: !!S.flat });
+    // hidden parts stay hidden
+    mt.onBeforeCompile = (sh) => {
+      sh.vertexShader = 'attribute float aHide;\nvarying float vHide;\n' + sh.vertexShader.replace('#include <begin_vertex>', '#include <begin_vertex>\nvHide = aHide;');
+      sh.fragmentShader = 'varying float vHide;\n' + sh.fragmentShader.replace('void main() {', 'void main() {\nif (vHide > 0.001) discard;');
+    };
+    return mt;
+  };
+  const live = make(1), dim = make(1 / 0.72), swapped = [];
+  scene.traverse((o) => {
+    if (!o.isMesh || o.material !== material || !o.visible) return;
+    const g = o.geometry, alias = !g.attributes.color && g.attributes.aColor;
+    if (alias) g.setAttribute('color', g.attributes.aColor);
+    swapped.push({ o, alias });
+    o.material = [...others.values()].some((q) => q.obj === o) ? dim : live;
+    o.castShadow = o.receiveShadow = true;
+  });
+  // the box of everything shown: the floor goes under it, the light's shadow camera around it
+  const bb = new THREE.Box3();
+  for (const { o } of swapped) { o.geometry.computeBoundingBox(); const b = o.geometry.boundingBox.clone(); if (o.geometry === geo && mesh.dyn) { const q = mesh.bounds(); b.setFromCenterAndSize(new THREE.Vector3(...q.c), new THREE.Vector3(q.r * 2, q.r * 2, q.r * 2)); } bb.union(b.applyMatrix4(o.matrixWorld)); }
+  if (bb.isEmpty()) bb.setFromCenterAndSize(new THREE.Vector3(), new THREE.Vector3(2, 2, 2));
+  const c = bb.getCenter(new THREE.Vector3()), r = Math.max(1e-3, bb.getSize(new THREE.Vector3()).length() / 2);
+  const extra = new THREE.Group();
+  // (the floor fades into the background far off, so there is no hard horizon)
+  const floor = new THREE.Mesh(new THREE.PlaneGeometry(r * 60, r * 60), new THREE.MeshStandardMaterial({ color: 0x4a505a, roughness: 0.95 }));
+  floor.rotation.x = -Math.PI / 2; floor.position.set(c.x, bb.min.y - r * 0.002, c.z); floor.receiveShadow = true;
+  const camBack = new THREE.Vector3(0, 0, 1).applyQuaternion(camera.quaternion), camRight = new THREE.Vector3(1, 0, 0).applyQuaternion(camera.quaternion);
+  const dir = camRight.clone().multiplyScalar(-0.7).addScaledVector(camBack, 0.5).add(new THREE.Vector3(0, 1, 0)).normalize();
+  const key = new THREE.DirectionalLight(0xffffff, 2.8);
+  key.position.copy(c).addScaledVector(dir, r * 4); key.target.position.copy(c);
+  key.castShadow = true;
+  Object.assign(key.shadow.camera, { left: -r * 1.8, right: r * 1.8, top: r * 1.8, bottom: -r * 1.8, near: r * 0.5, far: r * 9 });
+  key.shadow.camera.updateProjectionMatrix();
+  key.shadow.mapSize.set(2048, 2048); key.shadow.bias = -0.0004; key.shadow.normalBias = r * 0.004; key.shadow.radius = 4;
+  extra.add(floor, key, key.target, new THREE.HemisphereLight(0xdfe6f0, 0x2a2622, 0.35));
+  scene.add(extra);
+  const pmrem = new THREE.PMREMGenerator(renderer), envTex = pmrem.fromScene(new RoomEnvironment(renderer), 0.04).texture;
+  scene.environment = envTex;
+  scene.background = new THREE.Color(0x1e232b);
+  const camD = camera.position.distanceTo(c);
+  scene.fog = new THREE.Fog(0x1e232b, camD + r * 1.5, camD + r * 9);
+  renderer.shadowMap.enabled = true; renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+  renderer.toneMapping = THREE.ACESFilmicToneMapping; renderer.toneMappingExposure = 1;
+  renderer.setPixelRatio(1); renderer.setSize(w, h, false);
+  camera.aspect = w / h; camera.updateProjectionMatrix();
+  let url;
+  try {
+    const composer = new EffectComposer(renderer);
+    composer.setSize(w, h);
+    composer.addPass(new RenderPass(scene, camera));
+    const ao = new GTAOPass(scene, camera, w, h);
+    ao.updateGtaoMaterial({ radius: Math.max(0.05, r * 0.3), distanceExponent: 1.5, thickness: 2, scale: 1.4 });
+    ao.blendIntensity = 0.8;
+    composer.addPass(ao);
+    const out = new OutputPass(); out.renderToScreen = true; composer.addPass(out);
+    composer.render();
+    url = renderer.domElement.toDataURL('image/png');
+    composer.dispose(); ao.dispose(); out.dispose();
+  } finally {
+    for (const { o, alias } of swapped) { o.material = material; o.castShadow = o.receiveShadow = false; if (alias) o.geometry.deleteAttribute('color'); }
+    live.dispose(); dim.dispose();
+    scene.remove(extra); floor.geometry.dispose(); floor.material.dispose(); key.dispose(); envTex.dispose(); pmrem.dispose();
+    scene.environment = keep.env; scene.background = keep.bg; scene.fog = null;
+    renderer.shadowMap.enabled = keep.sh; renderer.shadowMap.type = keep.sht; renderer.toneMapping = keep.tm; renderer.toneMappingExposure = keep.exp;
+    renderer.setPixelRatio(keep.pr); resize();
+    ring.visible = keep.ring; symRings.forEach((q, k) => (q.visible = keep.syms[k]));
+    if (wmesh) wmesh.visible = keep.wire;
+    if (immPreview) immPreview.group.visible = prev;
+    requestRender();
+  }
+  return url;
+}
+async function saveStudio() {
+  busy(true);
+  try {
+    const url = await studioPNG(2);
+    const bin = atob(url.split(',')[1]), u8 = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) u8[i] = bin.charCodeAt(i);
+    offerFile('glina-studio.png', u8);
+  } catch (e) { toast('Не успях: ' + e.message); }
+  busy(false);
+}
+
+/* ---------- Your own matcap: any picture of a lit ball (or anything: its middle square is used) ----------
+   It joins the swatches after the built-in ones and stays for the next visits (a small copy is kept in
+   this browser). Its average colour is what the studio picture uses. */
+let customMatcap = null;   // { url, base }
+function matcapFromURL(url) {
+  return new Promise((res, rej) => {
+    const img = new Image();
+    img.onload = () => {
+      const N = 256, c = document.createElement('canvas'); c.width = c.height = N;
+      const g = c.getContext('2d'), side = Math.min(img.width, img.height);
+      g.drawImage(img, (img.width - side) / 2, (img.height - side) / 2, side, side, 0, 0, N, N);
+      const d = g.getImageData(N / 4, N / 4, N / 2, N / 2).data; let r = 0, gg = 0, b = 0;
+      for (let i = 0; i < d.length; i += 4) { r += d[i]; gg += d[i + 1]; b += d[i + 2]; }
+      const k = d.length / 4 * 255;
+      res({ canvas: c, base: [r / k, gg / k, b / k] });
+    };
+    img.onerror = () => rej(new Error('картинката не се отвори'));
+    img.src = url;
+  });
+}
+async function setCustomMatcap(url, { save = true, select = true } = {}) {
+  const { canvas: c, base } = await matcapFromURL(url);
+  const tex = new THREE.CanvasTexture(c); tex.colorSpace = THREE.NoColorSpace;
+  const at = MATCAPS.length;
+  if (matcapTextures[at]) matcapTextures[at].dispose();
+  matcapTextures[at] = tex;
+  const small = c.toDataURL('image/jpeg', 0.9);
+  customMatcap = { url: small, base };
+  if (save) { try { localStorage.setItem('glina.matcap', small); } catch (e) { toast('Материалът е сложен, но браузърът не може да го запази за следващия път.'); } }
+  renderMatcapSwatches();
+  if (select) { S.matcap = at; saveSettings(); }
+  applyMatcap();
+}
+function dropCustomMatcap() {
+  try { localStorage.removeItem('glina.matcap'); } catch (e) {}
+  const at = MATCAPS.length;
+  if (matcapTextures[at]) { matcapTextures[at].dispose(); matcapTextures.length = at; }
+  customMatcap = null;
+  if (S.matcap >= at) { S.matcap = 0; saveSettings(); }
+  renderMatcapSwatches(); applyMatcap();
+}
+
 /* ---------- Array Mesh: copies of the active subtool in a row or around a circle ---------- */
 function arrayArrays(a, opt) {
   const n = a.pos.length / 3, f = a.idx.length / 3, N = opt.count;
@@ -8104,16 +8251,41 @@ setPanel(!narrow.matches);
 narrow.addEventListener('change', () => setPanel(!narrow.matches));
 $('bPanel').onclick = () => setPanel($('drawer').hidden);
 
-// matcaps
-MATCAPS.forEach((m, i) => {
-  const b = document.createElement('button'); b.className = 'swatch'; b.title = m.name; b.setAttribute('aria-label', m.name);
-  const img = document.createElement('img'); img.alt = ''; img.src = matcapTextures[i].image.toDataURL(); b.appendChild(img);
-  b.onclick = () => { S.matcap = i; material.uniforms.matcap.value = matcapTextures[i]; renderMat(); saveSettings(); requestRender(); };
-  $('matcaps').appendChild(b);
-});
+// matcaps (the built-in ones, then your own if there is one)
+function renderMatcapSwatches() {
+  const box = $('matcaps'); box.textContent = '';
+  matcapTextures.forEach((t, i) => {
+    const name = MATCAPS[i] ? MATCAPS[i].name : 'Ваш материал';
+    const b = document.createElement('button'); b.className = 'swatch'; b.title = name; b.setAttribute('aria-label', name);
+    const img = document.createElement('img'); img.alt = ''; img.src = MATCAPS[i] ? t.image.toDataURL() : customMatcap.url; b.appendChild(img);
+    b.onclick = () => { S.matcap = i; applyMatcap(); saveSettings(); };
+    box.appendChild(b);
+  });
+  $('bMatDrop').hidden = !customMatcap;
+}
+function applyMatcap() {
+  if (!matcapTextures[S.matcap]) S.matcap = 0;
+  material.uniforms.matcap.value = matcapTextures[S.matcap];
+  if (zs) for (const m of [zsMat, zsRootMat, zsLinkMat]) { m.matcap = matcapTextures[S.matcap]; m.needsUpdate = true; }
+  renderMat(); requestRender();
+}
 function renderMat() { [...$('matcaps').children].forEach((el, i) => el.setAttribute('aria-pressed', i === S.matcap)); }
+renderMatcapSwatches();
+{
+  let saved = null; try { saved = localStorage.getItem('glina.matcap'); } catch (e) {}
+  const want = S.matcap;
+  if (saved) setCustomMatcap(saved, { save: false, select: false }).then(() => { if (want === MATCAPS.length) { S.matcap = want; applyMatcap(); } }).catch(() => {});
+}
 if (!matcapTextures[S.matcap]) S.matcap = 0;
-material.uniforms.matcap.value = matcapTextures[S.matcap]; renderMat();
+applyMatcap();
+$('bMatOwn').onclick = () => $('matIn').click();
+$('matIn').onchange = () => {
+  const f = $('matIn').files[0]; $('matIn').value = '';
+  if (!f) return;
+  const url = URL.createObjectURL(f);
+  setCustomMatcap(url).then(() => toast('Вашият материал е избран.')).catch((e) => toast('Не успях: ' + e.message)).finally(() => URL.revokeObjectURL(url));
+};
+$('bMatDrop').onclick = dropCustomMatcap;
 
 // paint colours
 const PAINT = ['#b8443a', '#e2c7a8', '#6e4b3a', '#3f6e8c', '#5a7d4c', '#d9b24a', '#1f1f22', '#f2f2f2'];
@@ -8166,6 +8338,7 @@ $('bExport').onclick = () => openMenu($('bExport'), [
   { label: 'STL', hint: '3D печат', run: () => offerFile('glina-model.stl', exportSTL()) },
   { label: 'OBJ с UV и текстури', hint: 'игри, Substance (ZIP)', run: () => exportTextured() },
   { label: 'Снимка PNG', hint: 'със сенки, ×2', run: () => saveSnapshot() },
+  { label: 'Снимка в студио PNG', hint: 'светлина и сянка на пода', run: () => saveStudio() },
 ]);
 
 /* =====================================================================
@@ -8205,5 +8378,5 @@ loadAutosave().then((d) => {
     toast('Продължавате последния модел. „Нов“ започва отначало.');
   }
 });
-window.__glina = { makeCube, polishFeatures, sliceGroups, makeGear, makeTube, makeRing, revolve, meshToAxis, straighten, transformTools, gizmoTools, eigenSym3, subdivideArrays, slimeBridge, nanoMesh, maskIslands, texturedFiles, zipMany, levelArrays, zmBuild, quadsOf, exportSTL, renderPrintInfo, decimate, decimateArrays, printScale, projectBytes, saveProject, openProject, packValue, unpackValue, panelLoops, balloonTool, shellFrom, refOpen, refState, refColourAt, refLayout, smoothViewUpdate, get smoothViewObj() { return smoothViewObj; }, recallFrom, makeFibers, fiberArrays, projectAll, storeMorph, switchMorph, dropMorph, morphOf, fillColour, cavityColour, zsOpen, zsClose, zsSkin, get zs() { return zs; }, xtract, latticeLive, latticeScreen, get lattice() { return lattice; }, surfaceContrast, snapshotPNG, maskHidden, startCloth, stopCloth, get clothRun() { return clothRun; }, hideSelection, hideGroup, showAll, invertVisibility, hideMasked, deleteHidden, hiddenCount, setHiddenUndoable, deform, makeArray, arrayArrays, setGizmoMode, get gizmoPin() { return gizmoPin; }, set gizmoPin(v) { gizmoPin = v; }, exportOBJ, scheduleAutosave, get TOOLS() { return TOOLS; }, get curTool() { return curTool; }, activateTool, addTool, appendPrimitive, duplicateTool, deleteTool, moveTool, mergeDown, splitGroups, extractTool, extractShell, makeBoolean, newScene, gizmoHandle, gizmoScreen, get solo() { return solo; }, set solo(v) { solo = v; renderOthers(); }, toolArrays, voxelCombine, voxelRemesh, coreStart, get working() { return working; }, sliceByPlane, mirrorWeldArrays, mirrorWeld, mirrorFlip, applyNoise, snapView, setOrtho, historyJump, polyframe, get cam() { return cam; }, trimByPlane, applyCut, tubeArrays, immShape, hasOpenEdges, get curve() { return liveCurve(); }, dropCurve, get immFile() { return immFile; }, set immFile(v) { immFile = v; }, get LAYERS() { return LAYERS; }, get recLayer() { return recLayer; }, addLayer, deleteLayer, toggleLayer, recordLayer, setLayerStrength, bakeLayers, groupOp, maskAllBut, groupNear, get mesh() { return mesh; }, get stroke() { return stroke; }, get gesture() { return gesture; }, get nav() { return nav; }, get MR() { return MR; }, syncSym, get SYM() { return SYM; }, setLevel, divide, deleteLower, deleteHigher, camera, orbit, pick, selectTool, brush, brushById, maskOp, remesh, undo, redo, subdivide, setDyntopo, floodDetail, S, get undoStack() { return undoStack; } };
+window.__glina = { studioPNG, setCustomMatcap, dropCustomMatcap, get customMatcap() { return customMatcap; }, matcapTextures, material, get gmesh() { return gmesh; }, renderer, makeCube, polishFeatures, sliceGroups, makeGear, makeTube, makeRing, revolve, meshToAxis, straighten, transformTools, gizmoTools, eigenSym3, subdivideArrays, slimeBridge, nanoMesh, maskIslands, texturedFiles, zipMany, levelArrays, zmBuild, quadsOf, exportSTL, renderPrintInfo, decimate, decimateArrays, printScale, projectBytes, saveProject, openProject, packValue, unpackValue, panelLoops, balloonTool, shellFrom, refOpen, refState, refColourAt, refLayout, smoothViewUpdate, get smoothViewObj() { return smoothViewObj; }, recallFrom, makeFibers, fiberArrays, projectAll, storeMorph, switchMorph, dropMorph, morphOf, fillColour, cavityColour, zsOpen, zsClose, zsSkin, get zs() { return zs; }, xtract, latticeLive, latticeScreen, get lattice() { return lattice; }, surfaceContrast, snapshotPNG, maskHidden, startCloth, stopCloth, get clothRun() { return clothRun; }, hideSelection, hideGroup, showAll, invertVisibility, hideMasked, deleteHidden, hiddenCount, setHiddenUndoable, deform, makeArray, arrayArrays, setGizmoMode, get gizmoPin() { return gizmoPin; }, set gizmoPin(v) { gizmoPin = v; }, exportOBJ, scheduleAutosave, get TOOLS() { return TOOLS; }, get curTool() { return curTool; }, activateTool, addTool, appendPrimitive, duplicateTool, deleteTool, moveTool, mergeDown, splitGroups, extractTool, extractShell, makeBoolean, newScene, gizmoHandle, gizmoScreen, get solo() { return solo; }, set solo(v) { solo = v; renderOthers(); }, toolArrays, voxelCombine, voxelRemesh, coreStart, get working() { return working; }, sliceByPlane, mirrorWeldArrays, mirrorWeld, mirrorFlip, applyNoise, snapView, setOrtho, historyJump, polyframe, get cam() { return cam; }, trimByPlane, applyCut, tubeArrays, immShape, hasOpenEdges, get curve() { return liveCurve(); }, dropCurve, get immFile() { return immFile; }, set immFile(v) { immFile = v; }, get LAYERS() { return LAYERS; }, get recLayer() { return recLayer; }, addLayer, deleteLayer, toggleLayer, recordLayer, setLayerStrength, bakeLayers, groupOp, maskAllBut, groupNear, get mesh() { return mesh; }, get stroke() { return stroke; }, get gesture() { return gesture; }, get nav() { return nav; }, get MR() { return MR; }, syncSym, get SYM() { return SYM; }, setLevel, divide, deleteLower, deleteHigher, camera, orbit, pick, selectTool, brush, brushById, maskOp, remesh, undo, redo, subdivide, setDyntopo, floodDetail, S, get undoStack() { return undoStack; } };
 </script>
