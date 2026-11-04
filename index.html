@@ -500,7 +500,7 @@ input[type=range] { width: 100%; height: 26px; accent-color: var(--wax); backgro
     </section>
   </aside>
 </div>
-<input type="file" id="fileIn" accept=".obj,.stl" hidden>
+<input type="file" id="fileIn" accept=".obj,.stl,.glina" hidden>
 <input type="file" id="refIn" accept="image/*" hidden>
 <input type="file" id="brushIn" accept=".json,application/json" hidden>
 <input type="file" id="alphaIn" accept="image/*" hidden>
@@ -6695,10 +6695,11 @@ $('fileIn').onchange = async () => {
   busy(true);
   try {
     let r;
+    if (/\.glina$/i.test(file.name)) { await openProject(new Uint8Array(await file.arrayBuffer()), file.name); return; }
     // the Android picker lets any file through, so check the name before reading it all
     if (/\.stl$/i.test(file.name)) r = parseSTL(await file.arrayBuffer());
     else if (/\.obj$/i.test(file.name)) r = parseOBJ(await file.text());
-    else throw new Error('изберете файл .obj или .stl.');
+    else throw new Error('изберете файл .obj, .stl или .glina.');
     if (!r.idx.length) throw new Error('Файлът няма триъгълници.');
     dropUnusedVerts(r);
     if (appendFromFile) {
@@ -6733,6 +6734,87 @@ $('immIn').onchange = async () => {
     toast(`Формата за вмъкване е ${file.name} (${fmt(r.idx.length / 3)} триъгълника).`);
   } catch (err) { toast('Файлът не може да се отвори: ' + (err.message || err)); }
 };
+
+/* ---------- Project file (.glina): the whole scene, as ZBrush's ZPR ----------
+   Every subtool with its mesh, levels, layers, groups, mask, stored shape and armature, which one is
+   active, and the view. One JSON description with the typed arrays after it in one block:
+     "GLINA1" (6 bytes) · flags (1 byte: 1 = the rest is gzip) · JSON length (u32) · JSON · data
+   Typed arrays in the JSON are { $a: n, t: type, o: offset, l: length } into the data. */
+const TYPES = { Float32Array, Uint32Array, Int32Array, Uint16Array, Uint8Array, Float64Array };
+function packValue(v, blobs) {
+  if (v && ArrayBuffer.isView(v)) { const o = blobs.size; blobs.list.push(v); blobs.size += v.byteLength + ((8 - (v.byteLength % 8)) % 8); return { $a: 1, t: v.constructor.name, o, l: v.length }; }
+  if (Array.isArray(v)) return v.map((x) => packValue(x, blobs));
+  if (v && typeof v === 'object') { const out = {}; for (const k of Object.keys(v)) { if (typeof v[k] === 'function') continue; out[k] = packValue(v[k], blobs); } return out; }
+  return v;
+}
+function unpackValue(v, data) {
+  if (v && typeof v === 'object' && v.$a === 1) { const T = TYPES[v.t]; if (!T) throw new Error('непознат вид данни'); const bytes = data.slice(v.o, v.o + v.l * T.BYTES_PER_ELEMENT); return new T(bytes.buffer, 0, v.l); }
+  if (Array.isArray(v)) return v.map((x) => unpackValue(x, data));
+  if (v && typeof v === 'object') { const out = {}; for (const k of Object.keys(v)) out[k] = unpackValue(v[k], data); return out; }
+  return v;
+}
+async function gz(bytes, out) {
+  if (typeof CompressionStream === 'undefined') return null;
+  const s = new Blob([bytes]).stream().pipeThrough(out ? new CompressionStream('gzip') : new DecompressionStream('gzip'));
+  return new Uint8Array(await new Response(s).arrayBuffer());
+}
+async function saveProject() {
+  if (stroke || working) return;
+  busy(true);
+  try { await offerFile('glina-proekt.glina', await projectBytes()); } finally { busy(false); }
+}
+async function projectBytes() {
+  stashActive();
+  const tools = TOOLS.map((t) => {
+    const a = toolArrays(t), m = t === TOOLS[curTool] ? mesh : t.mesh;
+    return {
+      name: t.name, visible: t.visible, op: t.op, zs: t.zs || null,
+      mesh: { pos: a.pos.slice(), idx: a.idx.slice(), col: a.col.slice(), mask: a.mask.slice(), grp: a.grp.slice(), level: m.level || 0, morph: morphOf(m) ? m.morph.slice() : null },
+      mr: t.MR, layers: t.LAYERS.map((L) => ({ name: L.name, d: L.d, dc: L.dc, s: L.s, on: L.on })), recLayer: t.recLayer,
+    };
+  });
+  const blobs = { list: [], size: 0 };
+  const head = packValue({ app: 'Глина', version: document.querySelector('meta[name=glina-version]')?.content || '', tools, cur: curTool, cam: { t: cam.target.toArray(), d: cam.dist, q: cam.q.toArray() } }, blobs);
+  const json = new TextEncoder().encode(JSON.stringify(head));
+  const body = new Uint8Array(4 + json.length + blobs.size);
+  new DataView(body.buffer).setUint32(0, json.length, true);
+  body.set(json, 4);
+  let o = 4 + json.length;
+  for (const a of blobs.list) { body.set(new Uint8Array(a.buffer, a.byteOffset, a.byteLength), o); o += a.byteLength + ((8 - (a.byteLength % 8)) % 8); }
+  const packed = await gz(body, true);
+  const out = new Uint8Array(7 + (packed || body).length);
+  out.set(new TextEncoder().encode('GLINA1'), 0); out[6] = packed ? 1 : 0; out.set(packed || body, 7);
+  return out;
+}
+async function openProject(bytes, name) {
+  if (new TextDecoder().decode(bytes.subarray(0, 6)) !== 'GLINA1') throw new Error('това не е файл на Глина.');
+  let body = bytes.subarray(7);
+  if (bytes[6] === 1) { body = await gz(body, false); if (!body) throw new Error('този браузър не може да разопакова файла.'); }
+  const len = new DataView(body.buffer, body.byteOffset).getUint32(0, true);
+  const head = JSON.parse(new TextDecoder().decode(body.subarray(4, 4 + len)));
+  // (the data block starts on a multiple of 8 within itself; copied, so every array is aligned)
+  const data = body.slice(4 + len);
+  const d = unpackValue(head, data);
+  if (!Array.isArray(d.tools) || !d.tools.length) throw new Error('в файла няма модел.');
+  const list = d.tools.map((t) => {
+    const g = t.mesh, n = g.pos.length / 3;
+    if (!(g.idx.length % 3 === 0 && g.col.length === n * 3 && g.mask.length === n && g.grp.length === n)) throw new Error('файлът е повреден.');
+    for (let q = 0; q < g.idx.length; q++) if (g.idx[q] >= n) throw new Error('файлът е повреден.');
+    const mrOk = t.mr && Array.isArray(t.mr.levels) && t.mr.levels[t.mr.cur] && t.mr.levels[t.mr.cur].n === n;
+    const m = new SculptMesh(g.pos, g.idx, g.col, g.mask, mrOk ? t.mr.cur : 0, g.grp);
+    if (g.morph && g.morph.length === n * 3) m.morph = g.morph;
+    const tt = makeTool(m, String(t.name || 'Подобект').slice(0, 30));
+    tt.visible = t.visible !== false; tt.op = ['add', 'subtract', 'intersect'].includes(t.op) ? t.op : 'add';
+    tt.zs = Array.isArray(t.zs) ? t.zs : undefined; tt.MR = mrOk ? t.mr : null;
+    tt.LAYERS = (t.layers || []).filter((L) => L.d && L.d.length === n * 3 && L.dc && L.dc.length === n * 3);
+    tt.recLayer = Number.isInteger(t.recLayer) && t.recLayer < tt.LAYERS.length ? t.recLayer : -1;
+    return tt;
+  });
+  if ((list.some((t) => t.MR || t.LAYERS.length)) && S.dyntopo) { S.dyntopo = false; saveSettings(); }
+  toolsStep(() => { TOOLS = list; curTool = Math.min(Math.max(0, d.cur | 0), list.length - 1); solo = false; });
+  if (d.cam && Array.isArray(d.cam.t)) { cam.target.fromArray(d.cam.t); cam.dist = d.cam.d; cam.q.fromArray(d.cam.q); applyCamera(); } else frameView();
+  toast(`Отворен проект ${name}: ${list.length} подобект(а). Ctrl+Z връща предишната сцена.`);
+}
 
 /* ---------- export ---------- */
 // every visible subtool (OBJ keeps each as its own object)
@@ -7420,6 +7502,7 @@ function newScene(m, name) {
   frameView();
 }
 $('bExport').onclick = () => openMenu($('bExport'), [
+  { label: 'Проект .glina', hint: 'всичко, за да продължите', run: () => saveProject() },
   { label: 'OBJ с цветовете', hint: 'Blender, ZBrush', run: () => offerFile('glina-model.obj', exportOBJ()) },
   { label: 'STL', hint: '3D печат', run: () => offerFile('glina-model.stl', exportSTL()) },
   { label: 'Снимка PNG', hint: 'със сенки, ×2', run: () => saveSnapshot() },
@@ -7462,5 +7545,5 @@ loadAutosave().then((d) => {
     toast('Продължавате последния модел. „Нов“ започва отначало.');
   }
 });
-window.__glina = { panelLoops, balloonTool, shellFrom, refOpen, refState, refColourAt, refLayout, smoothViewUpdate, get smoothViewObj() { return smoothViewObj; }, recallFrom, makeFibers, fiberArrays, projectAll, storeMorph, switchMorph, dropMorph, morphOf, fillColour, cavityColour, zsOpen, zsClose, zsSkin, get zs() { return zs; }, xtract, latticeLive, latticeScreen, get lattice() { return lattice; }, surfaceContrast, snapshotPNG, maskHidden, startCloth, stopCloth, get clothRun() { return clothRun; }, hideSelection, hideGroup, showAll, invertVisibility, hideMasked, deleteHidden, hiddenCount, setHiddenUndoable, deform, makeArray, arrayArrays, setGizmoMode, get gizmoPin() { return gizmoPin; }, set gizmoPin(v) { gizmoPin = v; }, exportOBJ, scheduleAutosave, get TOOLS() { return TOOLS; }, get curTool() { return curTool; }, activateTool, addTool, appendPrimitive, duplicateTool, deleteTool, moveTool, mergeDown, splitGroups, extractTool, extractShell, makeBoolean, newScene, gizmoHandle, gizmoScreen, get solo() { return solo; }, set solo(v) { solo = v; renderOthers(); }, toolArrays, voxelCombine, voxelRemesh, coreStart, get working() { return working; }, sliceByPlane, mirrorWeldArrays, mirrorWeld, mirrorFlip, applyNoise, snapView, setOrtho, historyJump, polyframe, get cam() { return cam; }, trimByPlane, applyCut, tubeArrays, immShape, hasOpenEdges, get curve() { return liveCurve(); }, dropCurve, get immFile() { return immFile; }, set immFile(v) { immFile = v; }, get LAYERS() { return LAYERS; }, get recLayer() { return recLayer; }, addLayer, deleteLayer, toggleLayer, recordLayer, setLayerStrength, bakeLayers, groupOp, maskAllBut, groupNear, get mesh() { return mesh; }, get stroke() { return stroke; }, get gesture() { return gesture; }, get nav() { return nav; }, get MR() { return MR; }, syncSym, get SYM() { return SYM; }, setLevel, divide, deleteLower, deleteHigher, camera, orbit, pick, selectTool, brush, brushById, maskOp, remesh, undo, redo, subdivide, setDyntopo, floodDetail, S, get undoStack() { return undoStack; } };
+window.__glina = { projectBytes, saveProject, openProject, packValue, unpackValue, panelLoops, balloonTool, shellFrom, refOpen, refState, refColourAt, refLayout, smoothViewUpdate, get smoothViewObj() { return smoothViewObj; }, recallFrom, makeFibers, fiberArrays, projectAll, storeMorph, switchMorph, dropMorph, morphOf, fillColour, cavityColour, zsOpen, zsClose, zsSkin, get zs() { return zs; }, xtract, latticeLive, latticeScreen, get lattice() { return lattice; }, surfaceContrast, snapshotPNG, maskHidden, startCloth, stopCloth, get clothRun() { return clothRun; }, hideSelection, hideGroup, showAll, invertVisibility, hideMasked, deleteHidden, hiddenCount, setHiddenUndoable, deform, makeArray, arrayArrays, setGizmoMode, get gizmoPin() { return gizmoPin; }, set gizmoPin(v) { gizmoPin = v; }, exportOBJ, scheduleAutosave, get TOOLS() { return TOOLS; }, get curTool() { return curTool; }, activateTool, addTool, appendPrimitive, duplicateTool, deleteTool, moveTool, mergeDown, splitGroups, extractTool, extractShell, makeBoolean, newScene, gizmoHandle, gizmoScreen, get solo() { return solo; }, set solo(v) { solo = v; renderOthers(); }, toolArrays, voxelCombine, voxelRemesh, coreStart, get working() { return working; }, sliceByPlane, mirrorWeldArrays, mirrorWeld, mirrorFlip, applyNoise, snapView, setOrtho, historyJump, polyframe, get cam() { return cam; }, trimByPlane, applyCut, tubeArrays, immShape, hasOpenEdges, get curve() { return liveCurve(); }, dropCurve, get immFile() { return immFile; }, set immFile(v) { immFile = v; }, get LAYERS() { return LAYERS; }, get recLayer() { return recLayer; }, addLayer, deleteLayer, toggleLayer, recordLayer, setLayerStrength, bakeLayers, groupOp, maskAllBut, groupNear, get mesh() { return mesh; }, get stroke() { return stroke; }, get gesture() { return gesture; }, get nav() { return nav; }, get MR() { return MR; }, syncSym, get SYM() { return SYM; }, setLevel, divide, deleteLower, deleteHigher, camera, orbit, pick, selectTool, brush, brushById, maskOp, remesh, undo, redo, subdivide, setDyntopo, floodDetail, S, get undoStack() { return undoStack; } };
 </script>
