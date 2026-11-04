@@ -44,6 +44,8 @@ pub struct Output {
     pub grp: Vec<f32>,
     /// the resolution actually used (lowered when the grid would not fit in memory)
     pub res: u32,
+    /// the same surface as quads (4 corners each), where the voxel cells made them
+    pub quads: Vec<u32>,
 }
 
 /// The grid may take this much memory (bytes); phones have little to spare.
@@ -188,8 +190,10 @@ fn band_distance(inp: &Input, part: &Part, g: &Grid, d: &mut [f32], tri: &mut [i
     }
 }
 
-/// The remeshed (and combined) surface. `res` is the number of cells along the longest side.
-pub fn voxel_csg(inp: &Input, parts: &[Part], mut res: u32) -> Result<Output, &'static str> {
+/// The remeshed (and combined) surface. `res` is the number of cells along the longest side. `sharp`:
+/// each cell's vertex goes where the planes of its crossings meet (dual contouring), so edges and
+/// corners stay sharp; otherwise at their mean, relaxed once (surface nets).
+pub fn voxel_csg(inp: &Input, parts: &[Part], mut res: u32, sharp: bool) -> Result<Output, &'static str> {
     if parts.is_empty() || parts[0].op != OP_ADD { return Err("the first part must add"); }
     // the bounds of what adds (taking away or intersecting never reaches past it)
     let mut lo = [f64::INFINITY; 3];
@@ -217,6 +221,8 @@ pub fn voxel_csg(inp: &Input, parts: &[Part], mut res: u32) -> Result<Output, &'
     let mut inside = vec![0u8; n];
     let mut dist = vec![f32::INFINITY; n];
     let mut tri = vec![-1i32; n];
+    // 1 where the nearest surface is a part taken away: its outside is the result's inside
+    let mut turned = vec![0u8; n];
     winding(inp, &parts[0], &g, &mut inside);
     band_distance(inp, &parts[0], &g, &mut dist, &mut tri);
     if parts.len() > 1 {
@@ -238,7 +244,7 @@ pub fn voxel_csg(inp: &Input, parts: &[Part], mut res: u32) -> Result<Output, &'
                     OP_INTERSECT => (b > a, inside[gi] != 0 && ins2[gi] != 0),
                     _ => (b < a, inside[gi] != 0 || ins2[gi] != 0),
                 };
-                if take_b { dist[gi] = d2[gi]; tri[gi] = t2[gi]; }
+                if take_b { dist[gi] = d2[gi]; tri[gi] = t2[gi]; turned[gi] = (part.op == OP_SUBTRACT) as u8; }
                 inside[gi] = flag as u8;
             }
         }
@@ -261,6 +267,8 @@ pub fn voxel_csg(inp: &Input, parts: &[Part], mut res: u32) -> Result<Output, &'
                 if ins == 0 || ins == 8 { continue; }
                 for q in 0..8 { val[q] = sdf(gi + corner[q]); }
                 let (mut sx, mut sy, mut sz, mut cnt) = (0f64, 0f64, 0f64, 0u32);
+                let mut herm: [([f64; 3], [f64; 3]); 12] = [([0.0; 3], [0.0; 3]); 12];
+                let mut nh = 0;
                 for [p, q] in EDGES {
                     // crossings come from the inside flags, as the cell test (a distance of 0 has no sign)
                     if inside[gi + corner[p]] == inside[gi + corner[q]] { continue; }
@@ -268,23 +276,63 @@ pub fn voxel_csg(inp: &Input, parts: &[Part], mut res: u32) -> Result<Output, &'
                     let mut t = if dp + dq > 0.0 { dp / (dp + dq) } else { 0.5 };
                     if !t.is_finite() { t = 0.5; }
                     t = t.clamp(0.0, 1.0);
-                    sx += c_off[p][0] + (c_off[q][0] - c_off[p][0]) * t;
-                    sy += c_off[p][1] + (c_off[q][1] - c_off[p][1]) * t;
-                    sz += c_off[p][2] + (c_off[q][2] - c_off[p][2]) * t;
+                    let (lx, ly, lz) = (c_off[p][0] + (c_off[q][0] - c_off[p][0]) * t, c_off[p][1] + (c_off[q][1] - c_off[p][1]) * t, c_off[p][2] + (c_off[q][2] - c_off[p][2]) * t);
+                    sx += lx; sy += ly; sz += lz;
                     cnt += 1;
+                    if sharp {
+                        // the crossing and the normal of the nearest triangle there (Hermite data)
+                        let x = [g.ox + (i as f64 + lx) * h, g.oy + (j as f64 + ly) * h, g.oz + (k as f64 + lz) * h];
+                        let mut best: Option<(f64, [f64; 3])> = None;
+                        for gq in [gi + corner[p], gi + corner[q]] {
+                            let t = tri[gq]; if t < 0 { continue; }
+                            let t = t as usize;
+                            let (pa, pb, pc) = (p3(inp.pos, inp.idx[t * 3] as usize), p3(inp.pos, inp.idx[t * 3 + 1] as usize), p3(inp.pos, inp.idx[t * 3 + 2] as usize));
+                            let (_, dd) = closest_on_tri(pa, pb, pc, x);
+                            let u = [pb[0] - pa[0], pb[1] - pa[1], pb[2] - pa[2]];
+                            let v = [pc[0] - pa[0], pc[1] - pa[1], pc[2] - pa[2]];
+                            let mut nn = [u[1] * v[2] - u[2] * v[1], u[2] * v[0] - u[0] * v[2], u[0] * v[1] - u[1] * v[0]];
+                            let l = (nn[0] * nn[0] + nn[1] * nn[1] + nn[2] * nn[2]).sqrt();
+                            if l < 1e-30 { continue; }
+                            let sgn = if turned[gq] != 0 { -1.0 } else { 1.0 } / l;
+                            for c in nn.iter_mut() { *c *= sgn; }
+                            if best.map_or(true, |b| dd < b.0) { best = Some((dd, nn)); }
+                        }
+                        if let Some((_, nn)) = best { herm[nh] = (x, nn); nh += 1; }
+                    }
                 }
                 vid[gi] = (verts.len() / 3) as i32;
                 if cnt == 0 { verts.extend_from_slice(&[g.ox + (i as f64 + 0.5) * h, g.oy + (j as f64 + 0.5) * h, g.oz + (k as f64 + 0.5) * h]); continue; }
                 let c = cnt as f64;
-                verts.extend_from_slice(&[g.ox + (i as f64 + sx / c) * h, g.oy + (j as f64 + sy / c) * h, g.oz + (k as f64 + sz / c) * h]);
+                let mass = [g.ox + (i as f64 + sx / c) * h, g.oy + (j as f64 + sy / c) * h, g.oz + (k as f64 + sz / c) * h];
+                let mut at = mass;
+                if sharp && nh >= 2 {
+                    // the least squares point of the planes, pulled a little toward the mean (QEF)
+                    let lam = 0.02;
+                    let mut a = [[lam, 0.0, 0.0], [0.0, lam, 0.0], [0.0, 0.0, lam]];
+                    let mut b = [lam * mass[0], lam * mass[1], lam * mass[2]];
+                    for &(x, nn) in &herm[..nh] {
+                        let d = nn[0] * x[0] + nn[1] * x[1] + nn[2] * x[2];
+                        for r in 0..3 { for cc in 0..3 { a[r][cc] += nn[r] * nn[cc]; } b[r] += nn[r] * d; }
+                    }
+                    let det = a[0][0] * (a[1][1] * a[2][2] - a[1][2] * a[2][1]) - a[0][1] * (a[1][0] * a[2][2] - a[1][2] * a[2][0]) + a[0][2] * (a[1][0] * a[2][1] - a[1][1] * a[2][0]);
+                    if det.abs() > 1e-12 {
+                        let sol = |k: usize| { let mut m = a; for r in 0..3 { m[r][k] = b[r]; } (m[0][0] * (m[1][1] * m[2][2] - m[1][2] * m[2][1]) - m[0][1] * (m[1][0] * m[2][2] - m[1][2] * m[2][0]) + m[0][2] * (m[1][0] * m[2][1] - m[1][1] * m[2][0])) / det };
+                        let x = [sol(0), sol(1), sol(2)];
+                        // (only inside the cell, grown by half a cell: past it the planes are nearly parallel)
+                        let lo = [g.ox + (i as f64 - 0.5) * h, g.oy + (j as f64 - 0.5) * h, g.oz + (k as f64 - 0.5) * h];
+                        if (0..3).all(|q| x[q] >= lo[q] && x[q] <= lo[q] + 2.0 * h) { at = x; }
+                    }
+                }
+                verts.extend_from_slice(&at);
             }
         }
     }
     let mut faces: Vec<u32> = Vec::new();
+    let mut quads: Vec<u32> = Vec::new();
     let mut quad = |a: i32, b: i32, c: i32, d: i32, flip: bool| {
         if a < 0 || b < 0 || c < 0 || d < 0 { return; }
         let (a, b, c, d) = (a as u32, b as u32, c as u32, d as u32);
-        if flip { faces.extend_from_slice(&[a, c, b, a, d, c]); } else { faces.extend_from_slice(&[a, b, c, a, c, d]); }
+        if flip { faces.extend_from_slice(&[a, c, b, a, d, c]); quads.extend_from_slice(&[a, d, c, b]); } else { faces.extend_from_slice(&[a, b, c, a, c, d]); quads.extend_from_slice(&[a, b, c, d]); }
     };
     let nx = g.nx;
     for k in 1..g.nz - 1 {
@@ -308,12 +356,13 @@ pub fn voxel_csg(inp: &Input, parts: &[Part], mut res: u32) -> Result<Output, &'
         let v = &verts;
         vol += v[a] * (v[b + 1] * v[c + 2] - v[b + 2] * v[c + 1]) - v[a + 1] * (v[b] * v[c + 2] - v[b + 2] * v[c]) + v[a + 2] * (v[b] * v[c + 1] - v[b + 1] * v[c]);
     }
-    if vol < 0.0 { for f in faces.chunks_exact_mut(3) { f.swap(1, 2); } }
+    if vol < 0.0 { for f in faces.chunks_exact_mut(3) { f.swap(1, 2); } for q in quads.chunks_exact_mut(4) { q.swap(1, 3); } }
 
-    // relax once (uniform Laplacian, half way)
-    let mut nb = vec![0f64; nv * 3];
+    // relax once (uniform Laplacian, half way); sharp corners are kept as they were placed
+    let mut nb = vec![0f64; if sharp { 0 } else { nv * 3 }];
     let mut nc = vec![0u32; nv];
     for f in faces.chunks_exact(3) {
+        if sharp { break; }
         for e in 0..3 {
             let (u, v) = (f[e] as usize, f[(e + 1) % 3] as usize);
             for q in 0..3 { nb[u * 3 + q] += verts[v * 3 + q]; nb[v * 3 + q] += verts[u * 3 + q]; }
@@ -324,7 +373,7 @@ pub fn voxel_csg(inp: &Input, parts: &[Part], mut res: u32) -> Result<Output, &'
     drop(nb); drop(nc);
 
     // onto the old surface: the closest of the triangles nearest to the cell's corners
-    let mut out = Output { pos: vec![0.0; nv * 3], idx: faces, col: vec![1.0; nv * 3], mask: vec![0.0; nv], grp: vec![0.0; nv], res };
+    let mut out = Output { pos: vec![0.0; nv * 3], idx: faces, col: vec![1.0; nv * 3], mask: vec![0.0; nv], grp: vec![0.0; nv], res, quads };
     for v in 0..nv {
         let p = [verts[v * 3], verts[v * 3 + 1], verts[v * 3 + 2]];
         let ci = (((p[0] - g.ox) / h).floor().max(0.0) as usize).min(g.nx - 2);
@@ -378,7 +427,7 @@ pub unsafe extern "C" fn mem_free(p: *mut u8, size: usize) {
 #[no_mangle]
 pub unsafe extern "C" fn voxel_csg_raw(
     pos: *const f32, nv: usize, idx: *const u32, nt: usize, col: *const f32, mask: *const f32, grp: *const f32,
-    parts: *const u32, nparts: usize, res: u32,
+    parts: *const u32, nparts: usize, res: u32, flags: u32,
 ) -> i32 {
     let inp = Input {
         pos: std::slice::from_raw_parts(pos, nv * 3),
@@ -395,7 +444,7 @@ pub unsafe extern "C" fn voxel_csg_raw(
         list.push(Part { t0, t1, op: p[2] });
     }
     if inp.idx.iter().any(|&v| v as usize >= nv) { return -1; }
-    match voxel_csg(&inp, &list, res) {
+    match voxel_csg(&inp, &list, res, flags & 1 != 0) {
         Ok(o) => { OUT.with(|c| *c.borrow_mut() = o); 0 }
         Err(_) => -1,
     }
@@ -406,7 +455,7 @@ pub unsafe extern "C" fn voxel_csg_raw(
 pub extern "C" fn out_ptr(kind: u32) -> *const u8 {
     OUT.with(|c| {
         let o = c.borrow();
-        match kind { 0 => o.pos.as_ptr() as *const u8, 1 => o.idx.as_ptr() as *const u8, 2 => o.col.as_ptr() as *const u8, 3 => o.mask.as_ptr() as *const u8, _ => o.grp.as_ptr() as *const u8 }
+        match kind { 0 => o.pos.as_ptr() as *const u8, 1 => o.idx.as_ptr() as *const u8, 2 => o.col.as_ptr() as *const u8, 3 => o.mask.as_ptr() as *const u8, 5 => o.quads.as_ptr() as *const u8, _ => o.grp.as_ptr() as *const u8 }
     })
 }
 /// How many values (not bytes) each result array has.
@@ -414,7 +463,7 @@ pub extern "C" fn out_ptr(kind: u32) -> *const u8 {
 pub extern "C" fn out_len(kind: u32) -> usize {
     OUT.with(|c| {
         let o = c.borrow();
-        match kind { 0 => o.pos.len(), 1 => o.idx.len(), 2 => o.col.len(), 3 => o.mask.len(), _ => o.grp.len() }
+        match kind { 0 => o.pos.len(), 1 => o.idx.len(), 2 => o.col.len(), 3 => o.mask.len(), 5 => o.quads.len(), _ => o.grp.len() }
     })
 }
 #[no_mangle]
@@ -485,7 +534,7 @@ pub unsafe extern "C" fn decimate_raw(pos: *const f32, nv: usize, idx: *const u3
     let idx = std::slice::from_raw_parts(idx, nt * 3);
     if idx.iter().any(|&v| v as usize >= nv) { return -1; }
     let m = decimate::decimate(std::slice::from_raw_parts(pos, nv * 3), idx, std::slice::from_raw_parts(col, nv * 3), std::slice::from_raw_parts(mask, nv), std::slice::from_raw_parts(grp, nv), target);
-    OUT.with(|c| *c.borrow_mut() = Output { pos: m.pos, idx: m.idx, col: m.col, mask: m.mask, grp: m.grp, res: 0 });
+    OUT.with(|c| *c.borrow_mut() = Output { pos: m.pos, idx: m.idx, col: m.col, mask: m.mask, grp: m.grp, res: 0, quads: Vec::new() });
     0
 }
 
@@ -570,7 +619,25 @@ mod tests {
         for &(c, s, op) in boxes { let t0 = idx.len() / 3; cube(c, s, &mut pos, &mut idx); parts.push(Part { t0, t1: idx.len() / 3, op }); }
         let nv = pos.len() / 3;
         let (col, mask, grp) = (vec![1.0; nv * 3], vec![0.0; nv], vec![0.0; nv]);
-        voxel_csg(&Input { pos: &pos, idx: &idx, col: &col, mask: &mask, grp: &grp }, &parts, res).unwrap()
+        voxel_csg(&Input { pos: &pos, idx: &idx, col: &col, mask: &mask, grp: &grp }, &parts, res, false).unwrap()
+    }
+    #[test]
+    fn sharp_keeps_the_corners_of_a_cube_and_makes_quads() {
+        let (mut pos, mut idx) = (Vec::new(), Vec::new());
+        cube([0.0; 3], 0.5, &mut pos, &mut idx);
+        let nv = pos.len() / 3;
+        let (col, mask, grp) = (vec![1.0; nv * 3], vec![0.0; nv], vec![0.0; nv]);
+        let inp = Input { pos: &pos, idx: &idx, col: &col, mask: &mask, grp: &grp };
+        let parts = [Part { t0: 0, t1: idx.len() / 3, op: OP_ADD }];
+        let soft = voxel_csg(&inp, &parts, 32, false).unwrap();
+        let sharp = voxel_csg(&inp, &parts, 32, true).unwrap();
+        // the corner nearest (0.5, 0.5, 0.5)
+        let nearest = |o: &Output| (0..o.pos.len() / 3).map(|i| ((o.pos[i * 3] - 0.5).powi(2) + (o.pos[i * 3 + 1] - 0.5).powi(2) + (o.pos[i * 3 + 2] - 0.5).powi(2)).sqrt()).fold(f32::INFINITY, f32::min);
+        assert!(nearest(&sharp) < 0.01, "sharp corner {}", nearest(&sharp));
+        assert!(nearest(&soft) > nearest(&sharp));
+        assert!((volume(&sharp) - 1.0).abs() < 0.01, "{}", volume(&sharp));
+        assert!(closed(&sharp));
+        assert_eq!(sharp.quads.len() / 4 * 2, sharp.idx.len() / 3);
     }
     #[test]
     fn project_puts_points_on_the_source() {
