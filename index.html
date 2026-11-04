@@ -369,6 +369,14 @@ input[type=range] { width: 100%; height: 26px; accent-color: var(--wax); backgro
       <div class="row"><label for="sFibG">Гравитация</label><output id="oFibG"></output><input type="range" id="sFibG" min="0" max="1" step="0.05"></div>
       <div class="row"><label for="sFibV">Разнообразие</label><output id="oFibV"></output><input type="range" id="sFibV" min="0" max="1" step="0.05"></div>
       <button class="btn wide" id="bFibers">Направи косми от маската</button>
+      <p class="note">Четката „Сресване на косми“ ги реши по щриха: върховете отиват най-много, корените стоят.</p>
+      <div class="row"><label for="sSlimeN">Нишки между две маски</label><output id="oSlimeN"></output><input type="range" id="sSlimeN" min="2" max="60" step="1"></div>
+      <button class="btn wide" id="bSlime" title="Slime Bridge: увиснали нишки между двете най-големи маскирани места (дебелина и гравитация като на космите)">Нишки между маските</button>
+      <h2 style="margin-top:14px">Форми по маската <em>NanoMesh</em></h2>
+      <div class="chips" id="nanoChips"></div>
+      <div class="row"><label for="sNanoN">Брой</label><output id="oNanoN"></output><input type="range" id="sNanoN" min="5" max="1000" step="5"></div>
+      <div class="row"><label for="sNanoS">Размер</label><output id="oNanoS"></output><input type="range" id="sNanoS" min="0.005" max="0.3" step="0.005"></div>
+      <button class="btn wide" id="bNano">Пръсни формите по маската</button>
       <h2 style="margin-top:14px">Плат <em>Dynamics</em></h2>
       <p class="note">Активният подобект пада като плат: маскираното стои закачено, останалото се спуска по другите видими подобекти и пода. Гънките му не минават една през друга. Започнете с „Извади от маската“ за дреха, после маскирайте мястото, където да виси.</p>
       <div class="row"><label for="sClothG">Гравитация</label><output id="oClothG"></output><input type="range" id="sClothG" min="0.1" max="3" step="0.05"></div>
@@ -561,6 +569,7 @@ const ICON = {
   slice: '<path d="M3 21L21 3"/><path d="M4 8c3-4 9-5 12-2" opacity=".5"/><path d="M8 20c4 1 9-1 12-6"/>',
   zmodel: '<path d="M4 15l8 4 8-4-8-4z"/><path d="M8 9l4-6 4 6" opacity=".6"/><path d="M12 3v8" opacity=".6"/>',
   ffd: '<rect x="4" y="4" width="16" height="16" rx="1" stroke-dasharray="2 2"/><path d="M12 4v16M4 12h16" opacity=".45"/><circle cx="4" cy="4" r="1.6"/><circle cx="20" cy="4" r="1.6"/><circle cx="12" cy="12" r="1.8"/><circle cx="4" cy="20" r="1.6"/><circle cx="20" cy="20" r="1.6"/>',
+  groom: '<path d="M5 20c1-6 3-10 8-14M9 20c1-5 3-9 8-12M13 20c1-4 3-7 7-9"/>',
   cloth: '<path d="M4 6c3 2 5-2 8 0s5-2 8 0v12c-3-2-5 2-8 0s-5 2-8 0z"/><path d="M8 9v6M12 8v7M16 9v6" opacity=".5"/>',
   gizmo: '<path d="M12 12h8M12 12V4M12 12l-6 6"/><circle cx="12" cy="12" r="2.2"/><path d="M18 10l2 2-2 2M10 6l2-2 2 2" opacity=".6"/>',
   pose: '<path d="M4 20l7-7"/><path d="M11 13l6-8"/><circle cx="11" cy="13" r="2"/><path d="M14 4h4v4" opacity=".6"/>',
@@ -583,7 +592,7 @@ const BASES = [
   { id: 'draw', name: 'Рисуване (Standard)' }, { id: 'clay', name: 'Глина (Clay)' }, { id: 'claystrips', name: 'Глина на ивици (ClayBuildup)' },
   { id: 'inflate', name: 'Надуване (Inflate)' }, { id: 'flatten', name: 'Изравняване (hPolish)' }, { id: 'scrape', name: 'Подрязване (TrimDynamic)' },
   { id: 'pinch', name: 'Притискане (Pinch)' }, { id: 'crease', name: 'Гънка' }, { id: 'smooth', name: 'Изглаждане (Smooth)' },
-  { id: 'grab', name: 'Хващане (Move)' }, { id: 'snake', name: 'Издърпване (SnakeHook)' }, { id: 'pose', name: 'Поза (Pose)' }, { id: 'insert', name: 'Вмъкване на форма (InsertMesh)' }, { id: 'gizmo', name: 'Местене, завъртане, мащаб (Gizmo 3D)' }, { id: 'cloth', name: 'Плат (Cloth brushes)' }, { id: 'ffd', name: 'Клетка (FFD)' }, { id: 'zmodel', name: 'Полигони (ZModeler)' }, { id: 'planar', name: 'Равнина (Planar)' }, { id: 'morph', name: 'Връщане към запомнената форма (Morph)' }, { id: 'layer', name: 'Слой (Layer)' }, { id: 'slice', name: 'Разделяне на групи (SliceCurve)' }, { id: 'tube', name: 'Тръба по крива (CurveTube)' }, { id: 'clip', name: 'Отсичане (ClipCurve)' }, { id: 'cut', name: 'Отрязване (TrimCurve)' }, { id: 'mask', name: 'Маска' }, { id: 'paint', name: 'Боя' },
+  { id: 'grab', name: 'Хващане (Move)' }, { id: 'snake', name: 'Издърпване (SnakeHook)' }, { id: 'pose', name: 'Поза (Pose)' }, { id: 'insert', name: 'Вмъкване на форма (InsertMesh)' }, { id: 'gizmo', name: 'Местене, завъртане, мащаб (Gizmo 3D)' }, { id: 'cloth', name: 'Плат (Cloth brushes)' }, { id: 'groom', name: 'Сресване на косми (Groom)' }, { id: 'ffd', name: 'Клетка (FFD)' }, { id: 'zmodel', name: 'Полигони (ZModeler)' }, { id: 'planar', name: 'Равнина (Planar)' }, { id: 'morph', name: 'Връщане към запомнената форма (Morph)' }, { id: 'layer', name: 'Слой (Layer)' }, { id: 'slice', name: 'Разделяне на групи (SliceCurve)' }, { id: 'tube', name: 'Тръба по крива (CurveTube)' }, { id: 'clip', name: 'Отсичане (ClipCurve)' }, { id: 'cut', name: 'Отрязване (TrimCurve)' }, { id: 'mask', name: 'Маска' }, { id: 'paint', name: 'Боя' },
 ];
 // a complete brush; presets only list what differs
 const BRUSH_DEFAULTS = {
@@ -624,6 +633,9 @@ const PRESETS = [
   { id: 'curvedam', name: 'Гънка по крива', short: 'Крива', icon: 'curve', radius: 12, strength: 0.6, dir: -1, curve: 'sharp', focal: 0.3, mod: 0.6, spacing: 0.08, stroke: 'curve', taper: 0.7, zb: 'Curve Mode + Dam_Standard' },
   { id: 'clothpinch', name: 'Плат: събиране', short: 'Гънки', base: 'cloth', icon: 'cloth', cloth: 'pinch', radius: 50, strength: 0.6, zb: 'ClothPinch' },
   { id: 'clothslide', name: 'Плат: бутане', short: 'Бутай', base: 'cloth', icon: 'cloth', cloth: 'slide', radius: 55, strength: 0.6, zb: 'ClothSlide' },
+  { id: 'clothhook', name: 'Плат: кука', short: 'Кука', base: 'cloth', icon: 'cloth', cloth: 'hook', radius: 60, strength: 0.8, front: false, zb: 'ClothHook' },
+  { id: 'clothtwist', name: 'Плат: усукване', short: 'Вихър', base: 'cloth', icon: 'cloth', cloth: 'twist', radius: 50, strength: 0.6, zb: 'ClothTwister' },
+  { id: 'groom', name: 'Сресване на косми', short: 'Среши', base: 'groom', radius: 60, strength: 0.6, front: false, zb: 'GroomHairToss / GroomBlower' },
   { id: 'clothinflate', name: 'Плат: надуване', short: 'Възгл.', base: 'cloth', icon: 'cloth', cloth: 'inflate', radius: 50, strength: 0.5, zb: 'ClothInflate' },
   { id: 'zmodel', name: 'Полигони: изтегли или вдлъбни групата', short: 'ZModel', base: 'zmodel', zb: 'ZModeler: Extrude / Inset (Polygroup All)' },
   { id: 'ffd', name: 'Клетка (FFD)', short: 'FFD', base: 'ffd', zb: 'Gizmo Deformer: FFD' },
@@ -680,6 +692,7 @@ const S = {
   texSize: 2048,       // UV maps: pixels a side
   refOpacity: 0.5, refScale: 1, refFront: true, paintFromRef: false,
   smoothView: false,
+  slimeN: 12, nanoCount: 60, nanoSize: 0.05, nanoShape: 'sphere',
   fibCount: 800, fibLength: 0.15, fibWidth: 0.006, fibGravity: 0.4, fibVary: 0.4,
   clothGravity: 1, clothStretch: 0.9, clothBend: 0.15, clothFloor: true, clothTime: 5, clothSelf: true,
   defAxis: 1, defTo: 0,  // deformers: along which axis, and (bend) toward which of the other two
@@ -690,7 +703,7 @@ try { savedSettings = JSON.parse(localStorage.getItem('glina.settings') || 'null
 if (savedSettings) for (const k of Object.keys(savedSettings)) if (k in S && k !== 'penSeen' && k !== 'brushes') S[k] = savedSettings[k];
 // one brush field from settings or a file: right type and range, or undefined
 const ENUMS = { tip: ['round', 'square'], alphaRot: ['fixed', 'stroke', 'random'], stroke: ['dots', 'dragrect', 'dragdot', 'spray', 'line', 'curve'], grab: ['soft', 'elastic'],
-  imm: ['sphere', 'cube', 'cylinder', 'cone', 'torus', 'file'], gz: ['move', 'rotate', 'scale'], cloth: ['pinch', 'slide', 'inflate'], zm: ['extrude', 'inset'] };
+  imm: ['sphere', 'cube', 'cylinder', 'cone', 'torus', 'file'], gz: ['move', 'rotate', 'scale'], cloth: ['pinch', 'slide', 'inflate', 'hook', 'twist'], zm: ['extrude', 'inset'] };
 const RANGES = { radius: [4, 320], strength: [0.01, 1], focal: [-1, 1], alphaMid: [0, 1], alphaAngle: [0, 360], spacing: [0.03, 0.6], mod: [-1, 1], volume: [0, 0.49], taper: [0, 1], ffdN: [2, 5] };
 function brushField(k, v) {
   if (k === 'curve') return Array.isArray(v) && v.length >= 2 && v.length <= 32 && v.every((p) => Array.isArray(p) && p.length === 2 && p.every((x) => Number.isFinite(x) && x >= 0 && x <= 1)) ? v.map((p) => p.slice()) : undefined;
@@ -1449,11 +1462,13 @@ function tubeArrays(pts, r, taper, h) {
   const tap = (t) => Math.max(0.12, 1 - taper * (1 - Math.pow(Math.sin(Math.PI * t), 0.6)));
   const U = Math.max(6, Math.min(64, Math.ceil(2 * Math.PI * r / h)));
   const pos = [], rings = [];
+  const along = [];   // per vertex: 0 at the start … 1 at the end of the tube
+  let tNow = 0;
   const ring = (c, n, b, rad) => {
     rings.push({ at: pos.length / 3, pole: false });
-    for (let j = 0; j < U; j++) { const a = 2 * Math.PI * j / U, x = Math.cos(a) * rad, y = Math.sin(a) * rad; pos.push(c.x + n.x * x + b.x * y, c.y + n.y * x + b.y * y, c.z + n.z * x + b.z * y); }
+    for (let j = 0; j < U; j++) { const a = 2 * Math.PI * j / U, x = Math.cos(a) * rad, y = Math.sin(a) * rad; pos.push(c.x + n.x * x + b.x * y, c.y + n.y * x + b.y * y, c.z + n.z * x + b.z * y); along.push(tNow); }
   };
-  const pole = (c) => { rings.push({ at: pos.length / 3, pole: true }); pos.push(c.x, c.y, c.z); };
+  const pole = (c) => { rings.push({ at: pos.length / 3, pole: true }); pos.push(c.x, c.y, c.z); along.push(tNow); };
   // round cap: rings shrinking along the tangent, then a pole
   const cap = (i, dirSign, rad, startCap) => {
     const m = Math.max(1, Math.round(Math.PI / 2 * rad / h)), B = new THREE.Vector3().crossVectors(T[i], Ns[i]), list = [];
@@ -1465,9 +1480,12 @@ function tubeArrays(pts, r, taper, h) {
     else { for (let k = list.length - 1; k >= 0; k--) ring(list[k][0], Ns[i], B, list[k][1]); pole(C[i].clone().addScaledVector(T[i], rad)); }
   };
   cap(0, -1, r * tap(0), true);
-  for (let i = 0; i < K; i++) ring(C[i], Ns[i], new THREE.Vector3().crossVectors(T[i], Ns[i]), r * tap(K > 1 ? i / (K - 1) : 0.5));
+  for (let i = 0; i < K; i++) { tNow = K > 1 ? i / (K - 1) : 0.5; ring(C[i], Ns[i], new THREE.Vector3().crossVectors(T[i], Ns[i]), r * tap(tNow)); }
+  tNow = 1;
   cap(K - 1, 1, r * tap(1), false);
-  return outward(new Float32Array(pos), Uint32Array.from(stitchRings(rings, U)));
+  const out = outward(new Float32Array(pos), Uint32Array.from(stitchRings(rings, U)));
+  out.along = Float32Array.from(along);
+  return out;
 }
 // the mean edge length of a mesh (from up to 4000 triangles), to size new parts' triangles like it
 function meanEdge(pos, idx) {
@@ -3074,6 +3092,18 @@ function applyBrush(tool, c, n, r, s, sign, dab = {}) {
       break;
     }
     case 'cloth': clothDab(G, F, count, c, r, s, sign, b.cloth || 'pinch', dab); break;
+    case 'groom': {
+      // (ZBrush: Groom brushes) fibres are combed along the stroke: the tips go most, the roots stay
+      const A = m.along && m.along.length >= m.n ? m.along : null;
+      if (!A) { if (!stroke.groomWarned) { stroke.groomWarned = true; toast('Сресването работи върху косми: Настройки → Деформации → „Направи косми от маската“.'); } return; }
+      if (!dab.dir) return;
+      const k0 = r * 0.18 * s;
+      for (let k = 0; k < count; k++) {
+        const i = G[k], t = A[i], w = F[k] * (1 - MK[i]) * t * Math.sqrt(t); if (w <= 0) continue; touchVert(i);
+        P[i * 3] += dab.dir.x * k0 * w; P[i * 3 + 1] += dab.dir.y * k0 * w; P[i * 3 + 2] += dab.dir.z * k0 * w;
+      }
+      break;
+    }
     case 'morph': {
       // back toward the stored shape (Alt: away from it, the change made bigger)
       const T = morphOf(m);
@@ -3159,11 +3189,15 @@ function clothDab(G, F, count, c, r, s, sign, kind, dab) {
   const lam = r * 0.42, st = stroke.clothStart;
   const wave = (i) => {
     const px = P[i * 3], py = P[i * 3 + 1], pz = P[i * 3 + 2];
-    if (kind === 'pinch') { const ox = px - c.x, oy = py - c.y, oz = pz - c.z; return Math.sin(6 * Math.atan2(ox * vx + oy * vy + oz * vz, ox * ux + oy * uy + oz * uz)); }
-    if (kind === 'slide' && dir) return Math.sin((2 * Math.PI * ((px - st.x) * dir.x + (py - st.y) * dir.y + (pz - st.z) * dir.z)) / lam);
+    if (kind === 'pinch' || kind === 'twist') { const ox = px - c.x, oy = py - c.y, oz = pz - c.z; return Math.sin(6 * Math.atan2(ox * vx + oy * vy + oz * vz, ox * ux + oy * uy + oz * uz)); }
+    if ((kind === 'slide' || kind === 'hook') && dir) return Math.sin((2 * Math.PI * ((px - st.x) * dir.x + (py - st.y) * dir.y + (pz - st.z) * dir.z)) / lam);
     return 1;
   };
   const wv = new Map(); for (const [i] of local) wv.set(i, wave(i));
+  // (the hook: how far the brush moved since the last dab of this copy)
+  const key = 'clothLast' + (dab.copy || 0), last = stroke[key];
+  const hookDelta = kind === 'hook' && last ? new THREE.Vector3(c.x - last.x, c.y - last.y, c.z - last.z) : null;
+  stroke[key] = c.clone();
   for (const [i, w] of local) {
     const o = i * 3;
     if (kind === 'pinch') {
@@ -3175,6 +3209,17 @@ function clothDab(G, F, count, c, r, s, sign, kind, dab) {
       if (!dir) continue;
       const k = r * 0.08 * s * w, h = r * 0.025 * s * w * wv.get(i);
       P[o] += dir.x * k + NR[o] * h; P[o + 1] += dir.y * k + NR[o + 1] * h; P[o + 2] += dir.z * k + NR[o + 2] * h;
+    } else if (kind === 'hook') {
+      // follows the pen: what was under the brush moves as far as the brush has since the last dab
+      const d = hookDelta; if (!d) continue;
+      const k = Math.min(1, s * 1.5) * w;
+      P[o] += d.x * k; P[o + 1] += d.y * k; P[o + 2] += d.z * k;
+    } else if (kind === 'twist') {
+      // a turn about the brush's axis, strongest in the middle
+      const ox = P[o] - c.x, oy = P[o + 1] - c.y, oz = P[o + 2] - c.z, ang = 0.12 * s * sign * w;
+      const lu = ox * ux + oy * uy + oz * uz, lv = ox * vx + oy * vy + oz * vz, cs = Math.cos(ang) - 1, sn = Math.sin(ang);
+      const du = lu * cs - lv * sn, dvv = lu * sn + lv * cs;
+      P[o] += ux * du + vx * dvv; P[o + 1] += uy * du + vy * dvv; P[o + 2] += uz * du + vz * dvv;
     } else {
       const k = r * 0.06 * s * sign * w; P[o] += NR[o] * k; P[o + 1] += NR[o + 1] * k; P[o + 2] += NR[o + 2] * k;
     }
@@ -3552,8 +3597,14 @@ function sprayDab(x, y, p, spray) {
   dab(x + Math.cos(a) * d, y + Math.sin(a) * d, p, { rscale: 0.45 + Math.random() * 0.7, sscale: 0.6 + Math.random() * 0.4, angle: Math.random() * Math.PI * 2 });
 }
 
+// the groom brush also aims through gaps between fibres, at the surface under them (another subtool)
+function pickUnder(x, y) {
+  const oh = pickOther(x, y); if (!oh) return null;
+  const point = raycaster.ray.origin.clone().addScaledVector(raycaster.ray.direction, oh.distance);
+  return { point, normal: raycaster.ray.direction.clone().negate() };
+}
 function dab(x, y, p, o = {}) {
-  const hit = o.hit || pick(x, y, true);
+  const hit = o.hit || pick(x, y, true) || (stroke.tool === 'groom' ? pickUnder(x, y) : null);
   if (!hit) return;
   const b = stroke.b;
   const pr = pressureOf(p);
@@ -3938,15 +3989,15 @@ canvas.addEventListener('pointerdown', (e) => {
     if (og && (!hit || og.distance < camera.position.distanceTo(hit.point))) { gesture = { kind: 'picktool', tool: og.tool, x0: x, y0: y, x, y, id: e.pointerId }; hideRing(); return; }
     nav = { mode: e.altKey ? 'pan' : 'orbit', x, y, id: e.pointerId }; hideRing(); return;
   }
-  // another subtool in front: a click selects it, a drag turns the view
-  const oh = pickOther(x, y);
+  // another subtool in front: a click selects it, a drag turns the view (combing fibres aims through it)
+  const oh = cb.base === 'groom' ? null : pickOther(x, y);
   if (oh && (!hit || oh.distance < camera.position.distanceTo(hit.point))) { gesture = { kind: 'picktool', tool: oh.tool, x0: x, y0: y, x, y, id: e.pointerId }; hideRing(); return; }
   // a press on the waiting curve bends it (and redoes its stroke on release)
   if (isCurveBrush(cb) && !e.shiftKey && !tempSmooth && liveCurve() && curve.brushId === cb.id) {
     const k = curveHitIndex(x, y);
     if (k >= 0) { startCurveEdit(e, x, y, k); hideRing(); drawOverlay(); return; }
   }
-  if (!hit) { nav = { mode: e.altKey ? 'pan' : 'orbit', x, y, id: e.pointerId }; hideRing(); return; }
+  if (!hit && !(cb.base === 'groom' && pickUnder(x, y))) { nav = { mode: e.altKey ? 'pan' : 'orbit', x, y, id: e.pointerId }; hideRing(); return; }
   let b = brush();
   if (e.shiftKey || tempSmooth) b = { ...brushById('smooth'), base: 'smooth' };   // Shift always smooths
   const eraser = e.pointerType === 'pen' && (e.buttons & 32);
@@ -5371,10 +5422,83 @@ function fiberArrays(a, opt) {
     parts.push(tubeArrays(pts, opt.width, 0.85, Math.max(opt.width * 2.2, step)));
   }
   let nv = 0, nt = 0; for (const t2 of parts) { nv += t2.pos.length / 3; nt += t2.idx.length / 3; }
+  const pos = new Float32Array(nv * 3), idx = new Uint32Array(nt * 3), along = new Float32Array(nv);
+  let v0 = 0, t0 = 0;
+  for (const t2 of parts) { pos.set(t2.pos, v0 * 3); along.set(t2.along, v0); for (let q = 0; q < t2.idx.length; q++) idx[t0 * 3 + q] = t2.idx[q] + v0; v0 += t2.pos.length / 3; t0 += t2.idx.length / 3; }
+  return { pos, idx, n: nv, along };
+}
+// the masked area's separate parts (faces with every corner masked, joined across edges)
+function maskIslands(a) {
+  const nf = a.idx.length / 3, inM = new Uint8Array(nf), byEdge = new Map();
+  for (let f = 0; f < nf; f++) if (a.mask[a.idx[f * 3]] >= 0.5 && a.mask[a.idx[f * 3 + 1]] >= 0.5 && a.mask[a.idx[f * 3 + 2]] >= 0.5) inM[f] = 1;
+  for (let f = 0; f < nf; f++) if (inM[f]) for (let e = 0; e < 3; e++) { const p = a.idx[f * 3 + e], q = a.idx[f * 3 + (e + 1) % 3], k = Math.min(p, q) * 4294967296 + Math.max(p, q); if (!byEdge.has(k)) byEdge.set(k, []); byEdge.get(k).push(f); }
+  const lab = new Int32Array(nf).fill(-1), islands = [];
+  for (let f0 = 0; f0 < nf; f0++) {
+    if (!inM[f0] || lab[f0] >= 0) continue;
+    const list = [f0]; lab[f0] = islands.length;
+    for (let q = 0; q < list.length; q++) { const f = list[q]; for (let e = 0; e < 3; e++) { const p = a.idx[f * 3 + e], r2 = a.idx[f * 3 + (e + 1) % 3]; for (const g of byEdge.get(Math.min(p, r2) * 4294967296 + Math.max(p, r2))) if (lab[g] < 0) { lab[g] = islands.length; list.push(g); } } }
+    islands.push(list);
+  }
+  return islands;
+}
+// a random point on a set of faces, by area: { p, n }
+function pointOn(a, faces) {
+  if (!faces.cum) { let t = 0; faces.cum = faces.map((f) => { const P = a.pos, i = a.idx[f * 3], j = a.idx[f * 3 + 1], k = a.idx[f * 3 + 2]; const ux = P[j * 3] - P[i * 3], uy = P[j * 3 + 1] - P[i * 3 + 1], uz = P[j * 3 + 2] - P[i * 3 + 2], vx = P[k * 3] - P[i * 3], vy = P[k * 3 + 1] - P[i * 3 + 1], vz = P[k * 3 + 2] - P[i * 3 + 2]; t += Math.hypot(uy * vz - uz * vy, uz * vx - ux * vz, ux * vy - uy * vx); return t; }); }
+  const t = rand() * faces.cum[faces.cum.length - 1];
+  let lo = 0, hi = faces.length - 1; while (lo < hi) { const mid = (lo + hi) >> 1; if (faces.cum[mid] < t) lo = mid + 1; else hi = mid; }
+  const f = faces[lo], P = a.pos, I = a.idx, A = new THREE.Vector3(P[I[f * 3] * 3], P[I[f * 3] * 3 + 1], P[I[f * 3] * 3 + 2]), B = new THREE.Vector3(P[I[f * 3 + 1] * 3], P[I[f * 3 + 1] * 3 + 1], P[I[f * 3 + 1] * 3 + 2]), C = new THREE.Vector3(P[I[f * 3 + 2] * 3], P[I[f * 3 + 2] * 3 + 1], P[I[f * 3 + 2] * 3 + 2]);
+  let b1 = rand(), b2 = rand(); if (b1 + b2 > 1) { b1 = 1 - b1; b2 = 1 - b2; }
+  const p = A.clone().addScaledVector(B.clone().sub(A), b1).addScaledVector(C.clone().sub(A), b2), n = new THREE.Vector3().crossVectors(B.clone().sub(A), C.clone().sub(A)).normalize();
+  return { p, n };
+}
+function joinParts(parts) {
+  let nv = 0, nt = 0; for (const q of parts) { nv += q.pos.length / 3; nt += q.idx.length / 3; }
   const pos = new Float32Array(nv * 3), idx = new Uint32Array(nt * 3);
   let v0 = 0, t0 = 0;
-  for (const t2 of parts) { pos.set(t2.pos, v0 * 3); for (let q = 0; q < t2.idx.length; q++) idx[t0 * 3 + q] = t2.idx[q] + v0; v0 += t2.pos.length / 3; t0 += t2.idx.length / 3; }
+  for (const q of parts) { pos.set(q.pos, v0 * 3); for (let k = 0; k < q.idx.length; k++) idx[t0 * 3 + k] = q.idx[k] + v0; v0 += q.pos.length / 3; t0 += q.idx.length / 3; }
   return { pos, idx, n: nv };
+}
+// Slime Bridge: sagging strands between the two biggest masked parts, thin in their middle
+function slimeBridge() {
+  if (stroke || working) return;
+  stashActive();
+  const a = toolArrays(TOOLS[curTool]), isl = maskIslands(a).sort((p, q) => q.length - p.length), { r } = mesh.bounds();
+  if (isl.length < 2) { toast('Маскирайте две отделни места (например устни или пръсти) — нишките се опъват между тях.'); return; }
+  rng = 777;
+  const parts = [], count = Math.max(2, Math.round(S.slimeN));
+  for (let q = 0; q < count; q++) {
+    const A = pointOn(a, isl[0]), B = pointOn(a, isl[1]), L = A.p.distanceTo(B.p), pts = [];
+    for (let k = 0; k <= 12; k++) {
+      const t = k / 12, p = A.p.clone().lerp(B.p, t);
+      p.y -= Math.sin(Math.PI * t) * L * S.fibGravity * 0.35 * (0.6 + 0.8 * rand());   // the sag of a hanging strand
+      pts.push({ p, n: A.n.clone().lerp(B.n, t).normalize() });
+    }
+    const w = S.fibWidth * r * (0.6 + 0.8 * rand());
+    parts.push(tubeArrays(pts, w, 0.75, Math.max(w * 1.5, L / 24)));
+  }
+  const j = joinParts(parts);
+  addTool(new SculptMesh(j.pos, j.idx, new Float32Array(j.n * 3).fill(1), new Float32Array(j.n), 0, new Float32Array(j.n)), 'Нишки');
+  toast(`${count} нишки между двете маскирани места.`);
+}
+// NanoMesh: copies of a shape strewn over the masked area, standing on it (ZBrush: NanoMesh, in short)
+function nanoMesh() {
+  if (stroke || working) return;
+  stashActive();
+  const a = toolArrays(TOOLS[curTool]), isl = maskIslands(a), { r } = mesh.bounds();
+  const faces = [].concat(...isl);
+  if (!faces.length) { toast('Първо маскирайте мястото, по което да се пръснат формите.'); return; }
+  rng = 4242;
+  const size = S.nanoSize * r, shape = immShape(S.nanoShape, 0.12), info = IMM.find((x) => x.id === S.nanoShape) || IMM[0], parts = [];
+  for (let q = 0; q < S.nanoCount; q++) {
+    const { p, n } = pointOn(a, faces), k = size * (0.75 + 0.5 * rand());
+    let t = Math.abs(n.x) < 0.9 ? new THREE.Vector3(1, 0, 0) : new THREE.Vector3(0, 1, 0); t.addScaledVector(n, -t.dot(n)).normalize();
+    t.applyAxisAngle(n, rand() * Math.PI * 2);
+    const z = new THREE.Vector3().crossVectors(t, n), c = p.clone().addScaledVector(n, info.lift * k);
+    parts.push(placePart(shape, [t.x * k, n.x * k, z.x * k, t.y * k, n.y * k, z.y * k, t.z * k, n.z * k, z.z * k], [c.x, c.y, c.z]));
+  }
+  const j = joinParts(parts);
+  addTool(new SculptMesh(j.pos, j.idx, new Float32Array(j.n * 3).fill(1), new Float32Array(j.n), 0, new Float32Array(j.n)), 'NanoMesh');
+  toast(`${S.nanoCount} форми по маскираното, като нов подобект.`);
 }
 function makeFibers() {
   if (stroke || working) return;
@@ -5384,7 +5508,9 @@ function makeFibers() {
   if (!out) { toast('Първо маскирайте мястото, откъдето да растат космите (Ctrl+рисуване).'); return; }
   if (out.idx.length / 3 > MAX_TRIS) { toast('Космите биха били твърде много: намалете броя.'); return; }
   const col = new Float32Array(out.n * 3).fill(1);
-  addTool(new SculptMesh(out.pos, out.idx, col, new Float32Array(out.n), 0, new Float32Array(out.n)), 'Косми');
+  const fm = new SculptMesh(out.pos, out.idx, col, new Float32Array(out.n), 0, new Float32Array(out.n));
+  fm.along = out.along;   // (for the groom brushes)
+  addTool(fm, 'Косми');
   toast(`${fmt(S.fibCount)} косъма (${fmt(out.idx.length / 3)} триъгълника) като нов подобект.`);
 }
 
@@ -7315,7 +7441,7 @@ brushSyncs.push(
   ], 'stroke'),
   brushChips('zmChips', [{ id: 'extrude', name: 'Изтегли (Extrude)' }, { id: 'inset', name: 'Вдлъбни ръба (Inset)' }], 'zm'),
   brushChips('ffdChips', [2, 3, 4, 5].map((k) => ({ id: k, name: k + '×' + k + '×' + k })), 'ffdN', () => { lattice = null; drawOverlay(); }),
-  brushChips('clothChips', [{ id: 'pinch', name: 'Събира (ClothPinch)' }, { id: 'slide', name: 'Бута по щриха (ClothSlide)' }, { id: 'inflate', name: 'Надува (ClothInflate)' }], 'cloth'),
+  brushChips('clothChips', [{ id: 'pinch', name: 'Събира (ClothPinch)' }, { id: 'slide', name: 'Бута по щриха (ClothSlide)' }, { id: 'inflate', name: 'Надува (ClothInflate)' }, { id: 'hook', name: 'Кука: тегли след писалката (ClothHook)' }, { id: 'twist', name: 'Усуква (ClothTwister)' }], 'cloth'),
   brushChips('gzChips', [{ id: 'move', name: 'Местене' }, { id: 'rotate', name: 'Завъртане' }, { id: 'scale', name: 'Мащаб' }], 'gz', () => { gizmoCache = null; syncGizmoBar(); drawOverlay(); }),
   brushChips('immChips', IMM.map((x) => ({ id: x.id, name: x.name, title: x.id === 'file' ? 'Своя форма от файл .obj или .stl (за тази сесия)' : '' })), 'imm', () => { if (brush().imm === 'file') $('immIn').click(); }),
   brushChips('grabChips', [{ id: 'soft', name: 'Меко (Move)' }, { id: 'elastic', name: 'Еластично (Move Elastic)' }], 'grab'),
@@ -7348,7 +7474,7 @@ function syncBrushUI() {
   $('topoRow').hidden = $('deepRow').hidden = base !== 'grab';
   $('grabGrp').hidden = base !== 'grab';
   $('volRow').hidden = !(base === 'grab' && b.grab === 'elastic');
-  $('curveGrp').hidden = (base === 'grab' && b.grab === 'elastic') || base === 'pose' || base === 'insert' || base === 'tube' || base === 'gizmo' || base === 'ffd' || base === 'zmodel';
+  $('curveGrp').hidden = (base === 'grab' && b.grab === 'elastic') || base === 'pose' || base === 'insert' || base === 'tube' || base === 'gizmo' || base === 'ffd' || base === 'zmodel' || base === 'groom';
   $('immGrp').hidden = base !== 'insert';
   $('gzGrp').hidden = base !== 'gizmo';
   $('clothGrp').hidden = base !== 'cloth';
@@ -7675,6 +7801,12 @@ bindRange('sFibW', 'oFibW', () => S.fibWidth, (v) => (S.fibWidth = v), (v) => (v
 bindRange('sFibG', 'oFibG', () => S.fibGravity, (v) => (S.fibGravity = v), pct);
 bindRange('sFibV', 'oFibV', () => S.fibVary, (v) => (S.fibVary = v), pct);
 $('bFibers').onclick = makeFibers;
+bindRange('sSlimeN', 'oSlimeN', () => S.slimeN, (v) => (S.slimeN = v), (v) => String(v));
+$('bSlime').onclick = slimeBridge;
+chips('nanoChips', IMM.filter((x) => x.id !== 'file').map((x) => ({ id: x.id, name: x.name })), () => S.nanoShape, (v) => (S.nanoShape = v));
+bindRange('sNanoN', 'oNanoN', () => S.nanoCount, (v) => (S.nanoCount = v), (v) => String(v));
+bindRange('sNanoS', 'oNanoS', () => S.nanoSize, (v) => (S.nanoSize = v), (v) => (v * 100).toFixed(1) + '%');
+$('bNano').onclick = nanoMesh;
 $('bRefOpen').onclick = () => $('refIn').click();
 $('refIn').onchange = () => { const f = $('refIn').files[0]; $('refIn').value = ''; if (f) refOpen(f); };
 $('bRefClear').onclick = refClear;
@@ -7829,5 +7961,5 @@ loadAutosave().then((d) => {
     toast('Продължавате последния модел. „Нов“ започва отначало.');
   }
 });
-window.__glina = { texturedFiles, zipMany, levelArrays, zmBuild, quadsOf, exportSTL, renderPrintInfo, decimate, decimateArrays, printScale, projectBytes, saveProject, openProject, packValue, unpackValue, panelLoops, balloonTool, shellFrom, refOpen, refState, refColourAt, refLayout, smoothViewUpdate, get smoothViewObj() { return smoothViewObj; }, recallFrom, makeFibers, fiberArrays, projectAll, storeMorph, switchMorph, dropMorph, morphOf, fillColour, cavityColour, zsOpen, zsClose, zsSkin, get zs() { return zs; }, xtract, latticeLive, latticeScreen, get lattice() { return lattice; }, surfaceContrast, snapshotPNG, maskHidden, startCloth, stopCloth, get clothRun() { return clothRun; }, hideSelection, hideGroup, showAll, invertVisibility, hideMasked, deleteHidden, hiddenCount, setHiddenUndoable, deform, makeArray, arrayArrays, setGizmoMode, get gizmoPin() { return gizmoPin; }, set gizmoPin(v) { gizmoPin = v; }, exportOBJ, scheduleAutosave, get TOOLS() { return TOOLS; }, get curTool() { return curTool; }, activateTool, addTool, appendPrimitive, duplicateTool, deleteTool, moveTool, mergeDown, splitGroups, extractTool, extractShell, makeBoolean, newScene, gizmoHandle, gizmoScreen, get solo() { return solo; }, set solo(v) { solo = v; renderOthers(); }, toolArrays, voxelCombine, voxelRemesh, coreStart, get working() { return working; }, sliceByPlane, mirrorWeldArrays, mirrorWeld, mirrorFlip, applyNoise, snapView, setOrtho, historyJump, polyframe, get cam() { return cam; }, trimByPlane, applyCut, tubeArrays, immShape, hasOpenEdges, get curve() { return liveCurve(); }, dropCurve, get immFile() { return immFile; }, set immFile(v) { immFile = v; }, get LAYERS() { return LAYERS; }, get recLayer() { return recLayer; }, addLayer, deleteLayer, toggleLayer, recordLayer, setLayerStrength, bakeLayers, groupOp, maskAllBut, groupNear, get mesh() { return mesh; }, get stroke() { return stroke; }, get gesture() { return gesture; }, get nav() { return nav; }, get MR() { return MR; }, syncSym, get SYM() { return SYM; }, setLevel, divide, deleteLower, deleteHigher, camera, orbit, pick, selectTool, brush, brushById, maskOp, remesh, undo, redo, subdivide, setDyntopo, floodDetail, S, get undoStack() { return undoStack; } };
+window.__glina = { slimeBridge, nanoMesh, maskIslands, texturedFiles, zipMany, levelArrays, zmBuild, quadsOf, exportSTL, renderPrintInfo, decimate, decimateArrays, printScale, projectBytes, saveProject, openProject, packValue, unpackValue, panelLoops, balloonTool, shellFrom, refOpen, refState, refColourAt, refLayout, smoothViewUpdate, get smoothViewObj() { return smoothViewObj; }, recallFrom, makeFibers, fiberArrays, projectAll, storeMorph, switchMorph, dropMorph, morphOf, fillColour, cavityColour, zsOpen, zsClose, zsSkin, get zs() { return zs; }, xtract, latticeLive, latticeScreen, get lattice() { return lattice; }, surfaceContrast, snapshotPNG, maskHidden, startCloth, stopCloth, get clothRun() { return clothRun; }, hideSelection, hideGroup, showAll, invertVisibility, hideMasked, deleteHidden, hiddenCount, setHiddenUndoable, deform, makeArray, arrayArrays, setGizmoMode, get gizmoPin() { return gizmoPin; }, set gizmoPin(v) { gizmoPin = v; }, exportOBJ, scheduleAutosave, get TOOLS() { return TOOLS; }, get curTool() { return curTool; }, activateTool, addTool, appendPrimitive, duplicateTool, deleteTool, moveTool, mergeDown, splitGroups, extractTool, extractShell, makeBoolean, newScene, gizmoHandle, gizmoScreen, get solo() { return solo; }, set solo(v) { solo = v; renderOthers(); }, toolArrays, voxelCombine, voxelRemesh, coreStart, get working() { return working; }, sliceByPlane, mirrorWeldArrays, mirrorWeld, mirrorFlip, applyNoise, snapView, setOrtho, historyJump, polyframe, get cam() { return cam; }, trimByPlane, applyCut, tubeArrays, immShape, hasOpenEdges, get curve() { return liveCurve(); }, dropCurve, get immFile() { return immFile; }, set immFile(v) { immFile = v; }, get LAYERS() { return LAYERS; }, get recLayer() { return recLayer; }, addLayer, deleteLayer, toggleLayer, recordLayer, setLayerStrength, bakeLayers, groupOp, maskAllBut, groupNear, get mesh() { return mesh; }, get stroke() { return stroke; }, get gesture() { return gesture; }, get nav() { return nav; }, get MR() { return MR; }, syncSym, get SYM() { return SYM; }, setLevel, divide, deleteLower, deleteHigher, camera, orbit, pick, selectTool, brush, brushById, maskOp, remesh, undo, redo, subdivide, setDyntopo, floodDetail, S, get undoStack() { return undoStack; } };
 </script>

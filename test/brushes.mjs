@@ -25,7 +25,7 @@ const ids = await page.evaluate(() => window.__glina.S.brushes.map((b) => b.id))
 for (const dyn of [false, true]) {
   await page.evaluate((d) => { window.__glina.setDyntopo(d); window.__glina.maskOp('clear'); }, dyn);
   for (const id of ids) {
-    if (id === 'gizmo' || id === 'ffd' || id === 'morph') continue;   // (gizmo and cage: test/subtools.mjs, test/ffd.mjs; morph needs a stored shape: test/morph.mjs)
+    if (id === 'gizmo' || id === 'ffd' || id === 'morph' || id === 'groom' || id === 'zmodel') continue;   // (gizmo and cage: test/subtools.mjs, test/ffd.mjs; morph needs a stored shape: test/morph.mjs)
     await page.evaluate((i) => window.__glina.selectTool(i), id);
     const a = await state();
     if (id === 'mask' || id === 'paint') await drag(cx - 80, cy, cx + 60, cy + 20);
