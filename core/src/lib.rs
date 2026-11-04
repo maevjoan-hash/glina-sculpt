@@ -91,6 +91,7 @@ pub fn closest_on_tri(a: [f64; 3], b: [f64; 3], c: [f64; 3], p: [f64; 3]) -> ([f
     (q, d)
 }
 
+pub(crate) fn bary(a: [f64; 3], b: [f64; 3], c: [f64; 3], p: [f64; 3]) -> [f64; 3] { bary_of(a, b, c, p) }
 fn bary_of(a: [f64; 3], b: [f64; 3], c: [f64; 3], p: [f64; 3]) -> [f64; 3] {
     let v0 = [b[0] - a[0], b[1] - a[1], b[2] - a[2]];
     let v1 = [c[0] - a[0], c[1] - a[1], c[2] - a[2]];
@@ -420,11 +421,67 @@ pub extern "C" fn out_res() -> u32 { OUT.with(|c| c.borrow().res) }
 #[no_mangle]
 pub extern "C" fn out_clear() { OUT.with(|c| *c.borrow_mut() = Output::default()); }
 
+/// Project (ZBrush: Project All): every point of `pos` goes along its normal `nrm` to where that line
+/// meets the source surface (no farther than `reach`; where it does not settle, to the nearest point),
+/// blended by `w` (0: stays … 1: all the way), and takes its colour. Along the normal, a soft copy under
+/// a sharp tip reaches the tip; the nearest point would slide off to its side.
+/// Writes `out_pos` and `out_col`; returns how many points found the surface.
+pub fn project(pos: &[f32], nrm: &[f32], w: &[f32], src_pos: &[f32], src_idx: &[u32], src_col: &[f32], reach: f64, out_pos: &mut [f32], out_col: &mut [f32]) -> usize {
+    let n = pos.len() / 3;
+    let Some(c) = cloth::Collider::new(src_pos, src_idx, reach / 3.0) else { return 0 };
+    let mut found = 0;
+    for i in 0..n {
+        let p = p3(pos, i);
+        let wi = w[i] as f64;
+        if wi <= 0.0 { continue; }
+        let mut nn = p3(nrm, i);
+        let nl = (nn[0] * nn[0] + nn[1] * nn[1] + nn[2] * nn[2]).sqrt();
+        let Some((mut q, mut t, mut b)) = c.closest(p) else { continue };
+        if nl > 1e-12 {
+            for x in nn.iter_mut() { *x /= nl; }
+            // slide along the normal line: the nearest point's height on it, again from there
+            let mut x = p;
+            let mut ok = false;
+            for _ in 0..8 {
+                let Some((qq, tt, bb)) = c.closest(x) else { break };
+                let h = (qq[0] - p[0]) * nn[0] + (qq[1] - p[1]) * nn[1] + (qq[2] - p[2]) * nn[2];
+                if h.abs() > reach { break; }
+                let nx = [p[0] + nn[0] * h, p[1] + nn[1] * h, p[2] + nn[2] * h];
+                let moved = ((nx[0] - x[0]).powi(2) + (nx[1] - x[1]).powi(2) + (nx[2] - x[2]).powi(2)).sqrt();
+                x = nx; q = qq; t = tt; b = bb;
+                if moved < reach * 1e-4 { ok = true; break; }
+            }
+            // (on the line, unless it never came close to the surface: then the nearest point)
+            let off = ((q[0] - x[0]).powi(2) + (q[1] - x[1]).powi(2) + (q[2] - x[2]).powi(2)).sqrt();
+            if ok || off < reach * 0.05 { q = x; }
+        }
+        let d2 = (q[0] - p[0]).powi(2) + (q[1] - p[1]).powi(2) + (q[2] - p[2]).powi(2);
+        if d2 > reach * reach { continue; }
+        found += 1;
+        for k in 0..3 {
+            out_pos[i * 3 + k] = (p[k] + (q[k] - p[k]) * wi) as f32;
+            let col = (0..3).map(|cc| src_col[c.corner(t, cc) * 3 + k] as f64 * b[cc]).sum::<f64>();
+            out_col[i * 3 + k] = (out_col[i * 3 + k] as f64 + (col - out_col[i * 3 + k] as f64) * wi) as f32;
+        }
+    }
+    found
+}
+/// # Safety
+/// Every pointer must point to as many values as its count says; `opos`/`ocol` hold the target's
+/// positions and colours on the way in and the projected ones on the way out.
+#[no_mangle]
+pub unsafe extern "C" fn project_raw(pos: *const f32, nrm: *const f32, w: *const f32, nv: usize, spos: *const f32, snv: usize, sidx: *const u32, snt: usize, scol: *const f32, reach: f32, opos: *mut f32, ocol: *mut f32) -> i32 {
+    let sidx = std::slice::from_raw_parts(sidx, snt * 3);
+    if sidx.iter().any(|&v| v as usize >= snv) { return -1; }
+    project(std::slice::from_raw_parts(pos, nv * 3), std::slice::from_raw_parts(nrm, nv * 3), std::slice::from_raw_parts(w, nv), std::slice::from_raw_parts(spos, snv * 3), sidx, std::slice::from_raw_parts(scol, snv * 3), reach as f64, std::slice::from_raw_parts_mut(opos, nv * 3), std::slice::from_raw_parts_mut(ocol, nv * 3)) as i32
+}
+
 thread_local! { static CLOTH: RefCell<Option<(cloth::Cloth, Vec<f32>)>> = const { RefCell::new(None) }; }
 
 /// Starts a cloth run. `inv` is the inverse mass per vertex (0: pinned … 1: free). The collider is
 /// every other mesh in one set of arrays (`cnt` 0: none). `par`: gravity, stretch, bend, damping,
-/// thickness, floor height, constraint passes, collider cell size. Returns 0, or −1 for bad input.
+/// thickness, floor height, constraint passes, collider cell size, self-collision distance (0: none).
+/// Returns 0, or −1 for bad input.
 /// # Safety
 /// Every pointer must point to as many values as its count says.
 #[no_mangle]
@@ -435,7 +492,7 @@ pub unsafe extern "C" fn cloth_init(
     let pos = std::slice::from_raw_parts(pos, nv * 3);
     let idx = std::slice::from_raw_parts(idx, nt * 3);
     let inv = std::slice::from_raw_parts(inv, nv);
-    let par = std::slice::from_raw_parts(par, 8);
+    let par = std::slice::from_raw_parts(par, 9);
     if idx.iter().any(|&v| v as usize >= nv) { return -1; }
     let collider = if cnt > 0 {
         let cpos = std::slice::from_raw_parts(cpos, cnv * 3);
@@ -445,7 +502,7 @@ pub unsafe extern "C" fn cloth_init(
     } else { None };
     let p = cloth::ClothParams {
         gravity: par[0] as f64, stretch: par[1] as f64, bend: par[2] as f64, damping: par[3] as f64,
-        thick: par[4] as f64, floor: par[5] as f64, iters: par[6] as u32, max_step: par[7] as f64,
+        thick: par[4] as f64, floor: par[5] as f64, iters: par[6] as u32, max_step: par[7] as f64, self_dist: par[8] as f64,
     };
     let c = cloth::Cloth::new(pos, idx, inv, collider, p);
     CLOTH.with(|s| *s.borrow_mut() = Some((c, pos.to_vec())));
@@ -502,6 +559,22 @@ mod tests {
         let (col, mask, grp) = (vec![1.0; nv * 3], vec![0.0; nv], vec![0.0; nv]);
         voxel_csg(&Input { pos: &pos, idx: &idx, col: &col, mask: &mask, grp: &grp }, &parts, res).unwrap()
     }
+    #[test]
+    fn project_puts_points_on_the_source() {
+        // a flat square grid at y = 0.1 onto a flat square at y = 0 (two triangles), red
+        let src = [-1.0f32, 0.0, -1.0, 1.0, 0.0, -1.0, 1.0, 0.0, 1.0, -1.0, 0.0, 1.0];
+        let sidx = [0u32, 2, 1, 0, 3, 2];
+        let scol = [1.0f32, 0.0, 0.0].repeat(4);
+        let mut pos = Vec::new();
+        for j in 0..5 { for i in 0..5 { pos.extend_from_slice(&[i as f32 * 0.3 - 0.6, 0.1, j as f32 * 0.3 - 0.6]); } }
+        let w = vec![1.0f32; 25];
+        let nrm = [0.0f32, 1.0, 0.0].repeat(25);
+        let (mut op, mut oc) = (pos.clone(), vec![1.0f32; 75]);
+        let found = project(&pos, &nrm, &w, &src, &sidx, &scol, 0.5, &mut op, &mut oc);
+        assert_eq!(found, 25);
+        for i in 0..25 { assert!(op[i * 3 + 1].abs() < 1e-6); assert!((oc[i * 3] - 1.0).abs() < 1e-6 && oc[i * 3 + 1].abs() < 1e-6); }
+    }
+
     #[test]
     fn remesh_keeps_the_volume() {
         let o = run(&[([0.0; 3], 0.5, OP_ADD)], 48);

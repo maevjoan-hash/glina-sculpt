@@ -3,7 +3,9 @@
 //! Every edge keeps its length (stretch), the two corners across every inner edge keep their distance
 //! (bending, so a soft sheet folds and a firm one holds its shape), gravity pulls down −Y. Each vertex
 //! has an inverse mass from 0 (masked: pinned) to 1. Collisions: other meshes, through a grid that keeps
-//! the nearest triangle of every cell near their surface, and an optional floor. No self-collision.
+//! the nearest triangle of every cell near their surface, and an optional floor. Self-collision: points
+//! of the cloth that come closer than its thickness, but were not that close at the start, push apart
+//! (a hash grid of the points finds the pairs), so folds lie on each other instead of through.
 
 use crate::{closest_on_tri, p3};
 
@@ -53,6 +55,33 @@ impl Collider {
         }
         Some(Collider { ox, oy, oz, h, nx: d[0], ny: d[1], nz: d[2], tri, pos: pos.to_vec(), idx: idx.to_vec() })
     }
+
+    /// The nearest point of the surface (within the band around it), its triangle and the barycentric
+    /// weights of its corners.
+    pub fn closest(&self, p: [f64; 3]) -> Option<([f64; 3], usize, [f64; 3])> {
+        let fi = ((p[0] - self.ox) / self.h).round();
+        let fj = ((p[1] - self.oy) / self.h).round();
+        let fk = ((p[2] - self.oz) / self.h).round();
+        if fi < 0.0 || fj < 0.0 || fk < 0.0 { return None; }
+        let (i, j, k) = (fi as usize, fj as usize, fk as usize);
+        if i >= self.nx || j >= self.ny || k >= self.nz { return None; }
+        // (the nearest triangle of this cell and of its neighbours: the grid keeps one per cell)
+        let mut best: Option<([f64; 3], usize, f64)> = None;
+        for dk in -1i64..=1 { for dj in -1i64..=1 { for di in -1i64..=1 {
+            let (a, b, c) = (i as i64 + di, j as i64 + dj, k as i64 + dk);
+            if a < 0 || b < 0 || c < 0 || a as usize >= self.nx || b as usize >= self.ny || c as usize >= self.nz { continue; }
+            let t = self.tri[a as usize + b as usize * self.nx + c as usize * self.nx * self.ny];
+            if t < 0 { continue; }
+            let t = t as usize;
+            let (pa, pb, pc) = (p3(&self.pos, self.idx[t * 3] as usize), p3(&self.pos, self.idx[t * 3 + 1] as usize), p3(&self.pos, self.idx[t * 3 + 2] as usize));
+            let (q, d2) = closest_on_tri(pa, pb, pc, p);
+            if best.map_or(true, |b| d2 < b.2) { best = Some((q, t, d2)); }
+        } } }
+        let (q, t, _) = best?;
+        let (pa, pb, pc) = (p3(&self.pos, self.idx[t * 3] as usize), p3(&self.pos, self.idx[t * 3 + 1] as usize), p3(&self.pos, self.idx[t * 3 + 2] as usize));
+        Some((q, t, crate::bary(pa, pb, pc, q)))
+    }
+    pub fn corner(&self, t: usize, c: usize) -> usize { self.idx[t * 3 + c] as usize }
 
     /// Where a point closer than `thick` to the surface (or behind it) must go: `thick` in front of it.
     pub fn push(&self, p: [f64; 3], thick: f64) -> Option<[f64; 3]> {
@@ -106,10 +135,13 @@ pub struct ClothParams {
     pub iters: u32,
     /// the most a vertex may move in one step (a cell of the collider), so nothing jumps through a wall
     pub max_step: f64,
+    /// how close two points of the cloth may come (0: they may pass through each other)
+    pub self_dist: f64,
 }
 
 pub struct Cloth {
     pub x: Vec<f64>,
+    rest: Vec<f64>,
     prev: Vec<f64>,
     w: Vec<f64>,
     cons: Vec<(u32, u32, f64, f64)>,
@@ -142,7 +174,7 @@ impl Cloth {
         }
         // a fixed order, so a run is the same every time
         cons.sort_by(|p, q| (p.0, p.1).cmp(&(q.0, q.1)));
-        Cloth { prev: x.clone(), x, w, cons, collider, p }
+        Cloth { prev: x.clone(), rest: x.clone(), x, w, cons, collider, p }
     }
 
     fn collide(&mut self, i: usize) {
@@ -154,6 +186,40 @@ impl Cloth {
         if hit {
             // friction: what was left of this step's motion slows down
             for c in 0..3 { self.x[k + c] = q[c]; self.prev[k + c] += (q[c] - self.prev[k + c]) * 0.6; }
+        }
+    }
+
+    fn self_collide(&mut self) {
+        let d = self.p.self_dist;
+        let n = self.w.len();
+        let inv = 1.0 / d;
+        let key = |x: f64, y: f64, z: f64| ((x * inv).floor() as i64, (y * inv).floor() as i64, (z * inv).floor() as i64);
+        let mut grid: std::collections::HashMap<(i64, i64, i64), Vec<u32>> = std::collections::HashMap::with_capacity(n);
+        for i in 0..n { let k = i * 3; grid.entry(key(self.x[k], self.x[k + 1], self.x[k + 2])).or_default().push(i as u32); }
+        let d2 = d * d;
+        for i in 0..n {
+            let wi = self.w[i];
+            let k = i * 3;
+            let (cx, cy, cz) = key(self.x[k], self.x[k + 1], self.x[k + 2]);
+            for dx in -1..=1 { for dy in -1..=1 { for dz in -1..=1 {
+                let Some(list) = grid.get(&(cx + dx, cy + dy, cz + dz)) else { continue };
+                for &j in list {
+                    let j = j as usize;
+                    if j <= i { continue; }
+                    let wj = self.w[j];
+                    if wi + wj <= 0.0 { continue; }
+                    let kj = j * 3;
+                    let e = [self.x[kj] - self.x[k], self.x[kj + 1] - self.x[k + 1], self.x[kj + 2] - self.x[k + 2]];
+                    let l2 = e[0] * e[0] + e[1] * e[1] + e[2] * e[2];
+                    if l2 >= d2 || l2 < 1e-24 { continue; }
+                    // (neighbours on the cloth were this close to begin with: they are not a collision)
+                    let r2 = (self.rest[kj] - self.rest[k]).powi(2) + (self.rest[kj + 1] - self.rest[k + 1]).powi(2) + (self.rest[kj + 2] - self.rest[k + 2]).powi(2);
+                    if r2 < d2 * 2.25 { continue; }
+                    let l = l2.sqrt();
+                    let s = (d - l) / l / (wi + wj);
+                    for c in 0..3 { self.x[k + c] -= e[c] * s * wi; self.x[kj + c] += e[c] * s * wj; }
+                }
+            } } }
         }
     }
 
@@ -186,6 +252,7 @@ impl Cloth {
                     for c in 0..3 { self.x[ka + c] += d[c] * s * wa; self.x[kb + c] -= d[c] * s * wb; }
                 }
             }
+            if self.p.self_dist > 0.0 { self.self_collide(); }
             for i in 0..n { if self.w[i] > 0.0 { self.collide(i); } }
         }
     }
@@ -202,7 +269,7 @@ mod tests {
         for j in 0..s { for i in 0..s { let a = (j * (s + 1) + i) as u32; let b = a + 1; let c = a + s as u32 + 1; let d = c + 1; idx.extend_from_slice(&[a, c, b, b, c, d]); } }
         (pos, idx)
     }
-    fn params(floor: f64) -> ClothParams { ClothParams { gravity: 9.8, stretch: 1.0, bend: 0.1, damping: 0.99, thick: 0.01, floor, iters: 8, max_step: 0.03 } }
+    fn params(floor: f64) -> ClothParams { ClothParams { gravity: 9.8, stretch: 1.0, bend: 0.1, damping: 0.99, thick: 0.01, floor, iters: 8, max_step: 0.03, self_dist: 0.0 } }
 
     #[test]
     fn falls_and_stops_on_the_floor() {
@@ -227,6 +294,25 @@ mod tests {
         let a = (0, 1usize);
         let l = ((c.x[a.0 * 3] - c.x[a.1 * 3]).powi(2) + (c.x[a.0 * 3 + 1] - c.x[a.1 * 3 + 1]).powi(2) + (c.x[a.0 * 3 + 2] - c.x[a.1 * 3 + 2]).powi(2)).sqrt();
         assert!((l - 0.1).abs() < 0.03, "edge {}", l);
+    }
+
+    #[test]
+    fn a_sheet_falling_on_itself_stays_on_top() {
+        // two sheets of one mesh, one above the other, both falling onto the floor: with self-collision
+        // the upper one ends up above the lower one
+        let (mut pos, mut idx) = sheet(8, 0.6, 0.2);
+        let (p2, i2) = sheet(8, 0.6, 0.35);
+        let base = (pos.len() / 3) as u32;
+        pos.extend_from_slice(&p2);
+        idx.extend(i2.iter().map(|&v| v + base));
+        let w = vec![1.0f32; pos.len() / 3];
+        let mut p = params(0.0);
+        p.self_dist = 0.03; p.thick = 0.01;
+        let mut c = Cloth::new(&pos, &idx, &w, None, p);
+        c.step(500, 1.0 / 120.0);
+        let mid_low = (4 * 9 + 4) * 3 + 1;
+        let mid_high = (base as usize + 4 * 9 + 4) * 3 + 1;
+        assert!(c.x[mid_high] - c.x[mid_low] > 0.02, "low {} high {}", c.x[mid_low], c.x[mid_high]);
     }
 
     #[test]

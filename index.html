@@ -95,13 +95,15 @@ button, input, select { font: inherit; color: inherit; }
 #overlay { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; overflow: visible; }
 #history { position: absolute; top: 8px; left: 50%; transform: translateX(-50%); width: min(60%, 520px); height: 12px; display: flex; justify-content: center; gap: 1px; align-items: stretch; z-index: 3; }
 #history[hidden] { display: none; }
-#gizmoBar { position: absolute; left: 12px; top: 30px; display: flex; flex-wrap: wrap; gap: 6px; max-width: calc(100% - 24px); z-index: 3; }
-#gizmoBar[hidden] { display: none; }
-#gizmoBar .btn { height: 38px; padding: 0 12px; background: rgba(26,30,36,.9); border-color: var(--line); }
+#zsBar, #gizmoBar { position: absolute; left: 12px; top: 30px; display: flex; flex-wrap: wrap; gap: 6px; max-width: calc(100% - 24px); z-index: 3; }
+#gizmoBar[hidden], #zsBar[hidden] { display: none; }
+#zsBar .btn[aria-pressed=true] { border-color: var(--wax); color: var(--wax); }
+#zsBar .btn, #gizmoBar .btn { height: 38px; padding: 0 12px; background: rgba(26,30,36,.9); border-color: var(--line); }
 #gizmoBar .btn[aria-pressed=true] { border-color: var(--wax); color: var(--wax); }
 .hstep { flex: 0 1 12px; min-width: 2px; padding: 0; border: 0; border-radius: 1px; background: var(--muted, #8a8f98); opacity: .45; cursor: pointer; }
 .hstep.ahead { opacity: .15; }
 .hstep.now { background: var(--wax, #e7ad4b); opacity: 1; min-width: 4px; }
+.hstep.recall { background: #7ec8a6; opacity: 1; }
 .hstep:hover { opacity: .9; }
 #cursor2d { position: absolute; left: 0; top: 0; border-radius: 50%; border: 1.5px solid rgba(255,255,255,.55); pointer-events: none; transform: translate(-50%,-50%); box-shadow: 0 0 0 1px rgba(0,0,0,.35); }
 #hud {
@@ -242,6 +244,14 @@ input[type=range] { width: 100%; height: 26px; accent-color: var(--wax); backgro
     <div id="cursor2d" hidden></div>
     <svg id="overlay" aria-hidden="true"></svg>
     <div id="history" role="toolbar" aria-label="История на стъпките" hidden></div>
+    <div id="zsBar" role="toolbar" aria-label="ZSpheres" hidden>
+      <button class="btn" data-zs="add" title="Натиснете сфера и дърпайте: нова сфера от нея">Добави</button>
+      <button class="btn" data-zs="move" title="Мести сфера (Alt: с всичко, което расте от нея)">Мести</button>
+      <button class="btn" data-zs="scale" title="Влачене нагоре уголемява (Alt: целия клон)">Мащаб</button>
+      <button class="btn" data-zs="del" title="Сферата и всичко, което расте от нея">Изтрий</button>
+      <button class="btn" id="zsSkinB" title="Adaptive Skin: модел от сферите">Кожа</button>
+      <button class="btn" id="zsExit" title="Без кожа">Изход</button>
+    </div>
     <div id="gizmoBar" role="toolbar" aria-label="Gizmo" hidden>
       <button class="btn" data-gz="move" title="Местене">Мести</button>
       <button class="btn" data-gz="rotate" title="Завъртане">Върти</button>
@@ -325,12 +335,14 @@ input[type=range] { width: 100%; height: 26px; accent-color: var(--wax); backgro
       <div id="toolList"></div>
       <div class="two"><button class="btn wide" id="bToolAdd" aria-haspopup="true">+ Нов</button><button class="btn wide" id="bToolDup">Копие</button></div>
       <button class="btn wide" id="bToolMirror" title="Огледално копие по X: второ око, ухо, ръка">Огледано копие</button>
+      <button class="btn wide" id="bZs" title="ZSpheres: скелет от сфери, от който става модел (Adaptive Skin)">Арматура (ZSpheres)</button>
       <div class="two"><button class="btn wide" id="bToolUp" title="Нагоре в списъка">▲ Нагоре</button><button class="btn wide" id="bToolDown" title="Надолу в списъка">▼ Надолу</button></div>
       <div class="two"><button class="btn wide" id="bToolMerge" title="Merge Down: активният и този под него стават един">Слей надолу</button><button class="btn wide" id="bToolDel">Изтрий</button></div>
       <div class="two"><button class="btn wide" id="bSolo" aria-pressed="false" title="Solo: само активният се вижда">Само този</button><button class="btn wide" id="bToolSplit" title="Groups Split: всяка група става подобект">Раздели по групи</button></div>
       <div class="row"><label for="sExtract">Дебелина при изваждане</label><output id="oExtract"></output><input type="range" id="sExtract" min="0.02" max="1" step="0.02"></div>
       <button class="btn wide" id="bExtract" title="Extract: дреха, броня или панел от маскираното">Извади от маската</button>
       <button class="btn wide" id="bBoolean" title="Make Boolean Mesh: видимите подобекти, по ред, с + − ∩">Булево от видимите</button>
+      <button class="btn wide" id="bProject" title="Project All: активният взема формата и цвета на видимите, които застъпва">Пренеси детайла от видимите</button>
       <p class="note">Щракване върху друг подобект на модела го прави активен. „+ − ∩“ до името казва как участва в „Булево“: добавя, изважда или оставя общото. Gizmo (Z) мести, върти и мащабира.</p>
     </section>
 
@@ -342,13 +354,23 @@ input[type=range] { width: 100%; height: 26px; accent-color: var(--wax); backgro
       <div><div class="note lab">Огъване към</div><div class="chips" id="defToChips"></div></div>
       <div class="row"><label for="sTwist">Усукване</label><output id="oTwist"></output><input type="range" id="sTwist" min="-360" max="360" step="5"></div>
       <div class="row"><label for="sTaperD">Стесняване ↔ разширяване</label><output id="oTaperD"></output><input type="range" id="sTaperD" min="-1" max="1" step="0.02"></div>
+      <div class="row" title="Extender: далечната половина се мести по оста, средата се разтяга"><label for="sExtend">Удължаване ↔ скъсяване</label><output id="oExtend"></output><input type="range" id="sExtend" min="-0.5" max="1" step="0.02"></div>
+      <h2 style="margin-top:14px">Косми <em>FiberMesh</em></h2>
+      <p class="note">Растат от маскираното на активния подобект и стават нов подобект.</p>
+      <div class="row"><label for="sFibN">Брой</label><output id="oFibN"></output><input type="range" id="sFibN" min="50" max="6000" step="50"></div>
+      <div class="row"><label for="sFibL">Дължина</label><output id="oFibL"></output><input type="range" id="sFibL" min="0.02" max="0.8" step="0.01"></div>
+      <div class="row"><label for="sFibW">Дебелина</label><output id="oFibW"></output><input type="range" id="sFibW" min="0.002" max="0.04" step="0.001"></div>
+      <div class="row"><label for="sFibG">Гравитация</label><output id="oFibG"></output><input type="range" id="sFibG" min="0" max="1" step="0.05"></div>
+      <div class="row"><label for="sFibV">Разнообразие</label><output id="oFibV"></output><input type="range" id="sFibV" min="0" max="1" step="0.05"></div>
+      <button class="btn wide" id="bFibers">Направи косми от маската</button>
       <h2 style="margin-top:14px">Плат <em>Dynamics</em></h2>
-      <p class="note">Активният подобект пада като плат: маскираното стои закачено, останалото се спуска по другите видими подобекти и пода. Не се удря в себе си. Започнете с „Извади от маската“ за дреха, после маскирайте мястото, където да виси.</p>
+      <p class="note">Активният подобект пада като плат: маскираното стои закачено, останалото се спуска по другите видими подобекти и пода. Гънките му не минават една през друга. Започнете с „Извади от маската“ за дреха, после маскирайте мястото, където да виси.</p>
       <div class="row"><label for="sClothG">Гравитация</label><output id="oClothG"></output><input type="range" id="sClothG" min="0.1" max="3" step="0.05"></div>
       <div class="row"><label for="sClothS">Здравина (не се разтяга)</label><output id="oClothS"></output><input type="range" id="sClothS" min="0.1" max="1" step="0.05"></div>
       <div class="row"><label for="sClothB">Твърдост на гънките</label><output id="oClothB"></output><input type="range" id="sClothB" min="0" max="1" step="0.05"></div>
       <div class="row"><label for="sClothT">Най-много секунди</label><output id="oClothT"></output><input type="range" id="sClothT" min="1" max="20" step="1"></div>
       <label class="toggle">Подът спира плата <input type="checkbox" id="tClothFloor"></label>
+      <label class="toggle">Не минава през себе си <input type="checkbox" id="tClothSelf"></label>
       <button class="btn wide" id="bCloth" aria-pressed="false">Пусни симулацията</button>
       <h2 style="margin-top:14px">Масив <em>Array Mesh</em></h2>
       <div class="chips" id="arrModeChips"></div>
@@ -384,6 +406,7 @@ input[type=range] { width: 100%; height: 26px; accent-color: var(--wax); backgro
     <section class="sec" id="paintSec">
       <h2>Цвят за рисуване</h2>
       <div class="paint-row" id="paintRow"><input type="color" id="cPaint" value="#b8443a" aria-label="Цвят"></div>
+      <div class="two"><button class="btn wide" id="bFill" title="Fill Object: целият подобект с цвета">Залей</button><button class="btn wide" id="bCavCol" title="Polypaint From Cavity: вдлъбнатините с цвета">Оцвети вдлъбнатините</button></div>
     </section>
 
     <section class="sec">
@@ -443,6 +466,10 @@ input[type=range] { width: 100%; height: 26px; accent-color: var(--wax); backgro
       <div class="row"><label for="sVoxel">Плътност на преизграждането</label><output id="oVoxel"></output><input type="range" id="sVoxel" min="48" max="256" step="8"></div>
       <button class="btn wide" id="bRemesh" title="DynaMesh: нова равна мрежа по формата на модела">Преизгради мрежата (DynaMesh)</button>
       <p class="note">Прави нови еднакви триъгълници по цялата форма: оправя разтегнатите места след дълго дърпане и слива частите, които се застъпват. Цветът и маската се запазват; по-фините детайли от плътността изчезват.</p>
+      <div class="note lab">Запомнена форма (Morph Target)</div>
+      <button class="btn wide" id="bMorphStore" title="StoreMT">Запомни формата</button>
+      <div class="two"><button class="btn wide" id="bMorphSwitch" title="Switch" disabled>Размени</button><button class="btn wide" id="bMorphDrop" title="DelMT" disabled>Забрави</button></div>
+      <button class="btn wide" id="bRecall" aria-pressed="false" title="HistoryRecall: после щракнете стъпка в лентата с историята (или Alt+щракване по нея)">Форма от стъпка в историята…</button>
       <div class="two"><button class="btn wide" id="bMirror" title="Deformation > Mirror">Огледай по X</button><button class="btn wide" id="bMirrorWeld" title="Mirror And Weld: страната към вас се копира на другата">Огледай и завари</button></div>
       <div class="note lab">Шум по повърхността (Surface Noise)</div>
       <div class="row"><label for="sNoiseScale">Големина на петната</label><output id="oNoiseScale"></output><input type="range" id="sNoiseScale" min="0.02" max="1" step="0.01"></div>
@@ -503,6 +530,7 @@ const ICON = {
   tube: '<path d="M4 19c2-8 7-12 16-13" stroke-width="5" opacity=".25"/><path d="M4 19c2-8 7-12 16-13"/>',
   curve: '<path d="M3 17c4-9 8 2 12-6 1.5-3 3.5-4 6-4"/><circle cx="3" cy="17" r="1.4"/><circle cx="21" cy="7" r="1.4"/>',
   planar: '<path d="M3 13h18"/><path d="M5 13c1-4 3-6 7-6s6 2 7 6" opacity=".35"/><path d="M8 17h8" opacity=".6"/>',
+  morph: '<path d="M4 16c3-6 5-6 8 0s5 6 8 0" stroke-dasharray="2 2"/><path d="M4 12c3-4 5-4 8 0s5 4 8 0"/><path d="M12 4v4M10 6l2 2 2-2" opacity=".6"/>',
   layer: '<path d="M3 18h18"/><path d="M6 18v-5h12v5"/><path d="M9 13V9h6v4" opacity=".5"/>',
   magnify: '<path d="M8 12H3M21 12h-5"/><path d="M5 9l-3 3 3 3M19 9l3 3-3 3"/><path d="M12 5v14" opacity=".45"/>',
   blob: '<circle cx="8" cy="13" r="3"/><circle cx="15" cy="10" r="4"/><circle cx="16" cy="17" r="2" opacity=".6"/>',
@@ -531,7 +559,7 @@ const BASES = [
   { id: 'draw', name: 'Рисуване (Standard)' }, { id: 'clay', name: 'Глина (Clay)' }, { id: 'claystrips', name: 'Глина на ивици (ClayBuildup)' },
   { id: 'inflate', name: 'Надуване (Inflate)' }, { id: 'flatten', name: 'Изравняване (hPolish)' }, { id: 'scrape', name: 'Подрязване (TrimDynamic)' },
   { id: 'pinch', name: 'Притискане (Pinch)' }, { id: 'crease', name: 'Гънка' }, { id: 'smooth', name: 'Изглаждане (Smooth)' },
-  { id: 'grab', name: 'Хващане (Move)' }, { id: 'snake', name: 'Издърпване (SnakeHook)' }, { id: 'pose', name: 'Поза (Pose)' }, { id: 'insert', name: 'Вмъкване на форма (InsertMesh)' }, { id: 'gizmo', name: 'Местене, завъртане, мащаб (Gizmo 3D)' }, { id: 'cloth', name: 'Плат (Cloth brushes)' }, { id: 'ffd', name: 'Клетка (FFD)' }, { id: 'planar', name: 'Равнина (Planar)' }, { id: 'layer', name: 'Слой (Layer)' }, { id: 'slice', name: 'Разделяне на групи (SliceCurve)' }, { id: 'tube', name: 'Тръба по крива (CurveTube)' }, { id: 'clip', name: 'Отсичане (ClipCurve)' }, { id: 'cut', name: 'Отрязване (TrimCurve)' }, { id: 'mask', name: 'Маска' }, { id: 'paint', name: 'Боя' },
+  { id: 'grab', name: 'Хващане (Move)' }, { id: 'snake', name: 'Издърпване (SnakeHook)' }, { id: 'pose', name: 'Поза (Pose)' }, { id: 'insert', name: 'Вмъкване на форма (InsertMesh)' }, { id: 'gizmo', name: 'Местене, завъртане, мащаб (Gizmo 3D)' }, { id: 'cloth', name: 'Плат (Cloth brushes)' }, { id: 'ffd', name: 'Клетка (FFD)' }, { id: 'planar', name: 'Равнина (Planar)' }, { id: 'morph', name: 'Връщане към запомнената форма (Morph)' }, { id: 'layer', name: 'Слой (Layer)' }, { id: 'slice', name: 'Разделяне на групи (SliceCurve)' }, { id: 'tube', name: 'Тръба по крива (CurveTube)' }, { id: 'clip', name: 'Отсичане (ClipCurve)' }, { id: 'cut', name: 'Отрязване (TrimCurve)' }, { id: 'mask', name: 'Маска' }, { id: 'paint', name: 'Боя' },
 ];
 // a complete brush; presets only list what differs
 const BRUSH_DEFAULTS = {
@@ -563,6 +591,7 @@ const PRESETS = [
   { id: 'snake', name: 'Издърпване', short: 'Дърпай', key: 'h', base: 'snake', radius: 45, strength: 0.8, front: false, zb: 'SnakeHook' },
   { id: 'pose', name: 'Поза', short: 'Поза', key: 'q', base: 'pose', radius: 70, strength: 1, front: false, zb: 'Transpose / Pose' },
   { id: 'planar', name: 'Равнина', short: 'Равн.', base: 'planar', radius: 60, strength: 0.6, tip: 'square', curve: 'flat', zb: 'Planar' },
+  { id: 'morph', name: 'Към запомнената форма', short: 'Морф', base: 'morph', radius: 50, strength: 0.6, zb: 'Morph (Morph Target)' },
   { id: 'layer', name: 'Слой', short: 'Слой', base: 'layer', radius: 45, strength: 0.4, curve: 'flat', zb: 'Layer' },
   { id: 'magnify', name: 'Раздалечаване', short: 'Разд.', base: 'pinch', icon: 'magnify', dir: -1, radius: 40, zb: 'Magnify' },
   { id: 'blob', name: 'Буци', short: 'Буци', base: 'inflate', icon: 'blob', radius: 30, strength: 0.5, alpha: 'noise', alphaRot: 'random', spacing: 0.12, zb: 'Blob' },
@@ -619,7 +648,8 @@ const S = {
   dynRef: 4,           // the camera distance at which the brush has its set size
   noiseScale: 0.5, noiseAmt: 0.3,
   extract: 0.3,        // Extract: thickness of the shell
-  clothGravity: 1, clothStretch: 0.9, clothBend: 0.15, clothFloor: true, clothTime: 5,
+  fibCount: 800, fibLength: 0.15, fibWidth: 0.006, fibGravity: 0.4, fibVary: 0.4,
+  clothGravity: 1, clothStretch: 0.9, clothBend: 0.15, clothFloor: true, clothTime: 5, clothSelf: true,
   defAxis: 1, defTo: 0,  // deformers: along which axis, and (bend) toward which of the other two
   arrCount: 6, arrMode: 'line', arrAxis: 0, arrGap: 0.2, arrScale: 1,
 };
@@ -2576,6 +2606,7 @@ function gatherDeep(pt, r) {
 
 /* ---------- dynamic topology: split long edges, collapse short ones inside the brush ---------- */
 const DYN_TOOLS = new Set(['draw', 'clay', 'claystrips', 'smooth', 'inflate', 'flatten', 'scrape', 'pinch', 'crease', 'snake', 'planar', 'layer']);
+// (Morph is not here: in dynamic topology the points change, so a stored shape cannot match)
 const DYN_FRAME_SPLITS = 5000;      // keeps a fast stroke with a huge brush and tiny detail interactive
 const DYN_FRAME_COLLAPSES = 5000;   // the same for coarse detail on a dense mesh
 const DYN_DAB_EDITS = 2000;         // per dab, so one frame's budget is spread over several dabs
@@ -3010,6 +3041,17 @@ function applyBrush(tool, c, n, r, s, sign, dab = {}) {
       break;
     }
     case 'cloth': clothDab(G, F, count, c, r, s, sign, b.cloth || 'pinch', dab); break;
+    case 'morph': {
+      // back toward the stored shape (Alt: away from it, the change made bigger)
+      const T = morphOf(m);
+      if (!T) { if (!stroke.morphWarned) { stroke.morphWarned = true; toast('Няма запомнена форма: Настройки → Геометрия → „Запомни формата“.'); } return; }
+      const k0 = Math.min(1, s * 0.5) * sign;
+      for (let k = 0; k < count; k++) {
+        const i = G[k], w = F[k] * (1 - MK[i]); if (w <= 0) continue; touchVert(i);
+        for (let q = 0; q < 3; q++) P[i * 3 + q] += (T[i * 3 + q] - P[i * 3 + q]) * w * k0;
+      }
+      break;
+    }
     case 'smooth': smoothVerts(G, F, count, Math.min(1, s * 1.2)); break;
     case 'pinch': case 'crease': {
       const kp = (tool === 'pinch' ? 0.18 : 0.14) * s * sign;
@@ -3703,8 +3745,8 @@ function pushUndo(rec) {
   }
   updateUndoButtons();
 }
-function undo() { if (stroke || mrPending || working || !undoStack.length) return; undoSerial++; redoStack.push(applyRecord(undoStack.pop())); updateUndoButtons(); requestRender(); scheduleAutosave(); }
-function redo() { if (stroke || mrPending || working || !redoStack.length) return; undoSerial++; undoStack.push(applyRecord(redoStack.pop())); updateUndoButtons(); requestRender(); scheduleAutosave(); }
+function undo() { if (zs) { zsUndo(); return; } if (stroke || mrPending || working || !undoStack.length) return; undoSerial++; redoStack.push(applyRecord(undoStack.pop())); updateUndoButtons(); requestRender(); scheduleAutosave(); }
+function redo() { if (zs) { zsUndo(true); return; } if (stroke || mrPending || working || !redoStack.length) return; undoSerial++; undoStack.push(applyRecord(redoStack.pop())); updateUndoButtons(); requestRender(); scheduleAutosave(); }
 function updateUndoButtons() {
   $('bUndo').disabled = !undoStack.length; $('qUndo').disabled = !undoStack.length; $('bRedo').disabled = !redoStack.length;
   renderHistory();
@@ -3719,9 +3761,26 @@ function renderHistory() {
     const el = document.createElement('button');
     el.className = 'hstep' + (i === u ? ' now' : i > u ? ' ahead' : '');
     el.title = i === 0 ? 'Началото' : `Стъпка ${i}`;
-    el.onclick = () => historyJump(i);
+    el.onclick = (e) => { if (recallPick || e.altKey) recallFrom(i); else historyJump(i); };
+    if (recallStep === i) el.classList.add('recall');
     H.appendChild(el);
   }
+}
+// HistoryRecall (ZBrush: HistoryRecall brush): the shape of step i becomes the stored shape, so the
+// Morph brush paints back to it only where it passes. The step must have as many points as now.
+let recallPick = false, recallStep = -1;
+function recallFrom(i) {
+  recallPick = false; syncMorphUI();
+  if (stroke || mrPending || working) return;
+  const here = undoStack.length, n = mesh.n;
+  historyJump(i);
+  const shape = mesh.n === n ? mesh.pos.slice(0, n * 3) : null;
+  historyJump(here);
+  if (!shape || mesh.n !== n || mesh.dyn) { toast('Тази стъпка е с друга мрежа (друг брой точки): от нея не може да се рисува.'); renderHistory(); return; }
+  mesh.morph = shape; recallStep = i;
+  syncMorphUI(); renderHistory();
+  toast(`Формата от стъпка ${i} е запомнена: четката „Към запомнената форма“ я връща, където минете.`);
+  selectTool('morph');
 }
 function historyJump(i) {
   if (stroke || mrPending) return;
@@ -3799,6 +3858,7 @@ canvas.addEventListener('pointerdown', (e) => {
   if (e.button === 2 || barrel) { nav = { mode: e.shiftKey ? 'pan' : (e.ctrlKey ? 'zoom' : 'orbit'), x, y, id: e.pointerId }; return; }
   if (e.button === 1) { nav = { mode: 'pan', x, y, id: e.pointerId }; e.preventDefault(); return; }
   if (e.button !== 0) return;
+  if (zs) { if (!zsDown(e, x, y)) nav = { mode: e.altKey ? 'pan' : 'orbit', x, y, id: e.pointerId }; hideRing(); return; }
 
   const hit = pick(x, y);
   const ctrl = e.ctrlKey || e.metaKey;
@@ -3866,6 +3926,7 @@ canvas.addEventListener('pointermove', (e) => {
     if (gesture.kind === 'insert') { showInsertPreview(gesture); return; }
     if (gesture.kind === 'gizmo') { applyGizmo(gesture); drawOverlay(); return; }
     if (gesture.kind === 'ffd') { moveLatticeDrag(gesture); drawOverlay(); return; }
+    if (gesture.kind === 'zsadd' || gesture.kind === 'zsmove' || gesture.kind === 'zsscale') { zsMove(gesture); return; }
     if (gesture.kind === 'picktool') { if (gesture.moved) { nav = { mode: 'orbit', x, y, id: gesture.id }; gesture = null; } return; }
     if (gesture.kind === 'curveedit') { drawOverlay(); return; }
     if (gesture.kind === 'curvedraw') { const lp = gesture.pts[gesture.pts.length - 1]; if (Math.hypot(x - lp[0], y - lp[1]) > 2) { gesture.pts.push([x, y]); drawOverlay(); } return; }
@@ -3915,6 +3976,7 @@ function endPointer(e) {
     else if (g.kind === 'insert') insertShape(g);
     else if (g.kind === 'gizmo') endGizmo(g, true);
     else if (g.kind === 'ffd') endLatticeDrag(g, true);
+    else if (g.kind === 'zsadd' || g.kind === 'zsmove' || g.kind === 'zsscale') zsRender();
     else if (g.kind === 'picktool') { const k = TOOLS.indexOf(g.tool); if (k >= 0) { activateTool(k); toast(`Активен подобект: ${g.tool.name}`); } }
     else if (g.kind === 'curvedraw') { if (moved) finishCurve(g); }
     else if (g.kind === 'curveedit') finishCurveEdit(g, false);
@@ -3977,7 +4039,7 @@ function placeRing(point, normal, r) {
 function hideRing() { ring.visible = false; for (const r of symRings) r.visible = false; $('cursor2d').hidden = true; }
 function updateHover() {
   if (!hoverXY || stroke || nav) return;
-  if (brush().base === 'gizmo' || brush().base === 'ffd') { hideRing(); return; }
+  if (zs || brush().base === 'gizmo' || brush().base === 'ffd') { hideRing(); return; }
   const hit = pick(hoverXY.x, hoverXY.y);
   if (hit) {
     const pr = S.prRadius ? pressureOf(Math.max(lastPressure, 0.5)) : 1;
@@ -4337,7 +4399,7 @@ function gizmoHandle(x, y, finger = false) {
 }
 function setGizmoMode(mode) { brush().gz = mode; gizmoCache = null; syncBrushUI(); syncGizmoBar(); saveSettings(); drawOverlay(); }
 function syncGizmoBar() {
-  const on = brush().base === 'gizmo';
+  const on = brush().base === 'gizmo' && !zs;
   $('gizmoBar').hidden = !on;
   if (!on) return;
   for (const el of $('gizmoBar').querySelectorAll('[data-gz]')) el.setAttribute('aria-pressed', el.dataset.gz === (brush().gz || 'move'));
@@ -4543,6 +4605,10 @@ function deformApply(D, kind, val) {
       const nb = b * cs - cc * sn; cc = b * sn + cc * cs; b = nb;
     } else if (kind === 'taper') {
       const k = Math.max(0.02, 1 + val * t); b *= k; cc *= k;
+    } else if (kind === 'extend') {
+      // (ZBrush: Extender) the far half moves out along the axis; the middle band stretches over it
+      const band = 0.2, s0 = (t - (0.5 - band / 2)) / band;
+      a += val * L * Math.min(1, Math.max(0, s0));
     }
     const w = D.w[q], i = D.idx[q];
     const x = c.x + A.x * a + B.x * b + C.x * cc, y = c.y + A.y * a + B.y * b + C.y * cc, z = c.z + A.z * a + B.z * b + C.z * cc;
@@ -4572,6 +4638,188 @@ function bindDeform(id, out, kind, fmtv) {
     show(); deformApply(deformLive, kind, +el.value);
   });
   el.addEventListener('change', () => { if (deformLive) { deformCommit(deformLive); deformLive = null; } el.value = 0; show(); });
+}
+
+/* ---------- ZSpheres (ZBrush: ZSphere, Adaptive / Unified Skin) ----------
+   An armature of spheres, each joined to the one it grew from. „Добави“: press on a sphere and drag
+   out a new one (the drag is its size); „Мести“ and „Мащаб“ change one (with Alt the whole branch);
+   „Изтрий“ takes a sphere and what grows from it. With X symmetry every change happens on both sides.
+   „Кожа“ makes a closed mesh: every sphere and a tapered tube for every joint, fused by the voxel core,
+   smoothed once. The armature stays with that subtool, so „Арматура“ opens it again. */
+let zs = null;
+const zsSphereGeo = new THREE.SphereGeometry(1, 32, 18), zsLinkGeo = new THREE.CylinderGeometry(1, 1, 1, 16, 1);
+const zsMat = new THREE.MeshMatcapMaterial({ color: 0xe6b48c }), zsRootMat = new THREE.MeshMatcapMaterial({ color: 0xc9605a }), zsLinkMat = new THREE.MeshMatcapMaterial({ color: 0x9aa5b8 });
+function zsOpen(fromTool) {
+  if (zs || working || stroke) return;
+  const t = fromTool && fromTool.zs ? fromTool : null;
+  const { c, r } = mesh.bounds();
+  const spheres = t ? t.zs.map((q) => ({ ...q })) : [{ x: 0, y: c[1], z: c[2], r: r * 0.3, parent: -1 }];
+  for (const m of [zsMat, zsRootMat, zsLinkMat]) { m.matcap = matcapTextures[S.matcap]; m.needsUpdate = true; }
+  zs = { spheres, mode: 'add', undo: [], redo: [], tool: t, group: new THREE.Group() };
+  scene.add(zs.group);
+  // only the armature shows meanwhile (it starts in the middle of the model, where it would be hidden)
+  gmesh.visible = false; for (const [, o] of others) o.obj.visible = false;
+  dropCurve(); hideRing();
+  zsRender(); syncZsBar();
+  toast(t ? 'Арматурата на подобекта: променете я и натиснете „Кожа“.' : 'Арматура: натиснете сферата и дърпайте, за да израсне нова. „Кожа“ прави модела.');
+}
+function zsClose() {
+  if (!zs) return;
+  scene.remove(zs.group);
+  zs = null;
+  if (gmesh) gmesh.visible = true;
+  for (const [, o] of others) o.obj.visible = true;
+  syncZsBar(); requestRender();
+}
+function zsRender() {
+  const G = zs.group, Sp = zs.spheres;
+  while (G.children.length) G.remove(G.children[0]);
+  const Y = new THREE.Vector3(0, 1, 0);
+  Sp.forEach((q, k) => {
+    const o = new THREE.Mesh(zsSphereGeo, k === 0 ? zsRootMat : zsMat);
+    o.position.set(q.x, q.y, q.z); o.scale.setScalar(q.r); G.add(o);
+    if (q.parent >= 0) {
+      const p = Sp[q.parent], a = new THREE.Vector3(p.x, p.y, p.z), b = new THREE.Vector3(q.x, q.y, q.z), d = b.clone().sub(a), L = d.length();
+      if (L < 1e-9) return;
+      const l = new THREE.Mesh(zsLinkGeo, zsLinkMat), rr = Math.min(p.r, q.r) * 0.3;
+      l.position.copy(a).add(b).multiplyScalar(0.5); l.scale.set(rr, L, rr); l.quaternion.setFromUnitVectors(Y, d.divideScalar(L)); G.add(l);
+    }
+  });
+  requestRender();
+}
+// the sphere under the pointer: { k, point, normal }
+function zsPick(x, y) {
+  ndc.set((x / viewport.w) * 2 - 1, -(y / viewport.h) * 2 + 1);
+  raycaster.setFromCamera(ndc, camera);
+  const o = raycaster.ray.origin, d = raycaster.ray.direction;
+  let best = null;
+  zs.spheres.forEach((q, k) => {
+    const ox = o.x - q.x, oy = o.y - q.y, oz = o.z - q.z, bq = ox * d.x + oy * d.y + oz * d.z, cq = ox * ox + oy * oy + oz * oz - q.r * q.r, disc = bq * bq - cq;
+    if (disc < 0) return;
+    const t = -bq - Math.sqrt(disc);
+    if (t > 0 && (!best || t < best.t)) best = { k, t };
+  });
+  if (!best) return null;
+  const q = zs.spheres[best.k], point = o.clone().addScaledVector(d, best.t);
+  return { k: best.k, point, normal: point.clone().sub(new THREE.Vector3(q.x, q.y, q.z)).normalize() };
+}
+// the sphere across the X mirror (itself when it lies on the mirror), or −1
+function zsMirror(k) {
+  const q = zs.spheres[k], tol = q.r * 0.02 + 1e-6;
+  if (Math.abs(q.x) <= tol) return k;
+  return zs.spheres.findIndex((p, j) => j !== k && Math.abs(p.x + q.x) <= tol && Math.abs(p.y - q.y) <= tol && Math.abs(p.z - q.z) <= tol && Math.abs(p.r - q.r) <= tol);
+}
+const zsSave = () => { zs.undo.push(zs.spheres.map((q) => ({ ...q }))); zs.redo.length = 0; if (zs.undo.length > 200) zs.undo.shift(); };
+function zsUndo(redo = false) {
+  const from = redo ? zs.redo : zs.undo, to = redo ? zs.undo : zs.redo;
+  if (!from.length) return;
+  to.push(zs.spheres.map((q) => ({ ...q }))); zs.spheres = from.pop(); zsRender();
+}
+function zsDescendants(k) {
+  const out = new Set([k]);
+  for (let changed = true; changed;) { changed = false; zs.spheres.forEach((q, j) => { if (!out.has(j) && out.has(q.parent)) { out.add(j); changed = true; } }); }
+  return out;
+}
+function zsDelete(k) {
+  if (k === 0) { toast('Първата сфера остава: от нея расте всичко.'); return; }
+  zsSave();
+  const gone = zsDescendants(k), m = S.sym ? zsMirror(k) : -1;
+  if (m >= 0 && m !== k) for (const j of zsDescendants(m)) gone.add(j);
+  const keep = [], map = new Map();
+  zs.spheres.forEach((q, j) => { if (!gone.has(j)) { map.set(j, keep.length); keep.push(q); } });
+  for (const q of keep) q.parent = q.parent >= 0 ? map.get(q.parent) : -1;
+  zs.spheres = keep; zsRender();
+}
+function zsDown(e, x, y) {
+  const h = zsPick(x, y);
+  if (!h) return false;
+  const q = zs.spheres[h.k], wpp = worldPerPx(h.point);
+  if (zs.mode === 'del') { zsDelete(h.k); return true; }
+  zsSave();
+  if (zs.mode === 'add') {
+    const r = q.r * 0.6, nk = zs.spheres.length;
+    zs.spheres.push({ x: h.point.x, y: h.point.y, z: h.point.z, r, parent: h.k });
+    let mk = -1;
+    if (S.sym && Math.abs(h.point.x) > r * 0.05) {
+      const mp = zsMirror(h.k);
+      if (mp >= 0) { mk = zs.spheres.length; zs.spheres.push({ x: -h.point.x, y: h.point.y, z: h.point.z, r, parent: mp }); }
+    }
+    gesture = { kind: 'zsadd', k: nk, mk, x0: x, y0: y, x, y, id: e.pointerId, wpp, r0: r };
+  } else if (zs.mode === 'move') {
+    const set = e.altKey ? [...zsDescendants(h.k)] : [h.k], mk = S.sym ? zsMirror(h.k) : -1;
+    const mset = mk >= 0 && mk !== h.k ? (e.altKey ? [...zsDescendants(mk)] : [mk]) : [];
+    gesture = { kind: 'zsmove', set, mset, start: zs.spheres.map((p) => [p.x, p.y, p.z]), centre: new THREE.Vector3(q.x, q.y, q.z), camN: new THREE.Vector3(0, 0, 1).applyQuaternion(camera.quaternion), onMirror: mk === h.k, x0: x, y0: y, x, y, id: e.pointerId };
+  } else {
+    const set = e.altKey ? [...zsDescendants(h.k)] : [h.k], mk = S.sym ? zsMirror(h.k) : -1;
+    if (mk >= 0 && mk !== h.k) set.push(...(e.altKey ? zsDescendants(mk) : [mk]));
+    gesture = { kind: 'zsscale', set, r0: zs.spheres.map((p) => p.r), x0: x, y0: y, x, y, id: e.pointerId };
+  }
+  return true;
+}
+function zsMove(g) {
+  const Sp = zs.spheres;
+  if (g.kind === 'zsadd') {
+    const r = Math.max(g.r0 * 0.15, Math.hypot(g.x - g.x0, g.y - g.y0) * g.wpp) || g.r0;
+    if (Math.hypot(g.x - g.x0, g.y - g.y0) > 4) { Sp[g.k].r = r; if (g.mk >= 0) Sp[g.mk].r = r; }
+  } else if (g.kind === 'zsmove') {
+    const a = screenToPlane(g.x0, g.y0, g.centre, g.camN), b = screenToPlane(g.x, g.y, g.centre, g.camN);
+    if (!a || !b) return;
+    const d = b.sub(a);
+    if (g.onMirror) d.x = 0;   // (a sphere on the mirror stays on it)
+    for (const j of g.set) { Sp[j].x = g.start[j][0] + d.x; Sp[j].y = g.start[j][1] + d.y; Sp[j].z = g.start[j][2] + d.z; }
+    for (const j of g.mset) { Sp[j].x = g.start[j][0] - d.x; Sp[j].y = g.start[j][1] + d.y; Sp[j].z = g.start[j][2] + d.z; }
+  } else {
+    const f = Math.exp(-(g.y - g.y0) * 0.008);
+    for (const j of g.set) Sp[j].r = Math.max(1e-3, g.r0[j] * f);
+  }
+  zsRender();
+}
+function syncZsBar() {
+  $('zsBar').hidden = !zs;
+  if ($('gizmoBar')) $('gizmoBar').hidden = !!zs || brush().base !== 'gizmo';
+  if (!zs) return;
+  for (const el of $('zsBar').querySelectorAll('[data-zs]')) el.setAttribute('aria-pressed', el.dataset.zs === zs.mode);
+}
+// the skin: spheres and tapered tubes, fused in the voxel core, smoothed once
+async function zsSkin() {
+  if (!zs || working) return;
+  const Sp = zs.spheres;
+  let lo = [Infinity, Infinity, Infinity], hi = [-Infinity, -Infinity, -Infinity];
+  for (const q of Sp) { lo = [Math.min(lo[0], q.x - q.r), Math.min(lo[1], q.y - q.r), Math.min(lo[2], q.z - q.r)]; hi = [Math.max(hi[0], q.x + q.r), Math.max(hi[1], q.y + q.r), Math.max(hi[2], q.z + q.r)]; }
+  const res = Math.max(S.voxel, 128), cell = Math.max(hi[0] - lo[0], hi[1] - lo[1], hi[2] - lo[2]) / res;
+  const part = (sh) => { const n = sh.pos.length / 3; return { pos: sh.pos, idx: sh.idx, col: new Float32Array(n * 3).fill(1), mask: new Float32Array(n), grp: new Float32Array(n), op: 'add' }; };
+  const parts = [];
+  for (const q of Sp) parts.push(part(placePart(immShape('sphere', (cell * 1.2) / q.r), [q.r, 0, 0, 0, q.r, 0, 0, 0, q.r], [q.x, q.y, q.z])));
+  for (const q of Sp) {
+    if (q.parent < 0) continue;
+    const p = Sp[q.parent], d = new THREE.Vector3(q.x - p.x, q.y - p.y, q.z - p.z), L = d.length();
+    if (L < 1e-6) continue;
+    d.divideScalar(L);
+    const u = Math.abs(d.x) < 0.9 ? new THREE.Vector3(1, 0, 0) : new THREE.Vector3(0, 1, 0); u.addScaledVector(d, -u.dot(d)).normalize();
+    const w = new THREE.Vector3().crossVectors(u, d);
+    // (a little thinner than the spheres, so the joints read as joints)
+    const tube = outward(...Object.values(lathe([[0, 0], [p.r * 0.75, 0], [q.r * 0.75, L], [0, L]], cell * 1.2)));
+    parts.push(part(placePart(tube, [u.x, d.x, w.x, u.y, d.y, w.y, u.z, d.z, w.z], [p.x, p.y, p.z])));
+  }
+  busy(true); working = true;
+  try {
+    const r = await voxelCombine(parts, res);
+    // one pass of relaxing: the joints of the voxels soften
+    const n = r.pos.length / 3, acc = new Float64Array(n * 3), cnt = new Uint16Array(n);
+    for (let f = 0; f < r.idx.length; f += 3) for (let e = 0; e < 3; e++) { const a = r.idx[f + e], b = r.idx[f + (e + 1) % 3]; for (let c = 0; c < 3; c++) { acc[a * 3 + c] += r.pos[b * 3 + c]; acc[b * 3 + c] += r.pos[a * 3 + c]; } cnt[a]++; cnt[b]++; }
+    for (let v = 0; v < n; v++) if (cnt[v]) for (let c = 0; c < 3; c++) r.pos[v * 3 + c] += (acc[v * 3 + c] / cnt[v] - r.pos[v * 3 + c]) * 0.5;
+    const m = new SculptMesh(r.pos, r.idx, r.col, r.mask, 0, r.grp), arm = Sp.map((q) => ({ ...q })), old = zs.tool;
+    working = false;
+    zsClose();
+    if (old && TOOLS.includes(old)) {
+      toolsStep(() => { const k = TOOLS.indexOf(old), t = makeTool(m, old.name); t.zs = arm; TOOLS[k] = t; curTool = k; });
+    } else {
+      addTool(m, 'Кожа'); TOOLS[curTool].zs = arm;
+    }
+    frameView();
+    toast(`Кожа: ${fmt(r.idx.length / 3)} триъгълника. „Арматура“ отваря сферите ѝ отново.`);
+  } catch (e) { working = false; toast('Кожата не стана: ' + e.message); }
+  finally { busy(false); }
 }
 
 /* ---------- FFD (ZBrush: Gizmo 3D > Deformers > FFD) ----------
@@ -4742,6 +4990,180 @@ function xtract(hit) {
   return true;
 }
 
+/* ---------- FiberMesh (ZBrush: FiberMesh) ----------
+   Fibres grow out of the masked part of the active subtool: roots spread evenly over its area, each fibre
+   leaves along the surface normal, bends down by the gravity and thins to its tip. They become one new
+   subtool (thin tubes, so they can be sculpted, moved with the gizmo or dropped as cloth). */
+let rng = 1;
+const rand = () => ((rng = (rng * 1103515245 + 12345) >>> 0) / 4294967296);
+function fiberArrays(a, opt) {
+  // faces inside the mask, picked by area
+  const P = a.pos, I = a.idx, faces = [], areas = [];
+  let total = 0;
+  for (let f = 0; f < I.length; f += 3) {
+    const i = I[f], j = I[f + 1], k = I[f + 2];
+    if (a.mask[i] < 0.5 || a.mask[j] < 0.5 || a.mask[k] < 0.5) continue;
+    const ux = P[j * 3] - P[i * 3], uy = P[j * 3 + 1] - P[i * 3 + 1], uz = P[j * 3 + 2] - P[i * 3 + 2], vx = P[k * 3] - P[i * 3], vy = P[k * 3 + 1] - P[i * 3 + 1], vz = P[k * 3 + 2] - P[i * 3 + 2];
+    const ar = Math.hypot(uy * vz - uz * vy, uz * vx - ux * vz, ux * vy - uy * vx) / 2;
+    if (ar <= 0) continue;
+    faces.push(f); total += ar; areas.push(total);
+  }
+  if (!faces.length) return null;
+  rng = 12345;
+  const segs = 6, parts = [];
+  for (let q = 0; q < opt.count; q++) {
+    // a face by area, a point in it
+    const t = rand() * total; let lo = 0, hi = areas.length - 1;
+    while (lo < hi) { const mid = (lo + hi) >> 1; if (areas[mid] < t) lo = mid + 1; else hi = mid; }
+    const f = faces[lo], i = I[f], j = I[f + 1], k = I[f + 2];
+    let b1 = rand(), b2 = rand(); if (b1 + b2 > 1) { b1 = 1 - b1; b2 = 1 - b2; }
+    const root = new THREE.Vector3(), nrm = new THREE.Vector3();
+    const A = new THREE.Vector3(P[i * 3], P[i * 3 + 1], P[i * 3 + 2]), B = new THREE.Vector3(P[j * 3], P[j * 3 + 1], P[j * 3 + 2]), C = new THREE.Vector3(P[k * 3], P[k * 3 + 1], P[k * 3 + 2]);
+    root.copy(A).addScaledVector(B.clone().sub(A), b1).addScaledVector(C.clone().sub(A), b2);
+    nrm.crossVectors(B.clone().sub(A), C.clone().sub(A)).normalize();
+    const len = opt.length * (1 - opt.vary * 0.6 * rand()), step = len / segs;
+    const dir = nrm.clone().add(new THREE.Vector3(rand() - 0.5, rand() - 0.5, rand() - 0.5).multiplyScalar(opt.vary * 0.8)).normalize();
+    const pts = [{ p: root.clone().addScaledVector(nrm, -opt.width), n: nrm.clone() }];
+    const cur = root.clone();
+    for (let sgi = 1; sgi <= segs; sgi++) {
+      // gravity bends each segment a little more toward −Y
+      dir.y -= opt.gravity * 0.35; dir.normalize();
+      cur.addScaledVector(dir, step);
+      pts.push({ p: cur.clone(), n: nrm.clone() });
+    }
+    parts.push(tubeArrays(pts, opt.width, 0.85, Math.max(opt.width * 2.2, step)));
+  }
+  let nv = 0, nt = 0; for (const t2 of parts) { nv += t2.pos.length / 3; nt += t2.idx.length / 3; }
+  const pos = new Float32Array(nv * 3), idx = new Uint32Array(nt * 3);
+  let v0 = 0, t0 = 0;
+  for (const t2 of parts) { pos.set(t2.pos, v0 * 3); for (let q = 0; q < t2.idx.length; q++) idx[t0 * 3 + q] = t2.idx[q] + v0; v0 += t2.pos.length / 3; t0 += t2.idx.length / 3; }
+  return { pos, idx, n: nv };
+}
+function makeFibers() {
+  if (stroke || working) return;
+  stashActive();
+  const a = toolArrays(TOOLS[curTool]), { r } = mesh.bounds();
+  const out = fiberArrays(a, { count: S.fibCount, length: S.fibLength * r, width: S.fibWidth * r, gravity: S.fibGravity, vary: S.fibVary });
+  if (!out) { toast('Първо маскирайте мястото, откъдето да растат космите (Ctrl+рисуване).'); return; }
+  if (out.idx.length / 3 > MAX_TRIS) { toast('Космите биха били твърде много: намалете броя.'); return; }
+  const col = new Float32Array(out.n * 3).fill(1);
+  addTool(new SculptMesh(out.pos, out.idx, col, new Float32Array(out.n), 0, new Float32Array(out.n)), 'Косми');
+  toast(`${fmt(S.fibCount)} косъма (${fmt(out.idx.length / 3)} триъгълника) като нов подобект.`);
+}
+
+/* ---------- Project All (ZBrush: SubTool > Project All), in the Rust core ----------
+   Every point of the active subtool goes along its normal to the other visible subtools and takes
+   their colour: after a remesh and a subdivision, the detail of the old copy comes back onto the new one.
+   The mask holds; only places nearer than a few edges are reached, so far-away parts are left alone. */
+async function projectAll() {
+  if (stroke || working) return;
+  let X;
+  try { X = await coreLocal(); } catch (e) { toast('Прехвърлянето не е достъпно тук: няма WebAssembly.'); return; }
+  stashActive();
+  const srcs = solo ? [] : TOOLS.filter((t, k) => k !== curTool && t.visible).map(toolArrays);
+  if (!srcs.length) { toast('Нужен е видим подобект с детайла (например копието отпреди преизграждането).'); return; }
+  const m = mesh, n = m.n;
+  let snv = 0, snt = 0; for (const c of srcs) { snv += c.pos.length / 3; snt += c.idx.length / 3; }
+  const spos = new Float32Array(snv * 3), sidx = new Uint32Array(snt * 3), scol = new Float32Array(snv * 3);
+  let v0 = 0, t0 = 0;
+  for (const c of srcs) { spos.set(c.pos, v0 * 3); scol.set(c.col, v0 * 3); for (let q = 0; q < c.idx.length; q++) sidx[t0 * 3 + q] = c.idx[q] + v0; v0 += c.pos.length / 3; t0 += c.idx.length / 3; }
+  const pos = m.pos.slice(0, n * 3), w = new Float32Array(n), col = m.col.slice(0, n * 3);
+  for (let i = 0; i < n; i++) if (!(m.dyn && !m.vfA[i].length)) w[i] = (1 - m.mask[i]) * (1 - m.hid[i]);
+  const reach = Math.max(meanEdge(pos, m.idx.subarray(0, m.f * 3)), meanEdge(spos, sidx)) * 6;
+  const nrm = m.nrm.slice(0, n * 3), ins = [pos, nrm, w, spos, sidx, scol], ptrs = ins.map((a) => { const p = X.mem_alloc(a.byteLength); new Uint8Array(X.memory.buffer, p, a.byteLength).set(new Uint8Array(a.buffer, a.byteOffset, a.byteLength)); return p; });
+  const op = X.mem_alloc(pos.byteLength), oc = X.mem_alloc(col.byteLength);
+  new Float32Array(X.memory.buffer, op, n * 3).set(pos); new Float32Array(X.memory.buffer, oc, n * 3).set(col);
+  busy(true);
+  try {
+    const found = X.project_raw(ptrs[0], ptrs[1], ptrs[2], n, ptrs[3], snv, ptrs[4], snt, ptrs[5], reach, op, oc);
+    if (found <= 0) { toast('Нищо не е достатъчно близо: подобектите трябва да се застъпват.'); return; }
+    const np = new Float32Array(X.memory.buffer, op, n * 3).slice(), nc = new Float32Array(X.memory.buffer, oc, n * 3).slice();
+    const ids = [];
+    for (let i = 0; i < n; i++) if (np[i * 3] !== pos[i * 3] || np[i * 3 + 1] !== pos[i * 3 + 1] || np[i * 3 + 2] !== pos[i * 3 + 2] || nc[i * 3] !== col[i * 3] || nc[i * 3 + 1] !== col[i * 3 + 1] || nc[i * 3 + 2] !== col[i * 3 + 2]) ids.push(i);
+    const idx = Uint32Array.from(ids), k = idx.length, rp = new Float32Array(k * 3), rc = new Float32Array(k * 3), rm = new Float32Array(k);
+    idx.forEach((i, q) => { for (let a = 0; a < 3; a++) { rp[q * 3 + a] = pos[i * 3 + a]; rc[q * 3 + a] = col[i * 3 + a]; } rm[q] = m.mask[i]; });
+    m.pos.set(np); m.col.set(nc);
+    pushUndo({ type: 'verts', idx, pos: rp, col: rc, mask: rm });
+    const all = Uint32Array.from({ length: n }, (_, i) => i);
+    m.updateNormals(all, n);
+    for (const a of ['position', 'normal', 'aColor']) uploadAll(geo.attributes[a]);
+    bvhDirty = true; if (m.dyn) m.gridMaybeRebuild();
+    requestRender(); scheduleAutosave();
+    toast(`Детайлът е прехвърлен: ${fmt(found)} от ${fmt(n)} точки стигнаха повърхността.`);
+  } finally {
+    ins.forEach((a, q) => X.mem_free(ptrs[q], a.byteLength)); X.mem_free(op, pos.byteLength); X.mem_free(oc, col.byteLength);
+    busy(false);
+  }
+}
+
+/* ---------- Morph Target (ZBrush: Tool > Morph Target: StoreMT, Switch, DelMT; the Morph brush) ----------
+   A copy of the shape as it is now. The Morph brush paints back to it; Switch swaps the two shapes.
+   It belongs to the mesh: anything that changes the number of points (remesh, trim, levels…) drops it. */
+function morphOf(m) { return m.morph && m.morph.length === m.n * 3 && !m.dyn ? m.morph : null; }
+function storeMorph() {
+  if (mesh.dyn) { toast('Изключете динамичната топология: тя сменя точките и запомнената форма не би съвпаднала.'); return; }
+  mesh.morph = mesh.pos.slice(0, mesh.n * 3); recallStep = -1; syncMorphUI(); renderHistory();
+  toast('Формата е запомнена. Четката „Към запомнената форма“ връща към нея където минете; „Размени“ сменя двете.');
+}
+function switchMorph() {
+  const m = mesh; if (!morphOf(m)) { toast('Няма запомнена форма.'); return; }
+  const n = m.n, idx = Uint32Array.from({ length: n }, (_, i) => i);
+  // the two shapes trade places; undo trades them back
+  const swap = () => {
+    if (mesh !== m || !morphOf(m)) return;
+    const now = m.pos.slice(0, n * 3); m.pos.set(m.morph); m.morph = now;
+    m.updateNormals(idx, n); uploadAll(geo.attributes.position); uploadAll(geo.attributes.normal); bvhDirty = true;
+    requestRender(); scheduleAutosave();
+  };
+  swap();
+  pushUndo({ type: 'fn', undo: swap, redo: swap, bytes: n * 24 });
+  toast('Формите са разменени.');
+}
+function dropMorph() { mesh.morph = null; recallStep = -1; syncMorphUI(); renderHistory(); toast('Запомнената форма е забравена.'); }
+function syncMorphUI() {
+  const on = !!morphOf(mesh);
+  if ($('bMorphSwitch')) { $('bMorphSwitch').disabled = !on; $('bMorphDrop').disabled = !on; setPressed('bRecall', recallPick); }
+  if (!on) recallStep = -1;
+}
+
+/* ---------- Polypaint: fill and colour from cavity (ZBrush: Color > FillObject, Polypaint From Cavity) ---------- */
+function paintAll(fn, msg) {
+  const m = mesh, n = m.n, ids = [], cols = [];
+  for (let i = 0; i < n; i++) {
+    if ((m.dyn && !m.vfA[i].length) || m.hid[i]) continue;
+    const w = 1 - m.mask[i]; if (w <= 0) continue;
+    const c = fn(i); if (!c) continue;
+    ids.push(i); cols.push(c, w);
+  }
+  if (!ids.length) { toast('Всичко е маскирано или скрито.'); return; }
+  const idx = Uint32Array.from(ids), k = idx.length, pos = new Float32Array(k * 3), col = new Float32Array(k * 3), mask = new Float32Array(k);
+  idx.forEach((i, q) => {
+    for (let a = 0; a < 3; a++) { pos[q * 3 + a] = m.pos[i * 3 + a]; col[q * 3 + a] = m.col[i * 3 + a]; }
+    mask[q] = m.mask[i];
+    const [r, g, b] = cols[q * 2], w = cols[q * 2 + 1];
+    m.col[i * 3] += (r - m.col[i * 3]) * w; m.col[i * 3 + 1] += (g - m.col[i * 3 + 1]) * w; m.col[i * 3 + 2] += (b - m.col[i * 3 + 2]) * w;
+  });
+  pushUndo({ type: 'verts', idx, pos, col, mask });
+  uploadAll(geo.attributes.aColor); requestRender(); scheduleAutosave();
+  toast(msg);
+}
+function fillColour() { const c = S.paint.slice(); paintAll(() => c, 'Заляно с цвета (маскираното и скритото остават).'); }
+function cavityColour() {
+  const m = mesh, P = m.pos, NR = m.nrm, n = m.n, cav = new Float32Array(n);
+  let top = 1e-9;
+  for (let i = 0; i < n; i++) {
+    if (m.dyn && !m.vfA[i].length) continue;
+    let x = 0, y = 0, z = 0, len = 0, k = 0;
+    forNeighbors(m, i, (u) => { x += P[u * 3]; y += P[u * 3 + 1]; z += P[u * 3 + 2]; len += Math.sqrt(edgeLen2(P, i, u)); k++; });
+    if (!k) continue;
+    cav[i] = ((x / k - P[i * 3]) * NR[i * 3] + (y / k - P[i * 3 + 1]) * NR[i * 3 + 1] + (z / k - P[i * 3 + 2]) * NR[i * 3 + 2]) / (len / k);
+    if (cav[i] > top) top = cav[i];
+  }
+  // the deepest places get the paint colour, the rest keeps its own (a dirt pass over creases and pores)
+  const c = S.paint;
+  paintAll((i) => { const t = Math.min(1, Math.max(0, cav[i] / (top * 0.35))); if (t <= 0.02) return null; const o = m.col; return [o[i * 3] + (c[0] - o[i * 3]) * t, o[i * 3 + 1] + (c[1] - o[i * 3 + 1]) * t, o[i * 3 + 2] + (c[2] - o[i * 3 + 2]) * t]; }, 'Вдлъбнатините са оцветени с цвета.');
+}
+
 /* ---------- Surface Contrast (ZBrush: Tool > Surface > Contrast) ----------
    The detail is how far each point is from a smoothed copy of the surface; more contrast takes it
    farther (deeper pores, sharper wrinkles), less brings it closer (softer). The big form stays. */
@@ -4876,7 +5298,7 @@ async function startCloth() {
   for (let i = 1; i < pos.length; i += 3) floor = Math.min(floor, pos[i]);
   for (let i = 1; i < cpos.length; i += 3) floor = Math.min(floor, cpos[i]);
   const e = meanEdge(pos, idx), thick = e * 0.5, { r } = m.bounds();
-  const par = Float32Array.of(S.clothGravity * 9.8 * r, S.clothStretch, S.clothBend, 0.99, thick, S.clothFloor ? floor : -1e30, 6, e * 1.2);
+  const par = Float32Array.of(S.clothGravity * 9.8 * r, S.clothStretch, S.clothBend, 0.99, thick, S.clothFloor ? floor : -1e30, 6, e * 1.2, S.clothSelf ? thick * 2 : 0);
   const ins = [pos, idx, inv, cpos, cidx, par];
   const ptrs = ins.map((a) => { const p = X.mem_alloc(a.byteLength); new Uint8Array(X.memory.buffer, p, a.byteLength).set(new Uint8Array(a.buffer, a.byteOffset, a.byteLength)); return p; });
   const rc = X.cloth_init(ptrs[0], n, ptrs[1], f, ptrs[2], ptrs[3], cnv, ptrs[4], cnt, ptrs[5]);
@@ -6218,9 +6640,9 @@ function scheduleAutosave() {
       const a = mesh.dyn ? mesh.arrays() : mesh;
       // the other subtools (the active one is stored as before, so older versions can still open it)
       const rest = TOOLS.map((t, k) => {
-        if (k === curTool) return { name: t.name, visible: true, op: t.op, active: true };
+        if (k === curTool) return { name: t.name, visible: true, op: t.op, active: true, zs: t.zs || null };
         const b = toolArrays(t);
-        return { name: t.name, visible: t.visible, op: t.op, pos: b.pos.slice(), idx: b.idx.slice(), col: b.col.slice(), mask: b.mask.slice(), grp: b.grp.slice(), level: t.mesh.level, mr: t.MR, layers: t.LAYERS.length ? { list: t.LAYERS.map((L) => ({ name: L.name, d: L.d, dc: L.dc, s: L.s, on: L.on })), rec: t.recLayer } : null };
+        return { name: t.name, visible: t.visible, op: t.op, zs: t.zs || null, pos: b.pos.slice(), idx: b.idx.slice(), col: b.col.slice(), mask: b.mask.slice(), grp: b.grp.slice(), level: t.mesh.level, mr: t.MR, layers: t.LAYERS.length ? { list: t.LAYERS.map((L) => ({ name: L.name, d: L.d, dc: L.dc, s: L.s, on: L.on })), rec: t.recLayer } : null };
       });
       const db = await idb(); const tx = db.transaction('mesh', 'readwrite');
       tx.objectStore('mesh').put({ pos: a.pos, idx: a.idx, col: a.col, mask: a.mask, grp: mesh.dyn ? a.grp : mesh.grp, level: mesh.level, mr: MR, layers: layersForSave(), tools: rest, t: Date.now() }, 'last');
@@ -6241,7 +6663,7 @@ function fmt(n) { return n.toLocaleString('bg-BG'); }
 let toastT = 0;
 function toast(msg) { const t = $('toast'); t.textContent = msg; t.classList.add('show'); clearTimeout(toastT); toastT = setTimeout(() => t.classList.remove('show'), 2600); }
 function updateStats() {
-  renderVisibility();
+  renderVisibility(); syncMorphUI();
   $('hVerts').textContent = fmt(mesh.n); $('hTris').textContent = fmt(mesh.f);
   $('gVerts').textContent = fmt(mesh.n); $('gTris').textContent = fmt(mesh.f); syncLevelUI();
 }
@@ -6609,11 +7031,21 @@ $('bSmoothAll').onclick = smoothAll;
 $('bRemesh').onclick = remesh;
 $('bPersp').onclick = () => setOrtho(!S.ortho);
 $('bMirror').onclick = mirrorFlip;
+$('bMorphStore').onclick = storeMorph;
+$('bMorphSwitch').onclick = switchMorph;
+$('bMorphDrop').onclick = dropMorph;
+$('bRecall').onclick = () => { recallPick = !recallPick; syncMorphUI(); if (recallPick) toast('Щракнете стъпка в лентата с историята горе.'); };
+$('bFill').onclick = fillColour;
+$('bCavCol').onclick = cavityColour;
 $('bToolAdd').onclick = () => openMenu($('bToolAdd'), [
   ...IMM.filter((x) => x.id !== 'file').map((x) => ({ label: x.name, run: () => appendPrimitive(x.id) })),
   { label: 'От файл…', hint: '.obj, .stl', run: () => { appendFromFile = true; $('fileIn').click(); } },
 ]);
 $('bToolDup').onclick = () => duplicateTool(false);
+$('bZs').onclick = () => { stashActive(); zsOpen(TOOLS[curTool].zs ? TOOLS[curTool] : null); };
+for (const el of $('zsBar').querySelectorAll('[data-zs]')) el.onclick = () => { zs.mode = el.dataset.zs; syncZsBar(); };
+$('zsSkinB').onclick = zsSkin;
+$('zsExit').onclick = zsClose;
 $('bToolMirror').onclick = () => duplicateTool(true);
 for (const el of $('gizmoBar').querySelectorAll('[data-gz]')) el.onclick = () => setGizmoMode(el.dataset.gz);
 $('gzPin').onclick = () => { gizmoPinNext = !gizmoPinNext; syncGizmoBar(); if (gizmoPinNext) toast('Докоснете модела там, където да е центърът.'); };
@@ -6634,6 +7066,7 @@ $('bMaskHidden').onclick = maskHidden;
 bindDeform('sBend', 'oBend', 'bend', (v) => v + '°');
 bindDeform('sTwist', 'oTwist', 'twist', (v) => v + '°');
 bindDeform('sTaperD', 'oTaperD', 'taper', (v) => (v > 0 ? '+' : '') + Math.round(v * 100) + '%');
+bindDeform('sExtend', 'oExtend', 'extend', (v) => (v > 0 ? '+' : '') + Math.round(v * 100) + '%');
 // (chips compare string ids)
 chips('defToChips', [0, 1].map((k) => ({ id: String(k), name: '' })), () => String(S.defTo), (v) => (S.defTo = +v));
 chips('defAxisChips', [0, 1, 2].map((k) => ({ id: String(k), name: 'XYZ'[k] })), () => String(S.defAxis), (v) => {
@@ -6655,7 +7088,16 @@ bindRange('sClothT', 'oClothT', () => S.clothTime, (v) => (S.clothTime = v), (v)
 $('tClothFloor').checked = S.clothFloor;
 $('tClothFloor').addEventListener('change', () => { S.clothFloor = $('tClothFloor').checked; saveSettings(); });
 $('bCloth').onclick = startCloth;
+bindRange('sFibN', 'oFibN', () => S.fibCount, (v) => (S.fibCount = v), (v) => fmt(v));
+bindRange('sFibL', 'oFibL', () => S.fibLength, (v) => (S.fibLength = v), pct);
+bindRange('sFibW', 'oFibW', () => S.fibWidth, (v) => (S.fibWidth = v), (v) => (v * 100).toFixed(1) + '%');
+bindRange('sFibG', 'oFibG', () => S.fibGravity, (v) => (S.fibGravity = v), pct);
+bindRange('sFibV', 'oFibV', () => S.fibVary, (v) => (S.fibVary = v), pct);
+$('bFibers').onclick = makeFibers;
+$('tClothSelf').checked = S.clothSelf;
+$('tClothSelf').addEventListener('change', () => { S.clothSelf = $('tClothSelf').checked; saveSettings(); });
 $('bBoolean').onclick = makeBoolean;
+$('bProject').onclick = projectAll;
 bindRange('sExtract', 'oExtract', () => S.extract, (v) => (S.extract = v), pct);
 $('bMirrorWeld').onclick = mirrorWeld;
 $('bNoise').onclick = applyNoise;
@@ -6776,12 +7218,13 @@ loadAutosave().then((d) => {
     restoreLayers(d.layers);
     if (Array.isArray(d.tools) && d.tools.some((t) => t.active)) {
       TOOLS = d.tools.map((t) => {
-        if (t.active) { const at = makeTool(mesh, t.name || 'Подобект'); at.op = t.op || 'add'; return at; }
+        const zsOk = (z) => (Array.isArray(z) && z.length && z.every((q) => q && [q.x, q.y, q.z, q.r, q.parent].every(Number.isFinite)) ? z : undefined);
+        if (t.active) { const at = makeTool(mesh, t.name || 'Подобект'); at.op = t.op || 'add'; at.zs = zsOk(t.zs); return at; }
         const ok = t.pos && t.idx && t.pos.length === (t.col || []).length && t.mask && t.mask.length * 3 === t.pos.length;
         if (!ok) return null;
         const mr = t.mr, mrOk = mr && Array.isArray(mr.levels) && mr.levels[mr.cur] && mr.levels[mr.cur].n * 3 === t.pos.length;
         const tt = makeTool(new SculptMesh(t.pos, t.idx, t.col, t.mask, mrOk ? mr.cur : 0, t.grp && t.grp.length * 3 === t.pos.length ? t.grp : null), t.name || 'Подобект');
-        tt.visible = t.visible !== false; tt.op = t.op || 'add'; tt.MR = mrOk ? mr : null;
+        tt.visible = t.visible !== false; tt.op = t.op || 'add'; tt.MR = mrOk ? mr : null; tt.zs = zsOk(t.zs);
         if (t.layers && Array.isArray(t.layers.list)) { tt.LAYERS = t.layers.list.filter((L) => L.d && L.d.length === t.pos.length).map((L) => ({ name: L.name, d: L.d, dc: L.dc, s: L.s, on: L.on })); tt.recLayer = -1; }
         return tt;
       }).filter(Boolean);
@@ -6791,5 +7234,5 @@ loadAutosave().then((d) => {
     toast('Продължавате последния модел. „Нов“ започва отначало.');
   }
 });
-window.__glina = { xtract, latticeLive, latticeScreen, get lattice() { return lattice; }, surfaceContrast, snapshotPNG, maskHidden, startCloth, stopCloth, get clothRun() { return clothRun; }, hideSelection, hideGroup, showAll, invertVisibility, hideMasked, deleteHidden, hiddenCount, setHiddenUndoable, deform, makeArray, arrayArrays, setGizmoMode, get gizmoPin() { return gizmoPin; }, set gizmoPin(v) { gizmoPin = v; }, exportOBJ, scheduleAutosave, get TOOLS() { return TOOLS; }, get curTool() { return curTool; }, activateTool, addTool, appendPrimitive, duplicateTool, deleteTool, moveTool, mergeDown, splitGroups, extractTool, extractShell, makeBoolean, newScene, gizmoHandle, gizmoScreen, get solo() { return solo; }, set solo(v) { solo = v; renderOthers(); }, toolArrays, voxelCombine, voxelRemesh, coreStart, get working() { return working; }, sliceByPlane, mirrorWeldArrays, mirrorWeld, mirrorFlip, applyNoise, snapView, setOrtho, historyJump, polyframe, get cam() { return cam; }, trimByPlane, applyCut, tubeArrays, immShape, hasOpenEdges, get curve() { return liveCurve(); }, dropCurve, get immFile() { return immFile; }, set immFile(v) { immFile = v; }, get LAYERS() { return LAYERS; }, get recLayer() { return recLayer; }, addLayer, deleteLayer, toggleLayer, recordLayer, setLayerStrength, bakeLayers, groupOp, maskAllBut, groupNear, get mesh() { return mesh; }, get stroke() { return stroke; }, get gesture() { return gesture; }, get nav() { return nav; }, get MR() { return MR; }, syncSym, get SYM() { return SYM; }, setLevel, divide, deleteLower, deleteHigher, camera, orbit, pick, selectTool, brush, brushById, maskOp, remesh, undo, redo, subdivide, setDyntopo, floodDetail, S, get undoStack() { return undoStack; } };
+window.__glina = { recallFrom, makeFibers, fiberArrays, projectAll, storeMorph, switchMorph, dropMorph, morphOf, fillColour, cavityColour, zsOpen, zsClose, zsSkin, get zs() { return zs; }, xtract, latticeLive, latticeScreen, get lattice() { return lattice; }, surfaceContrast, snapshotPNG, maskHidden, startCloth, stopCloth, get clothRun() { return clothRun; }, hideSelection, hideGroup, showAll, invertVisibility, hideMasked, deleteHidden, hiddenCount, setHiddenUndoable, deform, makeArray, arrayArrays, setGizmoMode, get gizmoPin() { return gizmoPin; }, set gizmoPin(v) { gizmoPin = v; }, exportOBJ, scheduleAutosave, get TOOLS() { return TOOLS; }, get curTool() { return curTool; }, activateTool, addTool, appendPrimitive, duplicateTool, deleteTool, moveTool, mergeDown, splitGroups, extractTool, extractShell, makeBoolean, newScene, gizmoHandle, gizmoScreen, get solo() { return solo; }, set solo(v) { solo = v; renderOthers(); }, toolArrays, voxelCombine, voxelRemesh, coreStart, get working() { return working; }, sliceByPlane, mirrorWeldArrays, mirrorWeld, mirrorFlip, applyNoise, snapView, setOrtho, historyJump, polyframe, get cam() { return cam; }, trimByPlane, applyCut, tubeArrays, immShape, hasOpenEdges, get curve() { return liveCurve(); }, dropCurve, get immFile() { return immFile; }, set immFile(v) { immFile = v; }, get LAYERS() { return LAYERS; }, get recLayer() { return recLayer; }, addLayer, deleteLayer, toggleLayer, recordLayer, setLayerStrength, bakeLayers, groupOp, maskAllBut, groupNear, get mesh() { return mesh; }, get stroke() { return stroke; }, get gesture() { return gesture; }, get nav() { return nav; }, get MR() { return MR; }, syncSym, get SYM() { return SYM; }, setLevel, divide, deleteLower, deleteHigher, camera, orbit, pick, selectTool, brush, brushById, maskOp, remesh, undo, redo, subdivide, setDyntopo, floodDetail, S, get undoStack() { return undoStack; } };
 </script>
