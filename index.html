@@ -338,6 +338,14 @@ input[type=range] { width: 100%; height: 26px; accent-color: var(--wax); backgro
       <div><div class="note lab">Огъване към</div><div class="chips" id="defToChips"></div></div>
       <div class="row"><label for="sTwist">Усукване</label><output id="oTwist"></output><input type="range" id="sTwist" min="-360" max="360" step="5"></div>
       <div class="row"><label for="sTaperD">Стесняване ↔ разширяване</label><output id="oTaperD"></output><input type="range" id="sTaperD" min="-1" max="1" step="0.02"></div>
+      <h2 style="margin-top:14px">Плат <em>Dynamics</em></h2>
+      <p class="note">Активният подобект пада като плат: маскираното стои закачено, останалото се спуска по другите видими подобекти и пода. Не се удря в себе си. Започнете с „Извади от маската“ за дреха, после маскирайте мястото, където да виси.</p>
+      <div class="row"><label for="sClothG">Гравитация</label><output id="oClothG"></output><input type="range" id="sClothG" min="0.1" max="3" step="0.05"></div>
+      <div class="row"><label for="sClothS">Здравина (не се разтяга)</label><output id="oClothS"></output><input type="range" id="sClothS" min="0.1" max="1" step="0.05"></div>
+      <div class="row"><label for="sClothB">Твърдост на гънките</label><output id="oClothB"></output><input type="range" id="sClothB" min="0" max="1" step="0.05"></div>
+      <div class="row"><label for="sClothT">Най-много секунди</label><output id="oClothT"></output><input type="range" id="sClothT" min="1" max="20" step="1"></div>
+      <label class="toggle">Подът спира плата <input type="checkbox" id="tClothFloor"></label>
+      <button class="btn wide" id="bCloth" aria-pressed="false">Пусни симулацията</button>
       <h2 style="margin-top:14px">Масив <em>Array Mesh</em></h2>
       <div class="chips" id="arrModeChips"></div>
       <div><div class="note lab">Ос</div><div class="chips" id="arrAxisChips"></div></div>
@@ -382,6 +390,15 @@ input[type=range] { width: 100%; height: 26px; accent-color: var(--wax); backgro
       <div class="two"><button class="btn wide" id="bMaskBlur">Размажи</button><button class="btn wide" id="bMaskSharpen">Изостри</button></div>
       <div class="two"><button class="btn wide" id="bMaskGrow">Разшири</button><button class="btn wide" id="bMaskShrink">Свий</button></div>
       <button class="btn wide" id="bMaskCavity" title="Маскира вдлъбнатините: гънки, пори, бръчки">Маска по вдлъбнатините</button>
+    </section>
+
+    <section class="sec">
+      <h2>Видимост</h2>
+      <p class="note"><b>Ctrl+Shift</b>+влачене показва само ограденото (с Alt го скрива); Ctrl+Shift+щракване по група показва само нея (с Alt я скрива), по празното показва всичко. Скритото не се рисува и четките не го пипат.</p>
+      <p class="note" id="visInfo">Всичко се вижда</p>
+      <div class="two"><button class="btn wide" id="bShowAll">Покажи всичко</button><button class="btn wide" id="bVisInvert">Обърни</button></div>
+      <div class="two"><button class="btn wide" id="bHideMasked">Скрий маскираното</button><button class="btn wide" id="bMaskHidden">Маскирай скритото</button></div>
+      <button class="btn wide" id="bDelHidden" title="Delete Hidden">Изтрий скритото</button>
     </section>
 
     <section class="sec">
@@ -585,6 +602,7 @@ const S = {
   dynRef: 4,           // the camera distance at which the brush has its set size
   noiseScale: 0.5, noiseAmt: 0.3,
   extract: 0.3,        // Extract: thickness of the shell
+  clothGravity: 1, clothStretch: 0.9, clothBend: 0.15, clothFloor: true, clothTime: 5,
   defAxis: 1, defTo: 0,  // deformers: along which axis, and (bend) toward which of the other two
   arrCount: 6, arrMode: 'line', arrAxis: 0, arrGap: 0.2, arrScale: 1,
 };
@@ -781,6 +799,7 @@ class SculptMesh {
     this.col = col || new Float32Array(this.n * 3).fill(1);
     this.mask = mask || new Float32Array(this.n);
     this.grp = grp && grp.length >= this.n ? grp : new Float32Array(this.n);   // polygroup per vertex
+    this.hid = new Float32Array(this.n);   // 1: hidden (ZBrush: polygon visibility); a face with a hidden corner is hidden
     this.nrm = new Float32Array(this.n * 3);
     this.fn = new Float32Array(this.f * 3);
     this.level = level;
@@ -1066,7 +1085,7 @@ class SculptMesh {
     N[m3] = nx / nl; N[m3 + 1] = ny / nl; N[m3 + 2] = nz / nl;
     for (let k = 0; k < 3; k++) C[m3 + k] = (C[a3 + k] + C[b3 + k]) * 0.5;
     M[m] = (M[a] + M[b]) * 0.5;
-    this.grp[m] = this.grp[a];
+    this.grp[m] = this.grp[a]; this.hid[m] = Math.max(this.hid[a], this.hid[b]);
     this.dirty.push(m);
     for (let s = 0; s < faces.length; s++) {
       const t = faces[s], I = this.idx, o = t * 3;
@@ -1157,7 +1176,7 @@ class SculptMesh {
       remap[v] = j;
       if (j !== v) {
         for (let k = 0; k < 3; k++) { P[j * 3 + k] = P[v * 3 + k]; N[j * 3 + k] = N[v * 3 + k]; C[j * 3 + k] = C[v * 3 + k]; }
-        M[j] = M[v]; this.grp[j] = this.grp[v]; vfA[j] = vfA[v];
+        M[j] = M[v]; this.grp[j] = this.grp[v]; this.hid[j] = this.hid[v]; vfA[j] = vfA[v];
       }
       j++;
     }
@@ -1173,7 +1192,7 @@ class SculptMesh {
 }
 
 const FAR = 1e30;   // parking spot for freed vertices: never inside a brush, never drawn
-const V_ARRAYS = [['pos', 3, Float32Array], ['nrm', 3, Float32Array], ['col', 3, Float32Array], ['mask', 1, Float32Array], ['grp', 1, Float32Array],
+const V_ARRAYS = [['pos', 3, Float32Array], ['nrm', 3, Float32Array], ['col', 3, Float32Array], ['mask', 1, Float32Array], ['grp', 1, Float32Array], ['hid', 1, Float32Array],
   ['uStamp', 1, Uint32Array], ['uIdx', 1, Uint32Array], ['uPos', 3, Float32Array], ['uCol', 3, Float32Array], ['uMask', 1, Float32Array],
   ['frStamp', 1, Uint32Array], ['frList', 1, Uint32Array], ['gIdx', 1, Uint32Array], ['gFall', 1, Float32Array], ['tmp', 3, Float32Array], ['tagV', 1, Uint32Array], ['eStamp', 1, Uint32Array]];
 const F_ARRAYS = [['idx', 3, Uint32Array], ['fn', 3, Float32Array], ['tagF', 1, Uint32Array], ['gCell', 1, Int32Array], ['gSlot', 1, Int32Array]];
@@ -2119,10 +2138,10 @@ const matcapTextures = MATCAPS.map((m) => { const t = new THREE.CanvasTexture(ma
 const material = new THREE.ShaderMaterial({
   uniforms: { matcap: { value: matcapTextures[0] }, flatShade: { value: 0 }, showGroups: { value: 0 } },
   vertexShader: `
-    attribute vec3 aColor; attribute float aMask; attribute float aGroup;
-    varying vec3 vN; varying vec3 vC; varying float vM; varying vec3 vView; varying vec3 vG;
+    attribute vec3 aColor; attribute float aMask; attribute float aGroup; attribute float aHide;
+    varying vec3 vN; varying vec3 vC; varying float vM; varying vec3 vView; varying vec3 vG; varying float vH;
     void main() {
-      vN = normalize(normalMatrix * normal); vC = aColor; vM = aMask;
+      vN = normalize(normalMatrix * normal); vC = aColor; vM = aMask; vH = aHide;
       // a colour per group: golden-angle hues, so neighbouring numbers differ clearly; a border blends
       // across one row of triangles (groups are per vertex)
       float h = fract(aGroup * 0.381966 + 0.13);
@@ -2132,8 +2151,9 @@ const material = new THREE.ShaderMaterial({
     }`,
   fragmentShader: `
     uniform sampler2D matcap; uniform float flatShade; uniform float showGroups;
-    varying vec3 vN; varying vec3 vC; varying float vM; varying vec3 vView; varying vec3 vG;
+    varying vec3 vN; varying vec3 vC; varying float vM; varying vec3 vView; varying vec3 vG; varying float vH;
     void main() {
+      if (vH > 0.0) discard;   // (above 0 anywhere inside a face with a hidden corner)
       vec3 n = normalize(vN);
       if (flatShade > 0.5) n = normalize(cross(dFdx(vView), dFdy(vView)));
       if (!gl_FrontFacing && flatShade < 0.5) n = -n;
@@ -2151,9 +2171,16 @@ const material = new THREE.ShaderMaterial({
 });
 material.extensions = { derivatives: true };
 const wireMat = new THREE.MeshBasicMaterial({ color: 0x000000, wireframe: true, transparent: true, opacity: 0.22, depthWrite: false });
+// (the wire of hidden faces is not drawn either: the same test as the surface's)
+const hideInWire = (sh) => {
+  sh.vertexShader = 'attribute float aHide;\nvarying float vH;\n' + sh.vertexShader.replace('#include <begin_vertex>', '#include <begin_vertex>\nvH = aHide;');
+  sh.fragmentShader = 'varying float vH;\n' + sh.fragmentShader.replace('void main() {', 'void main() {\nif (vH > 0.0) discard;');
+};
+wireMat.onBeforeCompile = hideInWire;
 // three.js rebuilds a `wireframe: true` index from the whole index buffer whenever it changes, which is
 // far too slow while dynamic topology edits faces every frame; dyn mode draws its own edge list instead.
 const wireLineMat = new THREE.LineBasicMaterial({ color: 0x000000, transparent: true, opacity: 0.22, depthWrite: false });
+wireLineMat.onBeforeCompile = hideInWire;
 let wgeo = null;
 
 let mesh = null;           // SculptMesh
@@ -2207,6 +2234,7 @@ function buildGeometry() {
   geo.setAttribute('aColor', new THREE.BufferAttribute(m.col, 3).setUsage(THREE.DynamicDrawUsage));
   geo.setAttribute('aMask', new THREE.BufferAttribute(m.mask, 1).setUsage(THREE.DynamicDrawUsage));
   geo.setAttribute('aGroup', new THREE.BufferAttribute(m.grp, 1).setUsage(THREE.DynamicDrawUsage));
+  geo.setAttribute('aHide', new THREE.BufferAttribute(m.hid, 1).setUsage(THREE.DynamicDrawUsage));
   if (m.dyn) { geo.setDrawRange(0, m.f * 3); m.geomDirty = false; m.topoDirty = false; m.fMarks.length = 0; }
   gmesh = new THREE.Mesh(geo, material); gmesh.frustumCulled = false; gmesh.raycast = m.dyn ? () => {} : acceleratedRaycast;
   if (m.dyn) {
@@ -2214,6 +2242,7 @@ function buildGeometry() {
     for (let t = 0; t < m.f; t++) writeWire(W, m.idx, t);
     wgeo = new THREE.BufferGeometry();
     wgeo.setAttribute('position', geo.attributes.position);      // shared with the surface
+    wgeo.setAttribute('aHide', geo.attributes.aHide);
     wgeo.setIndex(new THREE.BufferAttribute(W, 1).setUsage(THREE.DynamicDrawUsage));
     wgeo.setDrawRange(0, m.f * 6);
     wmesh = new THREE.LineSegments(wgeo, wireLineMat);
@@ -2363,7 +2392,7 @@ function pick(x, y, inStroke = false) {
   if (!inStroke) refitBVH();
   ndc.set((x / viewport.w) * 2 - 1, -(y / viewport.h) * 2 + 1);
   raycaster.setFromCamera(ndc, camera);
-  const hit = raycaster.intersectObject(gmesh, false)[0];
+  const H = mesh.hid, hit = raycaster.intersectObject(gmesh, false).find((h) => !(H[h.face.a] || H[h.face.b] || H[h.face.c]));
   if (!hit) return null;
   const nrm = hit.face.normal.clone();
   if (nrm.dot(raycaster.ray.direction) > 0) nrm.negate();
@@ -2374,10 +2403,11 @@ function pickDyn(x, y) {
   const m = mesh;
   ndc.set((x / viewport.w) * 2 - 1, -(y / viewport.h) * 2 + 1);
   raycaster.setFromCamera(ndc, camera);
-  const ray = raycaster.ray, P = m.pos, I = m.idx;
+  const ray = raycaster.ray, P = m.pos, I = m.idx, H = m.hid;
   const ox = ray.origin.x, oy = ray.origin.y, oz = ray.origin.z, dx = ray.direction.x, dy = ray.direction.y, dz = ray.direction.z;
   let best = Infinity, bestF = -1;
   const test = (t) => {
+    if (H[I[t * 3]] || H[I[t * 3 + 1]] || H[I[t * 3 + 2]]) return;
     const a = I[t * 3] * 3, b = I[t * 3 + 1] * 3, c = I[t * 3 + 2] * 3;
     const e1x = P[b] - P[a], e1y = P[b + 1] - P[a + 1], e1z = P[b + 2] - P[a + 2];
     const e2x = P[c] - P[a], e2y = P[c + 1] - P[a + 1], e2z = P[c + 2] - P[a + 2];
@@ -2462,7 +2492,7 @@ function touchVert(i) {
 }
 
 function gather(cx, cy, cz, r, nx, ny, nz, frontOnly) {
-  const m = mesh, p = m.pos, nr = m.nrm, out = m.gIdx, fall = m.gFall;
+  const m = mesh, p = m.pos, nr = m.nrm, out = m.gIdx, fall = m.gFall, H = m.hid;
   const r2 = r * r, FL = curLUT;   // (not L: the dynamic branch below has its own L)
   let c = 0;
   if (m.dyn && m.gFaces) {
@@ -2486,6 +2516,7 @@ function gather(cx, cy, cz, r, nx, ny, nz, frontOnly) {
           if (d2 >= r2) continue;
           if (frontOnly && nr[i * 3] * nx + nr[i * 3 + 1] * ny + nr[i * 3 + 2] * nz < -0.1) continue;
           if (curGroup >= 0 && m.grp[i] !== curGroup) continue;
+          if (H[i]) continue;   // hidden: out of reach, as in ZBrush
           out[c] = i; fall[c] = lut(FL, Math.sqrt(d2) / r); c++;
         }
       }
@@ -2501,6 +2532,7 @@ function gather(cx, cy, cz, r, nx, ny, nz, frontOnly) {
     if (d2 >= r2) continue;
     if (frontOnly && nr[i * 3] * nx + nr[i * 3 + 1] * ny + nr[i * 3 + 2] * nz < -0.1) continue;
     if (curGroup >= 0 && m.grp[i] !== curGroup) continue;
+    if (H[i]) continue;
     out[c] = i; fall[c] = lut(FL, Math.sqrt(d2) / r); c++;
   }
   m.gCount = c;
@@ -2514,7 +2546,7 @@ function gatherDeep(pt, r) {
   dir.divideScalar(tp || 1);
   let c = 0;
   for (let i = 0; i < m.n; i++) {
-    if (m.dyn && !m.vfA[i].length) continue;
+    if ((m.dyn && !m.vfA[i].length) || m.hid[i]) continue;
     const vx = P[i * 3] - cp.x, vy = P[i * 3 + 1] - cp.y, vz = P[i * 3 + 2] - cp.z;
     const t = vx * dir.x + vy * dir.y + vz * dir.z; if (t <= 0) continue;
     const rr = r * t / tp, p2 = vx * vx + vy * vy + vz * vz - t * t;   // (the circle widens with depth, as on screen)
@@ -3490,7 +3522,7 @@ function flushDyn() {
     const names = ['position', 'normal'];
     if (frame_.colors || topo) names.push('aColor');
     if (frame_.masks || topo) names.push('aMask');
-    if (topo) names.push('aGroup');   // new vertices take a group
+    if (topo) names.push('aGroup', 'aHide');   // new vertices take a group (and visibility)
     uploadVerts(names, touched, touched.length);
     if (topo && m.fMarks.length) {
       const runs = toRuns(m.fMarks, m.fMarks.length);
@@ -3655,10 +3687,11 @@ canvas.addEventListener('pointerdown', (e) => {
       nav = { mode: 'pinch', ...pinchState() };
       return;
     }
-    if (!fingerDraws()) { nav = { mode: 'orbit', x, y, id: e.pointerId }; return; }
+    if (!fingerDraws() || clothRun) { nav = { mode: 'orbit', x, y, id: e.pointerId }; return; }
   } else {
     capture(e);
   }
+  if (clothRun && e.pointerType !== 'touch') { nav = { mode: e.button === 1 || e.altKey ? 'pan' : 'orbit', x, y, id: e.pointerId }; return; }
   if (stroke || nav || gesture || working) return;
   const barrel = e.pointerType === 'pen' && (e.buttons & 2);
   if (e.button === 2 || barrel) { nav = { mode: e.shiftKey ? 'pan' : (e.ctrlKey ? 'zoom' : 'orbit'), x, y, id: e.pointerId }; return; }
@@ -3670,7 +3703,9 @@ canvas.addEventListener('pointerdown', (e) => {
   // ZBrush: Ctrl masks. On the model a click blurs the mask (Ctrl+Alt sharpens) and a drag paints it;
   // on empty space a click inverts it and a drag draws a rectangle to mask (Alt: unmask, empty: clear).
   // Ctrl+Shift+click: on a group masks everything else; on empty space clears the mask
-  if (ctrl && e.shiftKey) { gesture = { kind: 'group', hit, x0: x, y0: y, x, y, e, id: e.pointerId }; hideRing(); return; }
+  // Ctrl+Shift (ZBrush: SelectRect / SelectLasso): a drag shows only what it covers (with Alt: hides it);
+  // a click on the model shows only that group (Alt: hides it), on empty space shows everything again
+  if (ctrl && e.shiftKey) { gesture = { kind: 'hidesel', hit, x0: x, y0: y, x, y, alt: e.altKey, id: e.pointerId, pts: [[x, y]] }; hideRing(); return; }
   if (ctrl) { gesture = { kind: hit ? 'maskpaint' : 'maskrect', x0: x, y0: y, x, y, alt: e.altKey, e, id: e.pointerId, pts: [[x, y]] }; hideRing(); return; }
   // Clip / Trim: a line, from anywhere (on or off the model)
   const cb = brush();
@@ -3716,19 +3751,19 @@ canvas.addEventListener('pointermove', (e) => {
     if (Math.hypot(x - gesture.x0, y - gesture.y0) > 4) gesture.moved = true;
     const moved = !!gesture.moved;
     // Ctrl+Shift dragged: the same as Ctrl+drag (paint mask, or a mask rectangle on empty space)
-    if (gesture.kind === 'group' && moved) { gesture.kind = gesture.hit ? 'maskpaint' : 'maskrect'; gesture.pts = [[gesture.x0, gesture.y0]]; }
+    if (gesture.kind === 'hidesel') gesture.alt = e.altKey;
     if (gesture.kind === 'cutline') { gesture.alt = e.altKey; gesture.snap = e.shiftKey; drawOverlay(); return; }
     if (gesture.kind === 'insert') { showInsertPreview(gesture); return; }
     if (gesture.kind === 'gizmo') { applyGizmo(gesture); drawOverlay(); return; }
     if (gesture.kind === 'picktool') { if (gesture.moved) { nav = { mode: 'orbit', x, y, id: gesture.id }; gesture = null; } return; }
     if (gesture.kind === 'curveedit') { drawOverlay(); return; }
     if (gesture.kind === 'curvedraw') { const lp = gesture.pts[gesture.pts.length - 1]; if (Math.hypot(x - lp[0], y - lp[1]) > 2) { gesture.pts.push([x, y]); drawOverlay(); } return; }
-    if (gesture.kind === 'maskrect' && gesture.pts) { const lp = gesture.pts[gesture.pts.length - 1]; if (Math.hypot(x - lp[0], y - lp[1]) > 3) gesture.pts.push([x, y]); }
+    if ((gesture.kind === 'maskrect' || gesture.kind === 'hidesel') && gesture.pts) { const lp = gesture.pts[gesture.pts.length - 1]; if (Math.hypot(x - lp[0], y - lp[1]) > 3) gesture.pts.push([x, y]); }
     if (gesture.kind === 'maskpaint' && moved) {
       // turn into a mask stroke from the press point
       const g = gesture; gesture = null;
       if (beginStroke(g.e, g.x0, g.y0, { ...brushById('mask'), base: 'mask', stroke: 'dots' }, g.alt ? -1 : 1)) stroke.queue.push({ x, y, p: readPressure(e) });
-    } else if (gesture.kind === 'maskrect' && moved) drawOverlay();
+    } else if ((gesture.kind === 'maskrect' || gesture.kind === 'hidesel') && moved) drawOverlay();
     return;
   }
   if (nav) {
@@ -3771,7 +3806,11 @@ function endPointer(e) {
     else if (g.kind === 'picktool') { const k = TOOLS.indexOf(g.tool); if (k >= 0) { activateTool(k); toast(`Активен подобект: ${g.tool.name}`); } }
     else if (g.kind === 'curvedraw') { if (moved) finishCurve(g); }
     else if (g.kind === 'curveedit') finishCurveEdit(g, false);
-    else if (g.kind === 'group') { if (!moved) { if (g.hit) maskAllBut(groupNear(g.hit.point, worldPerPx(g.hit.point) * 20)); else maskOp('clear'); } }
+    else if (g.kind === 'hidesel') {
+      if (moved) hideSelection(g);
+      else if (g.hit) hideGroup(groupNear(g.hit.point, worldPerPx(g.hit.point) * 20), g.alt);
+      else showAll();
+    }
     else if (g.kind === 'maskpaint') maskOp(g.alt ? 'sharpen' : 'blur');
     else if (!moved) maskOp('invert');
     else maskRect(g);
@@ -3937,6 +3976,7 @@ function renderOthers() {
       g.setAttribute('aColor', new THREE.BufferAttribute(c, 3));
       g.setAttribute('aMask', new THREE.BufferAttribute(new Float32Array(a.pos.length / 3), 1));
       g.setAttribute('aGroup', new THREE.BufferAttribute(Float32Array.from(a.grp), 1));
+      g.setAttribute('aHide', new THREE.BufferAttribute(new Float32Array(a.pos.length / 3), 1));
       g.computeBoundingSphere();
       const obj = new THREE.Mesh(g, material);
       scene.add(obj);
@@ -4145,7 +4185,7 @@ function gizmoPivot() {
   if (gizmoCache && gizmoCache.key === key) return gizmoCache.p;
   const m = mesh, P = m.pos, MK = m.mask;
   let x = 0, y = 0, z = 0, w = 0;
-  for (let i = 0; i < m.n; i++) { if (m.dyn && !m.vfA[i].length) continue; const k = 1 - MK[i]; if (k <= 0) continue; x += P[i * 3] * k; y += P[i * 3 + 1] * k; z += P[i * 3 + 2] * k; w += k; }
+  for (let i = 0; i < m.n; i++) { if (m.dyn && !m.vfA[i].length) continue; const k = (1 - MK[i]) * (1 - m.hid[i]); if (k <= 0) continue; x += P[i * 3] * k; y += P[i * 3 + 1] * k; z += P[i * 3 + 2] * k; w += k; }
   const p = w > 0 ? new THREE.Vector3(x / w, y / w, z / w) : null;
   gizmoCache = { key, p };
   return p;
@@ -4193,7 +4233,7 @@ function syncGizmoBar() {
 function startGizmo(e, x, y, handle) {
   const m = mesh, G = gizmoScreen();
   const ids = [], w = [];
-  for (let i = 0; i < m.n; i++) { if (m.dyn && !m.vfA[i].length) continue; const k = 1 - m.mask[i]; if (k > 0) { ids.push(i); w.push(k); } }
+  for (let i = 0; i < m.n; i++) { if (m.dyn && !m.vfA[i].length) continue; const k = (1 - m.mask[i]) * (1 - m.hid[i]); if (k > 0) { ids.push(i); w.push(k); } }
   const idx = Uint32Array.from(ids), orig = new Float32Array(idx.length * 3);
   idx.forEach((i, q) => { orig[q * 3] = m.pos[i * 3]; orig[q * 3 + 1] = m.pos[i * 3 + 1]; orig[q * 3 + 2] = m.pos[i * 3 + 2]; });
   gesture = { kind: 'gizmo', handle, mode: brush().gz || 'move', x0: x, y0: y, x, y, id: e.pointerId, idx, w: Float32Array.from(w), orig, G, camN: new THREE.Vector3(0, 0, 1).applyQuaternion(camera.quaternion) };
@@ -4274,6 +4314,83 @@ function drawGizmo(el) {
   el('circle', { cx: G.c[0], cy: G.c[1], r: 11, fill: 'none', stroke: '#fff', 'stroke-width': g && g.handle === 'free' ? 3 : 1.6 });
 }
 
+/* ---------- Polygon visibility (ZBrush: Ctrl+Shift: SelectRect, SelectLasso, Delete Hidden) ----------
+   A hidden part is not drawn, picked or touched by brushes, the gizmo or the deformers, so the parts
+   behind it can be reached. Steps that rebuild the mesh (remesh, trim, levels…) show everything again. */
+function hiddenCount(m = mesh) { let c = 0; for (let i = 0; i < m.n; i++) if (m.hid[i]) c++; return c; }
+function setHiddenUndoable(next, msg) {
+  const m = mesh, old = m.hid.slice(0, m.n);
+  let all = true; for (let i = 0; i < m.n; i++) if (!next[i] && !(m.dyn && !m.vfA[i].length)) { all = false; break; }
+  if (all) { toast('Така нищо няма да се вижда: изберете друга част.'); return; }
+  const put = (arr) => { if (mesh.n !== arr.length) return; mesh.hid.set(arr); uploadAll(geo.attributes.aHide); gizmoCache = null; requestRender(); renderVisibility(); };
+  put(next);
+  pushUndo({ type: 'fn', undo: () => put(old), redo: () => put(next), bytes: old.byteLength * 2 });
+  if (msg) toast(msg);
+}
+function hideSelection(g) {
+  const m = mesh, { sel, count } = selectedVerts(selectionPolygon(g)), next = m.hid.slice(0, m.n);
+  if (!count) { toast('Изборът не хвана нищо от модела.'); return; }
+  for (let i = 0; i < m.n; i++) if (g.alt ? sel[i] : !sel[i]) next[i] = 1;
+  setHiddenUndoable(next, g.alt ? 'Избраното е скрито. Ctrl+Shift+щракване по празното показва всичко.' : 'Вижда се само избраното. Ctrl+Shift+щракване по празното показва всичко.');
+}
+function hideGroup(gr, alt) {
+  const m = mesh, next = m.hid.slice(0, m.n);
+  for (let i = 0; i < m.n; i++) if (alt ? m.grp[i] === gr : m.grp[i] !== gr) next[i] = 1;
+  setHiddenUndoable(next, alt ? 'Групата е скрита.' : 'Вижда се само тази група.');
+}
+function showAll() {
+  const m = mesh;
+  if (!hiddenCount()) { toast('Всичко се вижда.'); return; }
+  setHiddenUndoable(new Float32Array(m.n), 'Всичко се вижда отново.');
+}
+function invertVisibility() {
+  const m = mesh;
+  if (!hiddenCount()) { toast('Нищо не е скрито.'); return; }
+  const next = new Float32Array(m.n);
+  for (let i = 0; i < m.n; i++) next[i] = m.hid[i] ? 0 : 1;
+  setHiddenUndoable(next, 'Видимостта е обърната.');
+}
+function hideMasked() {
+  const m = mesh, next = m.hid.slice(0, m.n);
+  let c = 0; for (let i = 0; i < m.n; i++) if (m.mask[i] >= 0.5 && !next[i]) { next[i] = 1; c++; }
+  if (!c) { toast('Няма маскирано за скриване.'); return; }
+  setHiddenUndoable(next, 'Маскираното е скрито.');
+}
+// the hidden part masked (with Ctrl+Shift+click on a group first: everything but that group)
+function maskHidden() {
+  const m = mesh;
+  if (!hiddenCount()) { toast('Нищо не е скрито.'); return; }
+  const next = Float32Array.from(m.mask.subarray(0, m.n));
+  for (let i = 0; i < m.n; i++) if (m.hid[i]) next[i] = 1;
+  setMaskUndoable(next);
+  toast('Скритото е маскирано. „Покажи всичко“ го показва, маската остава.');
+}
+// the hidden faces taken away for good (ZBrush: Delete Hidden)
+function deleteHidden() {
+  if (stroke || working) return;
+  const m = mesh;
+  if (!hiddenCount()) { toast('Нищо не е скрито.'); return; }
+  if (!askDropLevels('Изтриването на скритото')) return;
+  const a = meshArrays(), H = m.hid, map = new Int32Array(a.pos.length / 3).fill(-1), pos = [], col = [], mask = [], grp = [], idx = [];
+  // (meshArrays keeps the vertex order of a compact mesh, so the flags still match)
+  for (let t = 0; t < a.idx.length; t += 3) {
+    const tri = [a.idx[t], a.idx[t + 1], a.idx[t + 2]];
+    if (tri.some((v) => H[v])) continue;
+    for (const v of tri) {
+      if (map[v] < 0) { map[v] = pos.length / 3; pos.push(a.pos[v * 3], a.pos[v * 3 + 1], a.pos[v * 3 + 2]); col.push(a.col[v * 3], a.col[v * 3 + 1], a.col[v * 3 + 2]); mask.push(a.mask[v]); grp.push(a.grp[v]); }
+      idx.push(map[v]);
+    }
+  }
+  if (idx.length < 3) { toast('Нищо не би останало.'); return; }
+  const paused = replaceMesh(new SculptMesh(Float32Array.from(pos), Uint32Array.from(idx), Float32Array.from(col), Float32Array.from(mask), 0, Float32Array.from(grp)));
+  toast('Скритото е изтрито. Ръбът остава отворен: „Преизгради мрежата“ не работи с отворен модел.' + (paused ? ' ' + DYN_PAUSED_MSG : ''));
+}
+function renderVisibility() {
+  const el = $('visInfo'); if (!el) return;
+  const c = hiddenCount();
+  el.textContent = c ? `Скрити: ${fmt(c)} от ${fmt(mesh.n)} върха` : 'Всичко се вижда';
+}
+
 /* ---------- Deformers (ZBrush: Gizmo 3D > Customize: Bend, Twist, Taper) ----------
    On the unmasked part of the active subtool, along one axis through its middle. A slider shows the
    change while it is dragged; letting go keeps it as one undo step and the slider returns to 0. */
@@ -4285,7 +4402,7 @@ function deformAxes() {
 }
 function deformStart() {
   const m = mesh, ids = [], w = [];
-  for (let i = 0; i < m.n; i++) { if (m.dyn && !m.vfA[i].length) continue; const k = 1 - m.mask[i]; if (k > 0) { ids.push(i); w.push(k); } }
+  for (let i = 0; i < m.n; i++) { if (m.dyn && !m.vfA[i].length) continue; const k = (1 - m.mask[i]) * (1 - m.hid[i]); if (k > 0) { ids.push(i); w.push(k); } }
   if (!ids.length) return null;
   const idx = Uint32Array.from(ids), orig = new Float32Array(idx.length * 3);
   let cx = 0, cy = 0, cz = 0;
@@ -4375,6 +4492,78 @@ function makeArray() {
   toast(`Масив от ${S.arrCount} копия (Ctrl+Z го връща). „Раздели по групи“ не ги разделя: те са с еднакви групи; за отделни части ползвайте „Копие“.` + (paused ? ' ' + DYN_PAUSED_MSG : ''));
 }
 
+/* ---------- Cloth (ZBrush: Dynamics > Run Simulation), in the Rust core ----------
+   The active subtool falls like cloth: masked parts hang where they are, the rest drapes over the other
+   visible subtools and the floor (the lowest point of the scene). It runs a few steps every frame and
+   stops when it has settled or the time is up (or on „Спри“); the whole run is one undo step. */
+let clothRun = null;
+async function startCloth() {
+  if (clothRun) { stopCloth(); return; }
+  if (stroke || working) return;
+  let X;
+  try { X = await coreLocal(); } catch (e) { toast('Платът не е достъпен тук: няма WebAssembly.'); return; }
+  const m = mesh;
+  if (m.dyn && m.compact()) buildGeometry();
+  const n = m.n, f = m.f, pos = m.pos.slice(0, n * 3), idx = m.idx.slice(0, f * 3), inv = new Float32Array(n);
+  let free = 0;
+  for (let i = 0; i < n; i++) { if (m.dyn && !m.vfA[i].length) continue; inv[i] = (1 - m.mask[i]) * (1 - m.hid[i]); if (inv[i] > 0) free++; }
+  if (!free) { toast('Всичко е маскирано: размаскирайте частта, която да пада.'); return; }
+  // what it collides with: the other visible subtools, in one set of arrays
+  stashActive();
+  const cols = solo ? [] : TOOLS.filter((t, k) => k !== curTool && t.visible).map(toolArrays);
+  let cnv = 0, cnt = 0; for (const c of cols) { cnv += c.pos.length / 3; cnt += c.idx.length / 3; }
+  const cpos = new Float32Array(cnv * 3), cidx = new Uint32Array(cnt * 3);
+  let v0 = 0, t0 = 0, floor = Infinity;
+  for (const c of cols) { cpos.set(c.pos, v0 * 3); for (let q = 0; q < c.idx.length; q++) cidx[t0 * 3 + q] = c.idx[q] + v0; v0 += c.pos.length / 3; t0 += c.idx.length / 3; }
+  for (let i = 1; i < pos.length; i += 3) floor = Math.min(floor, pos[i]);
+  for (let i = 1; i < cpos.length; i += 3) floor = Math.min(floor, cpos[i]);
+  const e = meanEdge(pos, idx), thick = e * 0.5, { r } = m.bounds();
+  const par = Float32Array.of(S.clothGravity * 9.8 * r, S.clothStretch, S.clothBend, 0.99, thick, S.clothFloor ? floor : -1e30, 6, e * 1.2);
+  const ins = [pos, idx, inv, cpos, cidx, par];
+  const ptrs = ins.map((a) => { const p = X.mem_alloc(a.byteLength); new Uint8Array(X.memory.buffer, p, a.byteLength).set(new Uint8Array(a.buffer, a.byteOffset, a.byteLength)); return p; });
+  const rc = X.cloth_init(ptrs[0], n, ptrs[1], f, ptrs[2], ptrs[3], cnv, ptrs[4], cnt, ptrs[5]);
+  ins.forEach((a, k) => X.mem_free(ptrs[k], a.byteLength));
+  if (rc !== 0) { toast('Симулацията не можа да започне.'); return; }
+  working = true;
+  clothRun = { X, orig: pos, n, all: Uint32Array.from({ length: n }, (_, i) => i), t0: performance.now(), still: 0, thick };
+  syncClothUI();
+  requestAnimationFrame(clothFrame);
+}
+function clothFrame() {
+  const c = clothRun; if (!c) return;
+  const most = c.X.cloth_step(3, 1 / 180);
+  const out = new Float32Array(c.X.memory.buffer, c.X.cloth_pos(), c.n * 3);
+  mesh.pos.set(out);
+  mesh.updateNormals(c.all, c.n);
+  uploadAll(geo.attributes.position); uploadAll(geo.attributes.normal);
+  bvhDirty = true; requestRender();
+  c.still = most < c.thick * 0.01 ? c.still + 1 : 0;
+  if (c.still > 40 || performance.now() - c.t0 > S.clothTime * 1000) stopCloth();
+  else requestAnimationFrame(clothFrame);
+}
+function stopCloth() {
+  const c = clothRun; if (!c) return;
+  clothRun = null;
+  c.X.cloth_free();
+  const m = mesh, ids = [];
+  for (let i = 0; i < c.n; i++) if (m.pos[i * 3] !== c.orig[i * 3] || m.pos[i * 3 + 1] !== c.orig[i * 3 + 1] || m.pos[i * 3 + 2] !== c.orig[i * 3 + 2]) ids.push(i);
+  if (ids.length) {
+    const idx = Uint32Array.from(ids), k = idx.length, pos = new Float32Array(k * 3), col = new Float32Array(k * 3), mask = new Float32Array(k);
+    idx.forEach((i, q) => { for (let a = 0; a < 3; a++) { pos[q * 3 + a] = c.orig[i * 3 + a]; col[q * 3 + a] = m.col[i * 3 + a]; } mask[q] = m.mask[i]; });
+    pushUndo({ type: 'verts', idx, pos, col, mask });
+    scheduleAutosave();
+  }
+  if (m.dyn) m.gridMaybeRebuild();
+  working = false; gizmoCache = null;
+  syncClothUI();
+  toast(ids.length ? 'Платът е спрял (Ctrl+Z го връща).' : 'Нищо не помръдна.');
+}
+function syncClothUI() {
+  const b = $('bCloth'); if (!b) return;
+  b.textContent = clothRun ? 'Спри' : 'Пусни симулацията';
+  setPressed('bCloth', !!clothRun);
+}
+
 /* ---------- the Rust core (../core, WebAssembly) ----------
    The voxel remesh and the booleans run in Rust, in a worker, so the page keeps drawing meanwhile. If
    workers are not allowed the module runs on the page; if WebAssembly is not allowed either, the
@@ -4401,13 +4590,21 @@ onmessage = async (e) => {
   try { const o = coreCall(X, d); postMessage({ id: d.id, out: o }, [o.pos.buffer, o.idx.buffer, o.col.buffer, o.mask.buffer, o.grp.buffer]); }
   catch (err) { postMessage({ id: d.id, error: String((err && err.message) || err) }); }
 };`;
-let corePromise = null;
+let corePromise = null, corePagePromise = null;
+async function coreBytes() {
+  if (window.GLINA_WASM) return Uint8Array.from(atob(window.GLINA_WASM), (c) => c.charCodeAt(0));
+  const r = await fetch('build/glina-core.wasm'); if (!r.ok) throw new Error('no core');
+  return new Uint8Array(await r.arrayBuffer());
+}
+// the module on the page itself, for work that answers every frame (cloth)
+function coreLocal() {
+  if (!corePagePromise) corePagePromise = (async () => (await WebAssembly.instantiate(await coreBytes(), {})).instance.exports)();
+  return corePagePromise;
+}
 function coreStart() {
   if (corePromise) return corePromise;
   corePromise = (async () => {
-    let bytes;
-    if (window.GLINA_WASM) bytes = Uint8Array.from(atob(window.GLINA_WASM), (c) => c.charCodeAt(0));
-    else { const r = await fetch('build/glina-core.wasm'); if (!r.ok) throw new Error('no core'); bytes = new Uint8Array(await r.arrayBuffer()); }
+    const bytes = await coreBytes();
     try {
       const w = new Worker(URL.createObjectURL(new Blob([CORE_WORKER], { type: 'text/javascript' })));
       await new Promise((ok, bad) => {
@@ -4557,8 +4754,8 @@ function drawOverlay() {
     for (const q of [line[0], line[line.length - 1]]) el('circle', { cx: q[0], cy: q[1], r: 3.5, fill: '#ffd48a', stroke: '#000', 'stroke-opacity': 0.5 });
   }
   if (!g) return;
-  if (g.kind === 'maskrect') {
-    const colr = g.alt ? '#ff9f7e' : '#7ea6ff';
+  if (g.kind === 'maskrect' || g.kind === 'hidesel') {
+    const colr = g.kind === 'hidesel' ? (g.alt ? '#ef7a6a' : '#7ee08a') : g.alt ? '#ff9f7e' : '#7ea6ff';
     const pts = selectionPolygon(g).map((p) => p.join(',')).join(' ');
     if (pts) el('polygon', { points: pts, fill: colr, 'fill-opacity': 0.12, stroke: colr, 'stroke-width': 1.5, 'stroke-dasharray': '5 4' });
   } else if (g.kind === 'cutline') {
@@ -4582,23 +4779,30 @@ function inPolygon(x, y, poly) {
 }
 // mask everything that lies inside the rectangle or lasso on screen, front and back (ZBrush: MaskRect,
 // MaskLasso); an empty selection clears the mask
-function maskRect(g) {
-  const m = mesh, P = m.pos, M = m.mask, poly = selectionPolygon(g);
+// the vertices (of the live mesh, used and shown) that the rectangle or lasso covers on screen, front and back
+function selectedVerts(poly) {
+  const m = mesh, P = m.pos, sel = new Uint8Array(m.n);
   let x0 = Infinity, x1 = -Infinity, y0 = Infinity, y1 = -Infinity;
   for (const [x, y] of poly) { x0 = Math.min(x0, x); x1 = Math.max(x1, x); y0 = Math.min(y0, y); y1 = Math.max(y1, y); }
   camera.updateMatrixWorld();
   const e = new THREE.Matrix4().multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse).elements;
-  const next = Float32Array.from(M.subarray(0, m.n));
-  let inside = 0;
+  let count = 0;
   for (let i = 0; i < m.n; i++) {
-    if (m.dyn && !m.vfA[i].length) continue;
+    if ((m.dyn && !m.vfA[i].length) || m.hid[i]) continue;
     const x = P[i * 3], y = P[i * 3 + 1], z = P[i * 3 + 2];
     const w = e[3] * x + e[7] * y + e[11] * z + e[15]; if (w <= 0) continue;
     const sx = ((e[0] * x + e[4] * y + e[8] * z + e[12]) / w * 0.5 + 0.5) * viewport.w;
     const sy = (0.5 - (e[1] * x + e[5] * y + e[9] * z + e[13]) / w * 0.5) * viewport.h;
     if (sx < x0 || sx > x1 || sy < y0 || sy > y1 || !inPolygon(sx, sy, poly)) continue;
-    next[i] = g.alt ? 0 : 1; inside++;
+    sel[i] = 1; count++;
   }
+  return { sel, count };
+}
+function maskRect(g) {
+  const m = mesh, M = m.mask;
+  const next = Float32Array.from(M.subarray(0, m.n));
+  const { sel, count: inside } = selectedVerts(selectionPolygon(g));
+  for (let i = 0; i < m.n; i++) if (sel[i]) next[i] = g.alt ? 0 : 1;
   if (!inside) { next.fill(0); toast('Маската е изчистена.'); }
   setMaskUndoable(next);
 }
@@ -4642,7 +4846,7 @@ function applyCut(g) {
     for (let pass = 0, again = true; again && pass < 16; pass++) {
       again = false;
       for (const { n, d } of planes) for (let i = 0; i < m.n; i++) {
-        if (m.dyn && !m.vfA[i].length) continue;
+        if ((m.dyn && !m.vfA[i].length) || m.hid[i]) continue;
         const sd = n.x * P[i * 3] + n.y * P[i * 3 + 1] + n.z * P[i * 3 + 2] + d;
         if (sd <= 1e-7) continue;
         const k = sd * (1 - MK[i]); if (k <= 1e-7) continue;
@@ -4732,6 +4936,7 @@ function showInsertPreview(g) {
     geo2.setAttribute('aColor', new THREE.BufferAttribute(new Float32Array(nv * 3).fill(1), 3));
     geo2.setAttribute('aMask', new THREE.BufferAttribute(new Float32Array(nv), 1));
     geo2.setAttribute('aGroup', new THREE.BufferAttribute(new Float32Array(nv).fill(7), 1));
+    geo2.setAttribute('aHide', new THREE.BufferAttribute(new Float32Array(nv), 1));
     immPreview = { geo: geo2, group: new THREE.Group() };
     scene.add(immPreview.group);
   }
@@ -4922,7 +5127,7 @@ function applyNoise() {
   const size = Math.max(1e-4, S.noiseScale * r * 0.25), amp = S.noiseAmt * r * 0.03;
   stroke = { uCount: 0, tool: 'noise' }; strokeId++; frame_.tag++;
   for (let i = 0; i < m.n; i++) {
-    if (m.dyn && !m.vfA[i].length) continue;
+    if ((m.dyn && !m.vfA[i].length) || m.hid[i]) continue;
     const w = 1 - MK[i]; if (w <= 0) continue;
     const k = fbm3(P[i * 3] / size, P[i * 3 + 1] / size, P[i * 3 + 2] / size) * amp * w;
     touchVert(i);
@@ -5676,6 +5881,7 @@ function fmt(n) { return n.toLocaleString('bg-BG'); }
 let toastT = 0;
 function toast(msg) { const t = $('toast'); t.textContent = msg; t.classList.add('show'); clearTimeout(toastT); toastT = setTimeout(() => t.classList.remove('show'), 2600); }
 function updateStats() {
+  renderVisibility();
   $('hVerts').textContent = fmt(mesh.n); $('hTris').textContent = fmt(mesh.f);
   $('gVerts').textContent = fmt(mesh.n); $('gTris').textContent = fmt(mesh.f); syncLevelUI();
 }
@@ -6050,6 +6256,11 @@ $('bToolMerge').onclick = mergeDown;
 $('bToolSplit').onclick = splitGroups;
 $('bSolo').onclick = () => { solo = !solo; renderTools(); renderOthers(); };
 $('bExtract').onclick = extractTool;
+$('bShowAll').onclick = showAll;
+$('bVisInvert').onclick = invertVisibility;
+$('bHideMasked').onclick = hideMasked;
+$('bDelHidden').onclick = deleteHidden;
+$('bMaskHidden').onclick = maskHidden;
 bindDeform('sBend', 'oBend', 'bend', (v) => v + '°');
 bindDeform('sTwist', 'oTwist', 'twist', (v) => v + '°');
 bindDeform('sTaperD', 'oTaperD', 'taper', (v) => (v > 0 ? '+' : '') + Math.round(v * 100) + '%');
@@ -6067,6 +6278,13 @@ bindRange('sArrCount', 'oArrCount', () => S.arrCount, (v) => (S.arrCount = v), (
 bindRange('sArrGap', 'oArrGap', () => S.arrGap, (v) => (S.arrGap = v), pct);
 bindRange('sArrScale', 'oArrScale', () => S.arrScale, (v) => (S.arrScale = v), (v) => '×' + v.toFixed(2));
 $('bArray').onclick = makeArray;
+bindRange('sClothG', 'oClothG', () => S.clothGravity, (v) => (S.clothGravity = v), (v) => '×' + v.toFixed(2));
+bindRange('sClothS', 'oClothS', () => S.clothStretch, (v) => (S.clothStretch = v), pct);
+bindRange('sClothB', 'oClothB', () => S.clothBend, (v) => (S.clothBend = v), pct);
+bindRange('sClothT', 'oClothT', () => S.clothTime, (v) => (S.clothTime = v), (v) => v + ' с');
+$('tClothFloor').checked = S.clothFloor;
+$('tClothFloor').addEventListener('change', () => { S.clothFloor = $('tClothFloor').checked; saveSettings(); });
+$('bCloth').onclick = startCloth;
 $('bBoolean').onclick = makeBoolean;
 bindRange('sExtract', 'oExtract', () => S.extract, (v) => (S.extract = v), pct);
 $('bMirrorWeld').onclick = mirrorWeld;
@@ -6192,5 +6410,5 @@ loadAutosave().then((d) => {
     toast('Продължавате последния модел. „Нов“ започва отначало.');
   }
 });
-window.__glina = { deform, makeArray, arrayArrays, setGizmoMode, get gizmoPin() { return gizmoPin; }, set gizmoPin(v) { gizmoPin = v; }, exportOBJ, scheduleAutosave, get TOOLS() { return TOOLS; }, get curTool() { return curTool; }, activateTool, addTool, appendPrimitive, duplicateTool, deleteTool, moveTool, mergeDown, splitGroups, extractTool, extractShell, makeBoolean, newScene, gizmoHandle, gizmoScreen, get solo() { return solo; }, set solo(v) { solo = v; renderOthers(); }, toolArrays, voxelCombine, voxelRemesh, coreStart, get working() { return working; }, sliceByPlane, mirrorWeldArrays, mirrorWeld, mirrorFlip, applyNoise, snapView, setOrtho, historyJump, polyframe, get cam() { return cam; }, trimByPlane, applyCut, tubeArrays, immShape, hasOpenEdges, get curve() { return liveCurve(); }, dropCurve, get immFile() { return immFile; }, set immFile(v) { immFile = v; }, get LAYERS() { return LAYERS; }, get recLayer() { return recLayer; }, addLayer, deleteLayer, toggleLayer, recordLayer, setLayerStrength, bakeLayers, groupOp, maskAllBut, groupNear, get mesh() { return mesh; }, get stroke() { return stroke; }, get gesture() { return gesture; }, get nav() { return nav; }, get MR() { return MR; }, syncSym, get SYM() { return SYM; }, setLevel, divide, deleteLower, deleteHigher, camera, orbit, pick, selectTool, brush, brushById, maskOp, remesh, undo, redo, subdivide, setDyntopo, floodDetail, S, get undoStack() { return undoStack; } };
+window.__glina = { maskHidden, startCloth, stopCloth, get clothRun() { return clothRun; }, hideSelection, hideGroup, showAll, invertVisibility, hideMasked, deleteHidden, hiddenCount, setHiddenUndoable, deform, makeArray, arrayArrays, setGizmoMode, get gizmoPin() { return gizmoPin; }, set gizmoPin(v) { gizmoPin = v; }, exportOBJ, scheduleAutosave, get TOOLS() { return TOOLS; }, get curTool() { return curTool; }, activateTool, addTool, appendPrimitive, duplicateTool, deleteTool, moveTool, mergeDown, splitGroups, extractTool, extractShell, makeBoolean, newScene, gizmoHandle, gizmoScreen, get solo() { return solo; }, set solo(v) { solo = v; renderOthers(); }, toolArrays, voxelCombine, voxelRemesh, coreStart, get working() { return working; }, sliceByPlane, mirrorWeldArrays, mirrorWeld, mirrorFlip, applyNoise, snapView, setOrtho, historyJump, polyframe, get cam() { return cam; }, trimByPlane, applyCut, tubeArrays, immShape, hasOpenEdges, get curve() { return liveCurve(); }, dropCurve, get immFile() { return immFile; }, set immFile(v) { immFile = v; }, get LAYERS() { return LAYERS; }, get recLayer() { return recLayer; }, addLayer, deleteLayer, toggleLayer, recordLayer, setLayerStrength, bakeLayers, groupOp, maskAllBut, groupNear, get mesh() { return mesh; }, get stroke() { return stroke; }, get gesture() { return gesture; }, get nav() { return nav; }, get MR() { return MR; }, syncSym, get SYM() { return SYM; }, setLevel, divide, deleteLower, deleteHigher, camera, orbit, pick, selectTool, brush, brushById, maskOp, remesh, undo, redo, subdivide, setDyntopo, floodDetail, S, get undoStack() { return undoStack; } };
 </script>

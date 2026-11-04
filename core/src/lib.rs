@@ -11,6 +11,9 @@
 //!
 //! The JavaScript side talks to it through plain exports: `mem_alloc` / `mem_free` for the inputs,
 //! `voxel_csg` to run, and `out_ptr` / `out_len` / `out_res` / `out_clear` to read the result.
+//! Cloth (cloth.rs) keeps its state between calls: `cloth_init`, `cloth_step`, `cloth_pos`, `cloth_free`.
+
+pub mod cloth;
 
 use std::alloc::{alloc, dealloc, Layout};
 use std::cell::RefCell;
@@ -46,7 +49,7 @@ pub struct Output {
 const GRID_BUDGET: f64 = 300e6;
 
 #[inline]
-fn p3(p: &[f32], v: usize) -> [f64; 3] { [p[v * 3] as f64, p[v * 3 + 1] as f64, p[v * 3 + 2] as f64] }
+pub(crate) fn p3(p: &[f32], v: usize) -> [f64; 3] { [p[v * 3] as f64, p[v * 3 + 1] as f64, p[v * 3 + 2] as f64] }
 
 /// The closest point of triangle abc to p and its squared distance (Ericson, Real-Time Collision Detection 5.1.5).
 pub fn closest_on_tri(a: [f64; 3], b: [f64; 3], c: [f64; 3], p: [f64; 3]) -> ([f64; 3], f64) {
@@ -416,6 +419,57 @@ pub extern "C" fn out_len(kind: u32) -> usize {
 pub extern "C" fn out_res() -> u32 { OUT.with(|c| c.borrow().res) }
 #[no_mangle]
 pub extern "C" fn out_clear() { OUT.with(|c| *c.borrow_mut() = Output::default()); }
+
+thread_local! { static CLOTH: RefCell<Option<(cloth::Cloth, Vec<f32>)>> = const { RefCell::new(None) }; }
+
+/// Starts a cloth run. `inv` is the inverse mass per vertex (0: pinned … 1: free). The collider is
+/// every other mesh in one set of arrays (`cnt` 0: none). `par`: gravity, stretch, bend, damping,
+/// thickness, floor height, constraint passes, collider cell size. Returns 0, or −1 for bad input.
+/// # Safety
+/// Every pointer must point to as many values as its count says.
+#[no_mangle]
+pub unsafe extern "C" fn cloth_init(
+    pos: *const f32, nv: usize, idx: *const u32, nt: usize, inv: *const f32,
+    cpos: *const f32, cnv: usize, cidx: *const u32, cnt: usize, par: *const f32,
+) -> i32 {
+    let pos = std::slice::from_raw_parts(pos, nv * 3);
+    let idx = std::slice::from_raw_parts(idx, nt * 3);
+    let inv = std::slice::from_raw_parts(inv, nv);
+    let par = std::slice::from_raw_parts(par, 8);
+    if idx.iter().any(|&v| v as usize >= nv) { return -1; }
+    let collider = if cnt > 0 {
+        let cpos = std::slice::from_raw_parts(cpos, cnv * 3);
+        let cidx = std::slice::from_raw_parts(cidx, cnt * 3);
+        if cidx.iter().any(|&v| v as usize >= cnv) { return -1; }
+        cloth::Collider::new(cpos, cidx, par[7] as f64)
+    } else { None };
+    let p = cloth::ClothParams {
+        gravity: par[0] as f64, stretch: par[1] as f64, bend: par[2] as f64, damping: par[3] as f64,
+        thick: par[4] as f64, floor: par[5] as f64, iters: par[6] as u32, max_step: par[7] as f64,
+    };
+    let c = cloth::Cloth::new(pos, idx, inv, collider, p);
+    CLOTH.with(|s| *s.borrow_mut() = Some((c, pos.to_vec())));
+    0
+}
+/// Runs `steps` steps of `dt` seconds; returns how far the farthest vertex moved (to see it settle).
+#[no_mangle]
+pub extern "C" fn cloth_step(steps: u32, dt: f32) -> f32 {
+    CLOTH.with(|s| {
+        let mut s = s.borrow_mut();
+        let Some((c, out)) = s.as_mut() else { return -1.0 };
+        c.step(steps, dt as f64);
+        let mut most = 0f32;
+        for (o, &x) in out.iter_mut().zip(c.x.iter()) { most = most.max((x as f32 - *o).abs()); *o = x as f32; }
+        most
+    })
+}
+/// The cloth's positions after the last step (3 per vertex).
+#[no_mangle]
+pub extern "C" fn cloth_pos() -> *const f32 {
+    CLOTH.with(|s| s.borrow().as_ref().map_or(std::ptr::null(), |(_, o)| o.as_ptr()))
+}
+#[no_mangle]
+pub extern "C" fn cloth_free() { CLOTH.with(|s| *s.borrow_mut() = None); }
 
 #[cfg(test)]
 mod tests {
