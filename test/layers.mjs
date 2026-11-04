@@ -46,12 +46,13 @@ await drag(null, cx - 70, cy - 70, cx + 120, cy + 120, 30);
 const moved = await G((b) => { const m = window.__glina.mesh, P = m.pos, out = new Set(); for (let i = 0; i < m.n; i++) if (Math.abs(P[i * 3] - b[i * 3]) + Math.abs(P[i * 3 + 1] - b[i * 3 + 1]) + Math.abs(P[i * 3 + 2] - b[i * 3 + 2]) > 1e-6) out.add(m.grp[i]); return [...out]; }, before.pos);
 check('“only the group under the brush”: only one group moved', moved.length === 1, moved);
 await G(() => { window.__glina.brush().group = false; window.__glina.undo(); });
-// Ctrl+Shift+click on a group masks the rest
+// Ctrl+Shift+click on a group shows only it (ZBrush); „Маскирай скритото“ then masks the rest
 await drag(null, cx + 60, cy + 60, cx + 60, cy + 60, 1, ['Control', 'Shift']);
+await G(() => window.__glina.maskHidden());
 s = await st();
-const gm = await G(() => { const m = window.__glina.mesh; let wrong = 0; const g0 = m.grp[0]; return { masked: Array.from(m.mask.subarray(0, m.n)).filter((v) => v > 0.5).length, n: m.n }; });
-check('Ctrl+Shift+click: everything but the group is masked', gm.masked > 0 && gm.masked < gm.n, gm);
-await G(() => window.__glina.maskOp('clear'));
+const gm = await G(() => { const m = window.__glina.mesh; let groupsShown = new Set(); for (let i = 0; i < m.n; i++) if (!m.hid[i]) groupsShown.add(m.grp[i]); return { masked: Array.from(m.mask.subarray(0, m.n)).filter((v) => v > 0.5).length, n: m.n, shown: groupsShown.size }; });
+check('Ctrl+Shift+click shows one group; masking the hidden masks everything but it', gm.shown === 1 && gm.masked > 0 && gm.masked < gm.n, gm);
+await G(() => { window.__glina.maskOp('clear'); window.__glina.showAll(); });
 // groups follow subdivision, remesh and dynamic topology
 await page.keyboard.press('Control+d'); await idle(); s = await st();
 check('subdivision keeps the groups', s.groups.length === 2);
