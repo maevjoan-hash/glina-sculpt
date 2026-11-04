@@ -14,6 +14,7 @@
 //! Cloth (cloth.rs) keeps its state between calls: `cloth_init`, `cloth_step`, `cloth_pos`, `cloth_free`.
 
 pub mod cloth;
+pub mod decimate;
 
 use std::alloc::{alloc, dealloc, Layout};
 use std::cell::RefCell;
@@ -474,6 +475,18 @@ pub unsafe extern "C" fn project_raw(pos: *const f32, nrm: *const f32, w: *const
     let sidx = std::slice::from_raw_parts(sidx, snt * 3);
     if sidx.iter().any(|&v| v as usize >= snv) { return -1; }
     project(std::slice::from_raw_parts(pos, nv * 3), std::slice::from_raw_parts(nrm, nv * 3), std::slice::from_raw_parts(w, nv), std::slice::from_raw_parts(spos, snv * 3), sidx, std::slice::from_raw_parts(scol, snv * 3), reach as f64, std::slice::from_raw_parts_mut(opos, nv * 3), std::slice::from_raw_parts_mut(ocol, nv * 3)) as i32
+}
+
+/// Decimation into the shared result (`out_ptr` / `out_len`): about `target` triangles.
+/// # Safety
+/// Every pointer must point to as many values as its count says.
+#[no_mangle]
+pub unsafe extern "C" fn decimate_raw(pos: *const f32, nv: usize, idx: *const u32, nt: usize, col: *const f32, mask: *const f32, grp: *const f32, target: usize) -> i32 {
+    let idx = std::slice::from_raw_parts(idx, nt * 3);
+    if idx.iter().any(|&v| v as usize >= nv) { return -1; }
+    let m = decimate::decimate(std::slice::from_raw_parts(pos, nv * 3), idx, std::slice::from_raw_parts(col, nv * 3), std::slice::from_raw_parts(mask, nv), std::slice::from_raw_parts(grp, nv), target);
+    OUT.with(|c| *c.borrow_mut() = Output { pos: m.pos, idx: m.idx, col: m.col, mask: m.mask, grp: m.grp, res: 0 });
+    0
 }
 
 thread_local! { static CLOTH: RefCell<Option<(cloth::Cloth, Vec<f32>)>> = const { RefCell::new(None) }; }

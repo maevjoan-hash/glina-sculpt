@@ -471,6 +471,10 @@ input[type=range] { width: 100%; height: 26px; accent-color: var(--wax); backgro
       <div class="row"><label for="sVoxel">Плътност на преизграждането</label><output id="oVoxel"></output><input type="range" id="sVoxel" min="48" max="256" step="8"></div>
       <button class="btn wide" id="bRemesh" title="DynaMesh: нова равна мрежа по формата на модела">Преизгради мрежата (DynaMesh)</button>
       <p class="note">Прави нови еднакви триъгълници по цялата форма: оправя разтегнатите места след дълго дърпане и слива частите, които се застъпват. Цветът и маската се запазват; по-фините детайли от плътността изчезват.</p>
+      <div class="row"><label for="sDecim">Остават от триъгълниците</label><output id="oDecim"></output><input type="range" id="sDecim" min="0.02" max="0.9" step="0.01"></div>
+      <button class="btn wide" id="bDecimate" title="Decimation Master: по-малко триъгълници, същата форма">Намали триъгълниците</button>
+      <div class="row"><label for="nPrint">Размер при експорт: най-дългата страна, мм (0 — както е)</label><input type="number" id="nPrint" min="0" max="10000" step="1" style="width:90px"></div>
+      <p class="note" id="printInfo"></p>
       <div class="note lab">Запомнена форма (Morph Target)</div>
       <button class="btn wide" id="bMorphStore" title="StoreMT">Запомни формата</button>
       <div class="two"><button class="btn wide" id="bMorphSwitch" title="Switch" disabled>Размени</button><button class="btn wide" id="bMorphDrop" title="DelMT" disabled>Забрави</button></div>
@@ -664,6 +668,8 @@ const S = {
   dynRef: 4,           // the camera distance at which the brush has its set size
   noiseScale: 0.5, noiseAmt: 0.3,
   extract: 0.3,        // Extract: thickness of the shell
+  decimateKeep: 0.25,  // Decimation: share of the triangles kept
+  printSize: 0,        // OBJ / STL: the longest side in millimetres (0: as it is)
   refOpacity: 0.5, refScale: 1, refFront: true, paintFromRef: false,
   smoothView: false,
   fibCount: 800, fibLength: 0.15, fibWidth: 0.006, fibGravity: 0.4, fibVary: 0.4,
@@ -5568,7 +5574,9 @@ const OP = { add: 0, subtract: 1, intersect: 2 };
 function coreCall(X, m) {
   const ins = [m.pos, m.idx, m.col, m.mask, m.grp, m.parts];
   const ptrs = ins.map((a) => { const p = X.mem_alloc(a.byteLength); new Uint8Array(X.memory.buffer, p, a.byteLength).set(new Uint8Array(a.buffer, a.byteOffset, a.byteLength)); return p; });
-  const rc = X.voxel_csg_raw(ptrs[0], m.pos.length / 3, ptrs[1], m.idx.length / 3, ptrs[2], ptrs[3], ptrs[4], ptrs[5], m.parts.length / 3, m.res);
+  const rc = m.op === 'decimate'
+    ? X.decimate_raw(ptrs[0], m.pos.length / 3, ptrs[1], m.idx.length / 3, ptrs[2], ptrs[3], ptrs[4], m.target)
+    : X.voxel_csg_raw(ptrs[0], m.pos.length / 3, ptrs[1], m.idx.length / 3, ptrs[2], ptrs[3], ptrs[4], ptrs[5], m.parts.length / 3, m.res);
   ins.forEach((a, k) => X.mem_free(ptrs[k], a.byteLength));
   if (rc !== 0) throw new Error('the core refused the input');
   const get = (k, T) => new T(X.memory.buffer, X.out_ptr(k), X.out_len(k)).slice();
@@ -5581,7 +5589,7 @@ let X = null;
 onmessage = async (e) => {
   const d = e.data;
   if (d.init) { try { X = (await WebAssembly.instantiate(d.init, {})).instance.exports; postMessage({ ready: true }); } catch (err) { postMessage({ error: String(err) }); } return; }
-  try { const o = coreCall(X, d); postMessage({ id: d.id, out: o }, [o.pos.buffer, o.idx.buffer, o.col.buffer, o.mask.buffer, o.grp.buffer]); }
+  try { const o = coreCall(X, d); postMessage({ id: d.id, out: o }, [o.pos.buffer, o.idx.buffer, o.col.buffer, o.mask.buffer, o.grp.buffer]); }   // (voxel or decimate)
   catch (err) { postMessage({ id: d.id, error: String((err && err.message) || err) }); }
 };`;
 let corePromise = null, corePagePromise = null;
@@ -5640,6 +5648,26 @@ async function voxelCombine(parts, res) {
     v += n; t += f;
   });
   return core.run({ pos, idx, col, mask, grp, parts: list, res });
+}
+// fewer triangles, the same shape (Rust: quadric error metric), in the worker
+async function decimateArrays(a, target) {
+  const core = await coreStart();
+  const n = a.pos.length / 3;
+  return core.run({ op: 'decimate', pos: Float32Array.from(a.pos), idx: Uint32Array.from(a.idx), col: Float32Array.from(a.col.subarray(0, n * 3)), mask: Float32Array.from(a.mask.subarray(0, n)), grp: Float32Array.from(a.grp.subarray(0, n)), parts: new Uint32Array(0), target });
+}
+function decimate() {
+  if (stroke || mrPending || working) return;
+  if (!askDropLevels('Намаляването на триъгълниците')) return;
+  const a = meshArrays(), f0 = a.idx.length / 3, target = Math.max(8, Math.round(f0 * S.decimateKeep));
+  busy(true); working = true;
+  const t0 = performance.now();
+  decimateArrays(a, target)
+    .then((r) => {
+      const paused = replaceMesh(new SculptMesh(r.pos, r.idx, r.col, r.mask, 0, r.grp));
+      toast(`${fmt(f0)} → ${fmt(r.idx.length / 3)} триъгълника за ${((performance.now() - t0) / 1000).toFixed(1)} с. Формата, ръбовете на отворите и границите на групите остават.` + (paused ? ' ' + DYN_PAUSED_MSG : ''));
+    })
+    .catch((e) => toast('Намаляването не успя: ' + e.message))
+    .finally(() => { working = false; busy(false); });
 }
 let working = false;   // a long job is running: the model must not change under it
 function remesh() {
@@ -6817,8 +6845,31 @@ async function openProject(bytes, name) {
 }
 
 /* ---------- export ---------- */
-// every visible subtool (OBJ keeps each as its own object)
-function exportParts() { stashActive(); return TOOLS.filter((t, k) => t.visible || k === curTool).filter((t) => !solo || t === TOOLS[curTool]).map((t) => ({ name: t.name, a: toolArrays(t) })); }
+// every visible subtool (OBJ keeps each as its own object), scaled to the print size if one is set
+function exportParts() {
+  stashActive();
+  const list = TOOLS.filter((t, k) => t.visible || k === curTool).filter((t) => !solo || t === TOOLS[curTool]).map((t) => ({ name: t.name, a: toolArrays(t) }));
+  const k = printScale(list);
+  if (k !== 1) for (const it of list) { const p = Float32Array.from(it.a.pos); for (let i = 0; i < p.length; i++) p[i] *= k; it.a = { ...it.a, pos: p }; }
+  return list;
+}
+// (3D printers read the numbers as millimetres)
+function printScale(list) {
+  if (!S.printSize) return 1;
+  const lo = [Infinity, Infinity, Infinity], hi = [-Infinity, -Infinity, -Infinity];
+  for (const { a } of list) for (let i = 0; i < a.pos.length; i += 3) for (let c = 0; c < 3; c++) { lo[c] = Math.min(lo[c], a.pos[i + c]); hi[c] = Math.max(hi[c], a.pos[i + c]); }
+  const ext = Math.max(hi[0] - lo[0], hi[1] - lo[1], hi[2] - lo[2]);
+  return ext > 0 ? S.printSize / ext : 1;
+}
+function renderPrintInfo() {
+  const el = $('printInfo'); if (!el) return;
+  stashActive();
+  const list = TOOLS.filter((t, k) => t.visible || k === curTool).map((t) => ({ a: toolArrays(t) }));
+  const lo = [Infinity, Infinity, Infinity], hi = [-Infinity, -Infinity, -Infinity];
+  for (const { a } of list) for (let i = 0; i < a.pos.length; i += 3) for (let c = 0; c < 3; c++) { lo[c] = Math.min(lo[c], a.pos[i + c]); hi[c] = Math.max(hi[c], a.pos[i + c]); }
+  const k = printScale(list), d = [0, 1, 2].map((c) => ((hi[c] - lo[c]) * k).toFixed(S.printSize ? 1 : 3));
+  el.textContent = S.printSize ? `При експорт: ${d[0]} × ${d[1]} × ${d[2]} мм` : `Размер: ${d[0]} × ${d[1]} × ${d[2]} (единиците на модела)`;
+}
 function exportOBJ() {
   const parts = ['# Глина Sculpt\n'], list = exportParts();
   const painted = list.some(({ a }) => a.col.some((v) => v < 0.999));
@@ -6960,6 +7011,7 @@ let toastT = 0;
 function toast(msg) { const t = $('toast'); t.textContent = msg; t.classList.add('show'); clearTimeout(toastT); toastT = setTimeout(() => t.classList.remove('show'), 2600); }
 function updateStats() {
   renderVisibility(); syncMorphUI();
+  if (typeof TOOLS !== 'undefined' && TOOLS.length) renderPrintInfo();
   $('hVerts').textContent = fmt(mesh.n); $('hTris').textContent = fmt(mesh.f);
   $('gVerts').textContent = fmt(mesh.n); $('gTris').textContent = fmt(mesh.f); syncLevelUI();
 }
@@ -7328,6 +7380,10 @@ $('bRemesh').onclick = remesh;
 $('bPersp').onclick = () => setOrtho(!S.ortho);
 $('bMirror').onclick = mirrorFlip;
 $('bMorphStore').onclick = storeMorph;
+$('bDecimate').onclick = decimate;
+bindRange('sDecim', 'oDecim', () => S.decimateKeep, (v) => (S.decimateKeep = v), pct);
+$('nPrint').value = S.printSize;
+$('nPrint').addEventListener('change', () => { S.printSize = Math.max(0, +$('nPrint').value || 0); saveSettings(); renderPrintInfo(); });
 $('bMorphSwitch').onclick = switchMorph;
 $('bMorphDrop').onclick = dropMorph;
 $('bRecall').onclick = () => { recallPick = !recallPick; syncMorphUI(); if (recallPick) toast('Щракнете стъпка в лентата с историята горе.'); };
@@ -7545,5 +7601,5 @@ loadAutosave().then((d) => {
     toast('Продължавате последния модел. „Нов“ започва отначало.');
   }
 });
-window.__glina = { projectBytes, saveProject, openProject, packValue, unpackValue, panelLoops, balloonTool, shellFrom, refOpen, refState, refColourAt, refLayout, smoothViewUpdate, get smoothViewObj() { return smoothViewObj; }, recallFrom, makeFibers, fiberArrays, projectAll, storeMorph, switchMorph, dropMorph, morphOf, fillColour, cavityColour, zsOpen, zsClose, zsSkin, get zs() { return zs; }, xtract, latticeLive, latticeScreen, get lattice() { return lattice; }, surfaceContrast, snapshotPNG, maskHidden, startCloth, stopCloth, get clothRun() { return clothRun; }, hideSelection, hideGroup, showAll, invertVisibility, hideMasked, deleteHidden, hiddenCount, setHiddenUndoable, deform, makeArray, arrayArrays, setGizmoMode, get gizmoPin() { return gizmoPin; }, set gizmoPin(v) { gizmoPin = v; }, exportOBJ, scheduleAutosave, get TOOLS() { return TOOLS; }, get curTool() { return curTool; }, activateTool, addTool, appendPrimitive, duplicateTool, deleteTool, moveTool, mergeDown, splitGroups, extractTool, extractShell, makeBoolean, newScene, gizmoHandle, gizmoScreen, get solo() { return solo; }, set solo(v) { solo = v; renderOthers(); }, toolArrays, voxelCombine, voxelRemesh, coreStart, get working() { return working; }, sliceByPlane, mirrorWeldArrays, mirrorWeld, mirrorFlip, applyNoise, snapView, setOrtho, historyJump, polyframe, get cam() { return cam; }, trimByPlane, applyCut, tubeArrays, immShape, hasOpenEdges, get curve() { return liveCurve(); }, dropCurve, get immFile() { return immFile; }, set immFile(v) { immFile = v; }, get LAYERS() { return LAYERS; }, get recLayer() { return recLayer; }, addLayer, deleteLayer, toggleLayer, recordLayer, setLayerStrength, bakeLayers, groupOp, maskAllBut, groupNear, get mesh() { return mesh; }, get stroke() { return stroke; }, get gesture() { return gesture; }, get nav() { return nav; }, get MR() { return MR; }, syncSym, get SYM() { return SYM; }, setLevel, divide, deleteLower, deleteHigher, camera, orbit, pick, selectTool, brush, brushById, maskOp, remesh, undo, redo, subdivide, setDyntopo, floodDetail, S, get undoStack() { return undoStack; } };
+window.__glina = { exportSTL, renderPrintInfo, decimate, decimateArrays, printScale, projectBytes, saveProject, openProject, packValue, unpackValue, panelLoops, balloonTool, shellFrom, refOpen, refState, refColourAt, refLayout, smoothViewUpdate, get smoothViewObj() { return smoothViewObj; }, recallFrom, makeFibers, fiberArrays, projectAll, storeMorph, switchMorph, dropMorph, morphOf, fillColour, cavityColour, zsOpen, zsClose, zsSkin, get zs() { return zs; }, xtract, latticeLive, latticeScreen, get lattice() { return lattice; }, surfaceContrast, snapshotPNG, maskHidden, startCloth, stopCloth, get clothRun() { return clothRun; }, hideSelection, hideGroup, showAll, invertVisibility, hideMasked, deleteHidden, hiddenCount, setHiddenUndoable, deform, makeArray, arrayArrays, setGizmoMode, get gizmoPin() { return gizmoPin; }, set gizmoPin(v) { gizmoPin = v; }, exportOBJ, scheduleAutosave, get TOOLS() { return TOOLS; }, get curTool() { return curTool; }, activateTool, addTool, appendPrimitive, duplicateTool, deleteTool, moveTool, mergeDown, splitGroups, extractTool, extractShell, makeBoolean, newScene, gizmoHandle, gizmoScreen, get solo() { return solo; }, set solo(v) { solo = v; renderOthers(); }, toolArrays, voxelCombine, voxelRemesh, coreStart, get working() { return working; }, sliceByPlane, mirrorWeldArrays, mirrorWeld, mirrorFlip, applyNoise, snapView, setOrtho, historyJump, polyframe, get cam() { return cam; }, trimByPlane, applyCut, tubeArrays, immShape, hasOpenEdges, get curve() { return liveCurve(); }, dropCurve, get immFile() { return immFile; }, set immFile(v) { immFile = v; }, get LAYERS() { return LAYERS; }, get recLayer() { return recLayer; }, addLayer, deleteLayer, toggleLayer, recordLayer, setLayerStrength, bakeLayers, groupOp, maskAllBut, groupNear, get mesh() { return mesh; }, get stroke() { return stroke; }, get gesture() { return gesture; }, get nav() { return nav; }, get MR() { return MR; }, syncSym, get SYM() { return SYM; }, setLevel, divide, deleteLower, deleteHigher, camera, orbit, pick, selectTool, brush, brushById, maskOp, remesh, undo, redo, subdivide, setDyntopo, floodDetail, S, get undoStack() { return undoStack; } };
 </script>
