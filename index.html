@@ -261,6 +261,9 @@ input[type=range] { width: 100%; height: 26px; accent-color: var(--wax); backgro
       <button class="btn" data-gz="scale" title="Мащаб">Мащаб</button>
       <button class="btn" id="gzPin" aria-pressed="false" title="Следващото докосване на модела поставя центъра (или Alt+щракване)">Център</button>
       <button class="btn" id="gzReset" title="Центърът отново в средата на незамаскираното">Нулирай</button>
+      <button class="btn" id="gzAll" aria-pressed="false" title="Гизмото движи всички видими подобекти заедно">Всички</button>
+      <button class="btn" id="gzAxis" title="Mesh to Axis: средата на подобекта отива в началото на осите">В центъра</button>
+      <button class="btn" id="gzStraight" title="Завърта подобекта така, че главните му посоки да са по X, Y и Z">Изправи</button>
     </div>
     <div id="hint">
       <p><b>Стилус или мишка по модела</b> скулптира. Влачене по празното място или десен бутон върти, среден бутон или два пръста местят, колелцето приближава. <b>Shift</b> изглажда, <b>Alt</b> обръща посоката, <b>Ctrl</b> рисува маска, <b>D</b> включва динамичната топология.</p>
@@ -361,6 +364,9 @@ input[type=range] { width: 100%; height: 26px; accent-color: var(--wax); backgro
       <div class="row"><label for="sTwist">Усукване</label><output id="oTwist"></output><input type="range" id="sTwist" min="-360" max="360" step="5"></div>
       <div class="row"><label for="sTaperD">Стесняване ↔ разширяване</label><output id="oTaperD"></output><input type="range" id="sTaperD" min="-1" max="1" step="0.02"></div>
       <div class="row" title="Extender: далечната половина се мести по оста, средата се разтяга"><label for="sExtend">Удължаване ↔ скъсяване</label><output id="oExtend"></output><input type="range" id="sExtend" min="-0.5" max="1" step="0.02"></div>
+      <div class="row" title="Flatten: всичко се приближава до средната равнина, напречна на оста"><label for="sFlatten">Сплескване</label><output id="oFlatten"></output><input type="range" id="sFlatten" min="0" max="1" step="0.02"></div>
+      <button class="btn wide" id="bPolishF" title="Polish by Features: изглажда равните части, без да заобля ръбовете и ъглите">Полирай, без да заобляш ръбовете</button>
+      <div class="two"><button class="btn wide" id="bSliceG" title="MultiSlice: незамаскираното се разделя на ивици по оста, всяка става група">Ивици от групи</button><label class="row" style="margin:0">Брой <input type="number" id="nSlices" min="2" max="40" value="4" style="width:4em"></label></div>
       <h2 style="margin-top:14px">Косми <em>FiberMesh</em></h2>
       <p class="note">Растат от маскираното на активния подобект и стават нов подобект.</p>
       <div class="row"><label for="sFibN">Брой</label><output id="oFibN"></output><input type="range" id="sFibN" min="50" max="6000" step="50"></div>
@@ -476,6 +482,7 @@ input[type=range] { width: 100%; height: 26px; accent-color: var(--wax); backgro
       <div class="two"><button class="btn wide" id="bDelLower" title="Текущото ниво става основа">Изтрий по-ниските</button><button class="btn wide" id="bDelHigher">Изтрий по-високите</button></div>
       <p class="note">Всяко разделяне пази предишните нива. На ниско ниво местите голямата форма, на високо добавяте детайл; детайлът следва формата, когато се върнете горе.</p>
       <label class="toggle">Изглаждане при разделяне <input type="checkbox" id="tLoop" checked></label>
+      <label class="toggle" title="Crease PG: ръбовете между групите остават остри при разделяне">Остри ръбове между групите <input type="checkbox" id="tCrease"></label>
       <label class="toggle" title="Dynamic Subdivision: ниската мрежа се показва гладка (разделена веднъж или два пъти), без да се променя">Гладък преглед <input type="checkbox" id="tSmoothView"></label>
       <button class="btn wide" id="bSmoothAll">Изглади целия модел</button>
       <div class="row"><label for="sVoxel">Плътност на преизграждането</label><output id="oVoxel"></output><input type="range" id="sVoxel" min="48" max="256" step="8"></div>
@@ -670,6 +677,8 @@ const S = {
   radial: 0,           // radial symmetry: copies around the axis (0 = off)
   radialAxis: 'y',
   loop: true,
+  crease: false,
+  gizmoAll: false,
   wire: false,
   flat: false,
   matcap: 0,
@@ -1388,6 +1397,46 @@ function lathe(profile, h) {
   });
   return { pos: new Float32Array(pos), idx: Uint32Array.from(stitchRings(rings, U)) };
 }
+// (ZBrush: parametric primitives) a closed profile [radius, y] turned around Y; every side of the profile
+// is its own polygroup, so creased subdivision and ZModeler see the shape's faces. radial(θ, r) can bend
+// the radius by the angle (the teeth of a gear).
+function revolve(profile, h, radial = null, Umin = 8) {
+  const prof = [], seg = [];
+  for (let i = 0; i < profile.length; i++) {
+    const [r0, y0] = profile[i], [r1, y1] = profile[(i + 1) % profile.length], k = Math.max(1, Math.ceil(Math.hypot(r1 - r0, y1 - y0) / h));
+    for (let j = 0; j < k; j++) { prof.push([r0 + (r1 - r0) * j / k, y0 + (y1 - y0) * j / k]); seg.push(i); }
+  }
+  const rmax = Math.max(...prof.map((q) => q[0])), U = Math.max(Umin, Math.min(800, Math.ceil(2 * Math.PI * rmax / h)));
+  const pos = [], grp = [];
+  const rings = prof.map(([r, y], i) => {
+    const at = pos.length / 3;
+    for (let j = 0; j < U; j++) { const a = 2 * Math.PI * j / U, rr = radial ? radial(a, r) : r; pos.push(rr * Math.cos(a), y, rr * Math.sin(a)); grp.push(seg[i]); }
+    return { at, pole: false };
+  });
+  rings.push(rings[0]);
+  const o = outward(new Float32Array(pos), Uint32Array.from(stitchRings(rings, U)));
+  return new SculptMesh(o.pos, o.idx, null, null, 0, Float32Array.from(grp));
+}
+function makeTube() { return revolve([[0.45, -0.9], [0.7, -0.9], [0.7, 0.9], [0.45, 0.9]], 0.03); }
+// a band like a finger ring: a rounded section (a superellipse) turned around
+function makeRing() {
+  const prof = [];
+  for (let k = 0; k < 40; k++) { const t = (k / 40) * Math.PI * 2, c = Math.cos(t), s = Math.sin(t); prof.push([0.72 + 0.12 * Math.sign(c) * Math.pow(Math.abs(c), 0.45), 0.2 * Math.sign(s) * Math.pow(Math.abs(s), 0.45)]); }
+  const m = revolve(prof, 0.02);
+  m.grp.fill(0);
+  return m;
+}
+// a spur gear: 16 teeth on the rim, a hole through the middle
+function makeGear(teeth = 16) {
+  const hole = 0.25, root = 0.84, tip = 1;
+  const tooth = (a) => {
+    const u = ((a * teeth) / (2 * Math.PI)) % 1, ss = (x) => x * x * (3 - 2 * x);
+    const k = u < 0.3 ? 1 : u < 0.5 ? 1 - ss((u - 0.3) / 0.2) : u < 0.8 ? 0 : ss((u - 0.8) / 0.2);
+    return root + (tip - root) * k;
+  };
+  const radial = (a, r) => (r <= hole + 1e-9 ? r : hole + (tooth(a) - hole) * (r - hole) / (1 - hole));
+  return revolve([[hole, -0.16], [1, -0.16], [1, 0.16], [hole, 0.16]], 0.025, radial, teeth * 20);
+}
 // triangles between rings of U vertices (or poles), one after the other
 function stitchRings(rings, U) {
   const idx = [];
@@ -1528,7 +1577,10 @@ function placePart(shape, M, o) {
 }
 
 /* ---------- Loop subdivision (works on raw arrays) ---------- */
-function subdivideArrays(pos, idx, col, mask, smooth, grp = null) {
+// crease: (with grp) edges along a polygroup border stay sharp, as Loop's boundary rule keeps an open edge
+// (ZBrush: Crease PG); a vertex where three or more such edges meet stays where it is. Groups here belong
+// to vertices, so a border edge is one that bends (over ~25°) where more than one group meets.
+function subdivideArrays(pos, idx, col, mask, smooth, grp = null, crease = false) {
   const n = pos.length / 3, f = idx.length / 3;
   // adjacency (vertex -> neighbours) to number edges without a hash map
   const tmp = new SculptMesh(pos, idx, col, mask);
@@ -1549,20 +1601,37 @@ function subdivideArrays(pos, idx, col, mask, smooth, grp = null) {
   const P = new Float32Array(N * 3), C = new Float32Array(N * 3), M = new Float32Array(N), Gr = new Float32Array(N);
   const cIn = col || new Float32Array(n * 3).fill(1), mIn = mask || new Float32Array(n);
   const opp = new Float32Array(ne * 3), oppCount = new Uint8Array(ne), ea = new Uint32Array(ne), eb = new Uint32Array(ne);
-  const fE = new Uint32Array(f * 3);
+  const fE = new Uint32Array(f * 3), oppV = new Int32Array(ne * 2), want = crease && grp && smooth, eN = want ? new Float32Array(ne * 6) : null;
   for (let t = 0; t < f; t++) {
+    let nx = 0, ny = 0, nz = 0;
+    if (want) {
+      const a = idx[t * 3] * 3, b = idx[t * 3 + 1] * 3, c = idx[t * 3 + 2] * 3;
+      const ux = pos[b] - pos[a], uy = pos[b + 1] - pos[a + 1], uz = pos[b + 2] - pos[a + 2], vx = pos[c] - pos[a], vy = pos[c + 1] - pos[a + 1], vz = pos[c + 2] - pos[a + 2];
+      nx = uy * vz - uz * vy; ny = uz * vx - ux * vz; nz = ux * vy - uy * vx; const l = Math.hypot(nx, ny, nz) || 1; nx /= l; ny /= l; nz /= l;
+    }
     for (let k = 0; k < 3; k++) {
       const a = idx[t * 3 + k], b = idx[t * 3 + (k + 1) % 3], c = idx[t * 3 + (k + 2) % 3];
       const e = findEdge(a, b); fE[t * 3 + k] = e;
       ea[e] = a; eb[e] = b;
-      opp[e * 3] += pos[c * 3]; opp[e * 3 + 1] += pos[c * 3 + 1]; opp[e * 3 + 2] += pos[c * 3 + 2]; oppCount[e]++;
+      opp[e * 3] += pos[c * 3]; opp[e * 3 + 1] += pos[c * 3 + 1]; opp[e * 3 + 2] += pos[c * 3 + 2];
+      if (oppCount[e] < 2) { oppV[e * 2 + oppCount[e]] = c; if (eN) { const o = e * 6 + oppCount[e] * 3; eN[o] = nx; eN[o + 1] = ny; eN[o + 2] = nz; } }
+      oppCount[e]++;
     }
+  }
+  // the crease edges: the two triangles on it bend apart and its four corners are not all one group
+  const sharp = want ? new Uint8Array(ne) : null, cc = sharp ? new Uint8Array(n) : null, cs = sharp ? new Float32Array(n * 3) : null;
+  if (sharp) for (let e = 0; e < ne; e++) {
+    const a = ea[e], b = eb[e], c = oppV[e * 2], d = oppV[e * 2 + 1], o = e * 6;
+    if (oppCount[e] !== 2 || eN[o] * eN[o + 3] + eN[o + 1] * eN[o + 4] + eN[o + 2] * eN[o + 5] > 0.906) continue;
+    if (grp[a] === grp[b] && grp[a] === grp[c] && grp[a] === grp[d]) continue;
+    sharp[e] = 1;
+    for (const [v, u] of [[a, b], [b, a]]) { if (cc[v] < 255) cc[v]++; cs[v * 3] += pos[u * 3]; cs[v * 3 + 1] += pos[u * 3 + 1]; cs[v * 3 + 2] += pos[u * 3 + 2]; }
   }
   for (let e = 0; e < ne; e++) {
     const a = ea[e], b = eb[e], o = (n + e) * 3;
     for (let k = 0; k < 3; k++) {
       const mid = (pos[a * 3 + k] + pos[b * 3 + k]) * 0.5;
-      P[o + k] = (smooth && oppCount[e] === 2) ? 0.75 * mid + 0.125 * opp[e * 3 + k] : mid;
+      P[o + k] = (smooth && oppCount[e] === 2 && !(sharp && sharp[e])) ? 0.75 * mid + 0.125 * opp[e * 3 + k] : mid;
       C[o + k] = (cIn[a * 3 + k] + cIn[b * 3 + k]) * 0.5;
     }
     M[n + e] = (mIn[a] + mIn[b]) * 0.5;
@@ -1570,7 +1639,8 @@ function subdivideArrays(pos, idx, col, mask, smooth, grp = null) {
   }
   for (let v = 0; v < n; v++) {
     const val = vvOff[v + 1] - vvOff[v];
-    if (!smooth || boundary[v] || val < 3) { P[v * 3] = pos[v * 3]; P[v * 3 + 1] = pos[v * 3 + 1]; P[v * 3 + 2] = pos[v * 3 + 2]; }
+    if (!smooth || boundary[v] || val < 3 || (cc && cc[v] > 2)) { P[v * 3] = pos[v * 3]; P[v * 3 + 1] = pos[v * 3 + 1]; P[v * 3 + 2] = pos[v * 3 + 2]; }
+    else if (cc && cc[v] === 2) { for (let k = 0; k < 3; k++) P[v * 3 + k] = 0.75 * pos[v * 3 + k] + 0.125 * cs[v * 3 + k]; }
     else {
       const beta = val === 3 ? 3 / 16 : 3 / (8 * val);
       let x = 0, y = 0, z = 0;
@@ -4568,11 +4638,17 @@ let gizmoCache = null;
 let gizmoPin = null, gizmoPinNext = false;
 function gizmoPivot() {
   if (gizmoPin && gizmoPin.tool === TOOLS[curTool]) return gizmoPin.p;
-  const key = undoSerial + ':' + curTool + ':' + mesh.n;
+  const all = gizmoTools();
+  const key = undoSerial + ':' + curTool + ':' + mesh.n + ':' + all.length;
   if (gizmoCache && gizmoCache.key === key) return gizmoCache.p;
-  const m = mesh, P = m.pos, MK = m.mask;
   let x = 0, y = 0, z = 0, w = 0;
-  for (let i = 0; i < m.n; i++) { if (m.dyn && !m.vfA[i].length) continue; const k = (1 - MK[i]) * (1 - m.hid[i]); if (k <= 0) continue; x += P[i * 3] * k; y += P[i * 3 + 1] * k; z += P[i * 3 + 2] * k; w += k; }
+  if (all.length > 1) {
+    // „Всички“: the middle of everything that moves
+    for (const t of all) { const m = toolMeshOf(t), P = m.pos; for (let i = 0; i < m.n; i++) { if (P[i * 3] > FAR * 0.5) continue; x += P[i * 3]; y += P[i * 3 + 1]; z += P[i * 3 + 2]; w++; } }
+  } else {
+    const m = mesh, P = m.pos, MK = m.mask;
+    for (let i = 0; i < m.n; i++) { if (m.dyn && !m.vfA[i].length) continue; const k = (1 - MK[i]) * (1 - m.hid[i]); if (k <= 0) continue; x += P[i * 3] * k; y += P[i * 3 + 1] * k; z += P[i * 3 + 2] * k; w += k; }
+  }
   const p = w > 0 ? new THREE.Vector3(x / w, y / w, z / w) : null;
   gizmoCache = { key, p };
   return p;
@@ -4615,15 +4691,17 @@ function syncGizmoBar() {
   if (!on) return;
   for (const el of $('gizmoBar').querySelectorAll('[data-gz]')) el.setAttribute('aria-pressed', el.dataset.gz === (brush().gz || 'move'));
   setPressed('gzPin', gizmoPinNext);
+  setPressed('gzAll', !!S.gizmoAll);
   $('gzReset').disabled = !(gizmoPin && gizmoPin.tool === TOOLS[curTool]);
 }
 function startGizmo(e, x, y, handle) {
   const m = mesh, G = gizmoScreen();
-  const ids = [], w = [];
-  for (let i = 0; i < m.n; i++) { if (m.dyn && !m.vfA[i].length) continue; const k = (1 - m.mask[i]) * (1 - m.hid[i]); if (k > 0) { ids.push(i); w.push(k); } }
+  const ids = [], w = [], others = gizmoTools().filter((t) => t !== TOOLS[curTool]);
+  // with „Всички“ everything moves whole (mask and hidden parts too), as one
+  for (let i = 0; i < m.n; i++) { if (m.dyn && !m.vfA[i].length) continue; const k = others.length ? 1 : (1 - m.mask[i]) * (1 - m.hid[i]); if (k > 0) { ids.push(i); w.push(k); } }
   const idx = Uint32Array.from(ids), orig = new Float32Array(idx.length * 3);
   idx.forEach((i, q) => { orig[q * 3] = m.pos[i * 3]; orig[q * 3 + 1] = m.pos[i * 3 + 1]; orig[q * 3 + 2] = m.pos[i * 3 + 2]; });
-  gesture = { kind: 'gizmo', handle, mode: brush().gz || 'move', x0: x, y0: y, x, y, id: e.pointerId, idx, w: Float32Array.from(w), orig, G, camN: new THREE.Vector3(0, 0, 1).applyQuaternion(camera.quaternion) };
+  gesture = { kind: 'gizmo', handle, mode: brush().gz || 'move', x0: x, y0: y, x, y, id: e.pointerId, idx, w: Float32Array.from(w), orig, G, camN: new THREE.Vector3(0, 0, 1).applyQuaternion(camera.quaternion), others };
 }
 // the transform of the drag so far: point → M·(point − pivot) + pivot + t
 function gizmoTransform(g) {
@@ -4664,10 +4742,28 @@ function applyGizmo(g) {
   m.updateNormals(g.idx, g.idx.length);
   uploadAll(geo.attributes.position); uploadAll(geo.attributes.normal);
   bvhDirty = true;
+  // the other subtools follow on screen only; their points change once, when the drag ends
+  if (g.others.length) {
+    const T = new THREE.Matrix4().makeTranslation(p.x + t.x, p.y + t.y, p.z + t.z).multiply(new THREE.Matrix4().setFromMatrix3(M)).multiply(new THREE.Matrix4().makeTranslation(-p.x, -p.y, -p.z));
+    for (const tool of g.others) { const o = othersObj(tool); if (o) { o.matrixAutoUpdate = false; o.matrix.copy(T); o.matrixWorldNeedsUpdate = true; } }
+  }
   requestRender();
 }
 function endGizmo(g, commit) {
   const m = mesh;
+  if (g.others.length) {
+    for (const tool of g.others) { const o = othersObj(tool); if (o) { o.matrix.identity(); o.matrixAutoUpdate = true; o.matrixWorldNeedsUpdate = true; } }
+    const moved = g.x !== g.x0 || g.y !== g.y0, { M, t } = gizmoTransform(g);
+    for (let q = 0; q < g.idx.length; q++) { const i = g.idx[q]; m.pos[i * 3] = g.orig[q * 3]; m.pos[i * 3 + 1] = g.orig[q * 3 + 1]; m.pos[i * 3 + 2] = g.orig[q * 3 + 2]; }
+    m.updateNormals(g.idx, g.idx.length);
+    uploadAll(geo.attributes.position); uploadAll(geo.attributes.normal); bvhDirty = true;
+    if (commit && moved) {
+      transformTools([TOOLS[curTool], ...g.others], M, g.G.p, t);
+      if (gizmoPin && gizmoPin.tool === TOOLS[curTool]) gizmoPin.p = gizmoPin.p.clone().sub(g.G.p).applyMatrix3(M).add(g.G.p).add(t);
+    }
+    gizmoCache = null; syncGizmoBar(); requestRender();
+    return;
+  }
   if (!commit) { for (let q = 0; q < g.idx.length; q++) { const i = g.idx[q]; m.pos[i * 3] = g.orig[q * 3]; m.pos[i * 3 + 1] = g.orig[q * 3 + 1]; m.pos[i * 3 + 2] = g.orig[q * 3 + 2]; } }
   else if (g.idx.length && (g.x !== g.x0 || g.y !== g.y0)) {
     const n = g.idx.length, col = new Float32Array(n * 3), mask = new Float32Array(n);
@@ -4699,6 +4795,101 @@ function drawGizmo(el) {
     el('circle', { cx: e[0], cy: e[1], r: hot ? 6 : 4.5, fill: AXIS_COL[k] });
   });
   el('circle', { cx: G.c[0], cy: G.c[1], r: 11, fill: 'none', stroke: '#fff', 'stroke-width': g && g.handle === 'free' ? 3 : 1.6 });
+}
+
+/* ---------- Gizmo extras (ZBrush: Transpose all SubTools, Mesh To Axis, Reset orientation) ----------
+   „Всички“: the gizmo moves, turns and scales every visible subtool together, around their common middle.
+   „В центъра“ moves the subtool (or, with „Всички“, all of them) so the middle of its box is at the
+   origin, where symmetry and the axes are. „Изправи“ turns it so its main directions (the axes of the
+   point cloud) lie along X, Y and Z, by the smallest turn. Each is one undo step. */
+const toolMeshOf = (t) => (t === TOOLS[curTool] ? mesh : t.mesh);
+function gizmoTools() { return S.gizmoAll && !solo ? TOOLS.filter((t, k) => k === curTool || t.visible) : [TOOLS[curTool]].filter(Boolean); }
+function othersObj(t) { const o = others.get(t); return o ? o.obj : null; }
+function putToolShape(t, pos, nrm) {
+  const m = toolMeshOf(t); if (!m || m.n * 3 !== pos.length) return;
+  m.pos.set(pos); m.nrm.set(nrm);
+  if (m.dyn) m.gridBuild();
+  if (m === mesh) { uploadAll(geo.attributes.position); uploadAll(geo.attributes.normal); bvhDirty = true; }
+  else { const o = others.get(t); if (o) { scene.remove(o.obj); o.obj.geometry.dispose(); others.delete(t); } }
+  gizmoCache = null;
+}
+// every point of the listed subtools: point → M·(point − p) + p + t (normals by the inverse transpose)
+function transformTools(list, M, p, t, msg) {
+  const e = M.elements, ne = M.clone().invert().transpose().elements, before = [], after = [];
+  let bytes = 0;
+  for (const tool of list) {
+    const m = toolMeshOf(tool), n = m.n, P0 = m.pos.slice(0, n * 3), N0 = m.nrm.slice(0, n * 3), P1 = P0.slice(), N1 = N0.slice();
+    for (let k = 0; k < n * 3; k += 3) {
+      if (P0[k] > FAR * 0.5) continue;
+      const x = P0[k] - p.x, y = P0[k + 1] - p.y, z = P0[k + 2] - p.z;
+      P1[k] = e[0] * x + e[3] * y + e[6] * z + p.x + t.x; P1[k + 1] = e[1] * x + e[4] * y + e[7] * z + p.y + t.y; P1[k + 2] = e[2] * x + e[5] * y + e[8] * z + p.z + t.z;
+      const a = N0[k], b = N0[k + 1], c = N0[k + 2];
+      const nx = ne[0] * a + ne[3] * b + ne[6] * c, ny = ne[1] * a + ne[4] * b + ne[7] * c, nz = ne[2] * a + ne[5] * b + ne[8] * c, l = Math.hypot(nx, ny, nz) || 1;
+      N1[k] = nx / l; N1[k + 1] = ny / l; N1[k + 2] = nz / l;
+    }
+    before.push([P0, N0]); after.push([P1, N1]); bytes += P0.byteLength * 4;
+  }
+  const put = (st) => { list.forEach((tool, k) => putToolShape(tool, st[k][0], st[k][1])); renderOthers(); syncGizmoBar(); requestRender(); };
+  put(after);
+  pushUndo({ type: 'fn', undo: () => put(before), redo: () => put(after), bytes, tool: null });
+  scheduleAutosave();
+  if (msg) toast(msg);
+}
+function meshToAxis() {
+  if (stroke || working || zs) return;
+  const list = gizmoTools(); if (!list.length) return;
+  const min = [Infinity, Infinity, Infinity], max = [-Infinity, -Infinity, -Infinity];
+  for (const t of list) { const m = toolMeshOf(t), P = m.pos; for (let k = 0; k < m.n * 3; k += 3) { if (P[k] > FAR * 0.5) continue; for (let c = 0; c < 3; c++) { if (P[k + c] < min[c]) min[c] = P[k + c]; if (P[k + c] > max[c]) max[c] = P[k + c]; } } }
+  if (min[0] === Infinity) return;
+  const c = new THREE.Vector3((min[0] + max[0]) / 2, (min[1] + max[1]) / 2, (min[2] + max[2]) / 2);
+  if (c.length() < 1e-7) { toast('Вече е в центъра.'); return; }
+  gizmoPin = null;
+  transformTools(list, new THREE.Matrix3(), c, c.clone().negate(), list.length > 1 ? 'Всички видими подобекти са в центъра.' : 'Подобектът е в центъра.');
+}
+// the eigen-decomposition of a symmetric 3×3 matrix (Jacobi): values and unit vectors
+function eigenSym3(A) {
+  const a = [[A[0], A[1], A[2]], [A[1], A[3], A[4]], [A[2], A[4], A[5]]], V = [[1, 0, 0], [0, 1, 0], [0, 0, 1]];
+  for (let sweep = 0; sweep < 50; sweep++) {
+    let off = 0; for (let i = 0; i < 3; i++) for (let j = i + 1; j < 3; j++) off += a[i][j] * a[i][j];
+    if (off < 1e-30) break;
+    for (let p = 0; p < 3; p++) for (let q = p + 1; q < 3; q++) {
+      if (Math.abs(a[p][q]) < 1e-300) continue;
+      const th = (a[q][q] - a[p][p]) / (2 * a[p][q]), t = Math.sign(th || 1) / (Math.abs(th) + Math.sqrt(th * th + 1)), c = 1 / Math.sqrt(t * t + 1), s = t * c;
+      for (let k = 0; k < 3; k++) { const x = a[k][p], y = a[k][q]; a[k][p] = c * x - s * y; a[k][q] = s * x + c * y; }
+      for (let k = 0; k < 3; k++) { const x = a[p][k], y = a[q][k]; a[p][k] = c * x - s * y; a[q][k] = s * x + c * y; }
+      for (let k = 0; k < 3; k++) { const x = V[k][p], y = V[k][q]; V[k][p] = c * x - s * y; V[k][q] = s * x + c * y; }
+    }
+  }
+  return [0, 1, 2].map((i) => ({ l: a[i][i], v: new THREE.Vector3(V[0][i], V[1][i], V[2][i]).normalize() }));
+}
+function straighten() {
+  if (stroke || working || zs) return;
+  const list = gizmoTools(); if (!list.length) return;
+  let n = 0; const c = new THREE.Vector3();
+  for (const t of list) { const m = toolMeshOf(t), P = m.pos; for (let k = 0; k < m.n * 3; k += 3) { if (P[k] > FAR * 0.5) continue; c.x += P[k]; c.y += P[k + 1]; c.z += P[k + 2]; n++; } }
+  if (!n) return;
+  c.divideScalar(n);
+  const C = [0, 0, 0, 0, 0, 0];
+  for (const t of list) { const m = toolMeshOf(t), P = m.pos; for (let k = 0; k < m.n * 3; k += 3) { if (P[k] > FAR * 0.5) continue; const x = P[k] - c.x, y = P[k + 1] - c.y, z = P[k + 2] - c.z; C[0] += x * x; C[1] += x * y; C[2] += x * z; C[3] += y * y; C[4] += y * z; C[5] += z * z; } }
+  const E = eigenSym3(C.map((v) => v / n)), top = Math.max(...E.map((q) => Math.abs(q.l))) || 1;
+  // how clearly each direction stands apart from the other two
+  const apart = E.map((q, i) => Math.min(...E.filter((_, j) => j !== i).map((r) => Math.abs(q.l - r.l))) / top);
+  const order = [0, 1, 2].sort((i, j) => apart[j] - apart[i]);
+  if (apart[order[0]] < 0.03) { toast('Формата е еднаква във всички посоки: няма какво да се изправи.'); return; }
+  const near = (v, skip = -1) => { let best = 0, bd = -1; for (let k = 0; k < 3; k++) { if (k === skip) continue; const d = Math.abs(v.getComponent(k)); if (d > bd) { bd = d; best = k; } } return AXES[best].clone().multiplyScalar(Math.sign(v.getComponent(best)) || 1); };
+  const v1 = E[order[0]].v, a1 = near(v1), q = new THREE.Quaternion().setFromUnitVectors(v1, a1);
+  // the second direction too, when it is clear: a turn about the first axis
+  const rest = [0, 1, 2].filter((i) => i !== order[0]);
+  if (Math.abs(E[rest[0]].l - E[rest[1]].l) / top >= 0.03) {
+    const k1 = [0, 1, 2].find((k) => Math.abs(a1.getComponent(k)) > 0.5);
+    const v2 = E[rest[0]].v.clone().applyQuaternion(q).projectOnPlane(a1).normalize(), a2 = near(v2, k1);
+    const ang = Math.atan2(new THREE.Vector3().crossVectors(v2, a2).dot(a1), v2.dot(a2));
+    q.premultiply(new THREE.Quaternion().setFromAxisAngle(a1, ang));
+  }
+  if (2 * Math.acos(Math.min(1, Math.abs(q.w))) < 1e-4) { toast('Вече е изправено по осите.'); return; }
+  const M = new THREE.Matrix3().setFromMatrix4(new THREE.Matrix4().makeRotationFromQuaternion(q));
+  gizmoPin = null;
+  transformTools(list, M, c, new THREE.Vector3(), 'Изправено по осите X, Y и Z.');
 }
 
 /* ---------- Polygon visibility (ZBrush: Ctrl+Shift: SelectRect, SelectLasso, Delete Hidden) ----------
@@ -4820,6 +5011,9 @@ function deformApply(D, kind, val) {
       // (ZBrush: Extender) the far half moves out along the axis; the middle band stretches over it
       const band = 0.2, s0 = (t - (0.5 - band / 2)) / band;
       a += val * L * Math.min(1, Math.max(0, s0));
+    } else if (kind === 'flatten') {
+      // (ZBrush: Flatten) everything comes toward the middle plane square to the axis
+      const mid = D.lo + L / 2; a = mid + (a - mid) * (1 - Math.min(1, Math.max(0, val)));
     }
     const w = D.w[q], i = D.idx[q];
     const x = c.x + A.x * a + B.x * b + C.x * cc, y = c.y + A.y * a + B.y * b + C.y * cc, z = c.z + A.z * a + B.z * b + C.z * cc;
@@ -4836,6 +5030,46 @@ function deformCommit(D) {
   if (moved) { pushUndo({ type: 'verts', idx: D.idx, pos: D.orig, col, mask }); scheduleAutosave(); }
   if (m.dyn) m.gridMaybeRebuild();
   gizmoCache = null;
+}
+// (ZBrush: Polish by Features) smoothing that keeps the edges: a neighbour counts for little when its
+// normal points another way, so flat parts get even while the ridges and corners between them stay
+function polishFeatures(iters = 8, s = 0.6) {
+  if (stroke || working) return;
+  const D = deformStart(); if (!D) { toast('Всичко е маскирано.'); return; }
+  const m = mesh, P = m.pos, N = m.nrm, n = D.idx.length, next = new Float32Array(n * 3);
+  for (let it = 0; it < iters; it++) {
+    for (let q = 0; q < n; q++) {
+      const i = D.idx[q], ix = N[i * 3], iy = N[i * 3 + 1], iz = N[i * 3 + 2];
+      // (divided by the count, not the weights: where every neighbour bends away, as at a corner, the
+      // point hardly moves)
+      let x = 0, y = 0, z = 0, cnt = 0;
+      const px = P[i * 3], py = P[i * 3 + 1], pz = P[i * 3 + 2];
+      forNeighbors(m, i, (u) => {
+        const d = Math.max(0, ix * N[u * 3] + iy * N[u * 3 + 1] + iz * N[u * 3 + 2]), w = d * d * d * d * d * d * d * d;
+        x += (P[u * 3] - px) * w; y += (P[u * 3 + 1] - py) * w; z += (P[u * 3 + 2] - pz) * w; cnt++;
+      });
+      const k = cnt ? (s * D.w[q]) / cnt : 0;
+      next[q * 3] = px + x * k; next[q * 3 + 1] = py + y * k; next[q * 3 + 2] = pz + z * k;
+    }
+    for (let q = 0; q < n; q++) { const i = D.idx[q]; P[i * 3] = next[q * 3]; P[i * 3 + 1] = next[q * 3 + 1]; P[i * 3 + 2] = next[q * 3 + 2]; }
+    m.updateNormals(D.idx, n);
+  }
+  uploadAll(geo.attributes.position); uploadAll(geo.attributes.normal);
+  bvhDirty = true; requestRender();
+  deformCommit(D);
+}
+// (ZBrush: MultiSlice, for polygroups) the unmasked part cut into k bands along the axis, a group each
+function sliceGroups(k) {
+  if (stroke || working) return;
+  const D = deformStart(); if (!D) { toast('Всичко е маскирано.'); return; }
+  const m = mesh, { A } = deformAxes(), next = Float32Array.from(m.grp.subarray(0, m.n));
+  let top = 0; for (let i = 0; i < m.n; i++) if (m.grp[i] > top) top = m.grp[i];
+  for (let q = 0; q < D.idx.length; q++) {
+    if (D.w[q] < 0.5) continue;
+    const a = (D.orig[q * 3] - D.c.x) * A.x + (D.orig[q * 3 + 1] - D.c.y) * A.y + (D.orig[q * 3 + 2] - D.c.z) * A.z;
+    next[D.idx[q]] = top + 1 + Math.min(k - 1, Math.floor(((a - D.lo) / D.len) * k));
+  }
+  setGroupsUndoable(next, `${k} ивици по оста, всяка своя група.`);
 }
 // one call, for buttons and tests: the whole change at once
 function deform(kind, val) { if (stroke || working) return; const D = deformStart(); if (!D) { toast('Всичко е маскирано.'); return; } deformApply(D, kind, val); deformCommit(D); }
@@ -6550,7 +6784,7 @@ function mrCommit(next, live, prev = MR) {
 }
 function mrUpOnce(state, live) {
   const L = state.levels[state.cur], H = state.levels[state.cur + 1];
-  const sub = subdivideArrays(live.pos, L.idx, live.col, live.mask, H.smooth, live.grp);
+  const sub = subdivideArrays(live.pos, L.idx, live.col, live.mask, H.smooth, live.grp, H.crease);
   const pos = mrDecode(sub.pos, H.d, sub.idx, H.n);
   const col = sub.col, mask = sub.mask;
   for (let k = 0; k < col.length; k++) col[k] = Math.min(1, Math.max(0, col[k] + H.dc[k]));
@@ -6562,7 +6796,7 @@ function mrDownOnce(state, live) {
   const pos = mrLower(live.pos, H.idx, H.n, L.n);
   const col = Float32Array.from(live.col.subarray(0, L.n * 3)), mask = Float32Array.from(live.mask.subarray(0, L.n));
   // the higher level's detail, measured against the subdivision of this new lower level
-  const sub = subdivideArrays(pos, L.idx, col, mask, H.smooth);
+  const sub = subdivideArrays(pos, L.idx, col, mask, H.smooth, H.crease && live.grp ? live.grp.subarray(0, L.n) : null, H.crease);
   const d = mrEncode(live.pos, sub.pos, sub.idx, H.n);
   const dc = new Float32Array(H.n * 3), dm = new Float32Array(H.n);
   for (let k = 0; k < dc.length; k++) dc[k] = live.col[k] - sub.col[k];
@@ -6606,9 +6840,9 @@ function divide() {
     const prev = MR;   // (undo goes back to no levels at all, not to a one-level state)
     mrStart();
     const live = liveArrays(), L = MR.levels[MR.cur];
-    const sub = subdivideArrays(live.pos, L.idx, live.col, live.mask, S.loop, live.grp);
+    const sub = subdivideArrays(live.pos, L.idx, live.col, live.mask, S.loop, live.grp, S.crease);
     const n = sub.pos.length / 3;
-    const levels = MR.levels.concat([{ idx: Uint32Array.from(sub.idx), n, smooth: S.loop, d: new Float32Array(n * 3), dc: new Float32Array(n * 3), dm: new Float32Array(n) }]);
+    const levels = MR.levels.concat([{ idx: Uint32Array.from(sub.idx), n, smooth: S.loop, crease: !!(S.loop && S.crease), d: new Float32Array(n * 3), dc: new Float32Array(n * 3), dm: new Float32Array(n) }]);
     mrCommit({ cur: MR.cur + 1, levels }, sub, prev);
     toast(`Ниво ${MR.cur}: ${fmt(mesh.f)} триъгълника.`);
   });
@@ -7669,6 +7903,7 @@ bindToggle('tInvert', 'invert', () => $('qInv').setAttribute('aria-pressed', S.i
 bindToggle('tPrRadius', 'prRadius');
 bindToggle('tPrStrength', 'prStrength');
 bindToggle('tLoop', 'loop');
+bindToggle('tCrease', 'crease');
 bindToggle('tDecimate', 'decimate');
 function syncDynUI() {
   const active = !!(mesh && mesh.dyn);
@@ -7755,6 +7990,9 @@ $('bToolMirror').onclick = () => duplicateTool(true);
 for (const el of $('gizmoBar').querySelectorAll('[data-gz]')) el.onclick = () => setGizmoMode(el.dataset.gz);
 $('gzPin').onclick = () => { gizmoPinNext = !gizmoPinNext; syncGizmoBar(); if (gizmoPinNext) toast('Докоснете модела там, където да е центърът.'); };
 $('gzReset').onclick = () => { gizmoPin = null; gizmoPinNext = false; gizmoCache = null; syncGizmoBar(); drawOverlay(); };
+$('gzAll').onclick = () => { S.gizmoAll = !S.gizmoAll; saveSettings(); gizmoCache = null; syncGizmoBar(); drawOverlay(); };
+$('gzAxis').onclick = () => { meshToAxis(); drawOverlay(); };
+$('gzStraight').onclick = () => { straighten(); drawOverlay(); };
 $('bToolDel').onclick = deleteTool;
 $('bToolUp').onclick = () => moveTool(-1);
 $('bToolDown').onclick = () => moveTool(1);
@@ -7774,6 +8012,9 @@ bindDeform('sBend', 'oBend', 'bend', (v) => v + '°');
 bindDeform('sTwist', 'oTwist', 'twist', (v) => v + '°');
 bindDeform('sTaperD', 'oTaperD', 'taper', (v) => (v > 0 ? '+' : '') + Math.round(v * 100) + '%');
 bindDeform('sExtend', 'oExtend', 'extend', (v) => (v > 0 ? '+' : '') + Math.round(v * 100) + '%');
+bindDeform('sFlatten', 'oFlatten', 'flatten', (v) => Math.round(v * 100) + '%');
+$('bPolishF').onclick = () => polishFeatures();
+$('bSliceG').onclick = () => sliceGroups(Math.max(2, Math.min(40, Math.round(+$('nSlices').value) || 4)));
 // (chips compare string ids)
 chips('defToChips', [0, 1].map((k) => ({ id: String(k), name: '' })), () => String(S.defTo), (v) => (S.defTo = +v));
 chips('defAxisChips', [0, 1, 2].map((k) => ({ id: String(k), name: 'XYZ'[k] })), () => String(S.defAxis), (v) => {
@@ -7908,6 +8149,9 @@ $('bNew').onclick = () => openMenu($('bNew'), [
   { label: 'Сфера, по-лека', hint: '20 хил.', run: () => newScene(makeSphere(5), 'Сфера') },
   { label: 'Куб', hint: '19 хил.', run: () => newScene(makeCube(40), 'Куб') },
   { label: 'Тор', hint: '20 хил.', run: () => newScene(makeTorus(), 'Тор') },
+  { label: 'Тръба', hint: 'с групи', run: () => newScene(makeTube(), 'Тръба') },
+  { label: 'Пръстен', hint: 'обла лента', run: () => newScene(makeRing(), 'Пръстен') },
+  { label: 'Зъбно колело', hint: '16 зъба', run: () => newScene(makeGear(), 'Зъбно колело') },
   { label: 'Равнина', hint: '39 хил.', run: () => newScene(makePlane(140), 'Равнина') },
 ]);
 // a new model: one subtool (one undo step, so the old scene comes back with Ctrl+Z)
@@ -7961,5 +8205,5 @@ loadAutosave().then((d) => {
     toast('Продължавате последния модел. „Нов“ започва отначало.');
   }
 });
-window.__glina = { slimeBridge, nanoMesh, maskIslands, texturedFiles, zipMany, levelArrays, zmBuild, quadsOf, exportSTL, renderPrintInfo, decimate, decimateArrays, printScale, projectBytes, saveProject, openProject, packValue, unpackValue, panelLoops, balloonTool, shellFrom, refOpen, refState, refColourAt, refLayout, smoothViewUpdate, get smoothViewObj() { return smoothViewObj; }, recallFrom, makeFibers, fiberArrays, projectAll, storeMorph, switchMorph, dropMorph, morphOf, fillColour, cavityColour, zsOpen, zsClose, zsSkin, get zs() { return zs; }, xtract, latticeLive, latticeScreen, get lattice() { return lattice; }, surfaceContrast, snapshotPNG, maskHidden, startCloth, stopCloth, get clothRun() { return clothRun; }, hideSelection, hideGroup, showAll, invertVisibility, hideMasked, deleteHidden, hiddenCount, setHiddenUndoable, deform, makeArray, arrayArrays, setGizmoMode, get gizmoPin() { return gizmoPin; }, set gizmoPin(v) { gizmoPin = v; }, exportOBJ, scheduleAutosave, get TOOLS() { return TOOLS; }, get curTool() { return curTool; }, activateTool, addTool, appendPrimitive, duplicateTool, deleteTool, moveTool, mergeDown, splitGroups, extractTool, extractShell, makeBoolean, newScene, gizmoHandle, gizmoScreen, get solo() { return solo; }, set solo(v) { solo = v; renderOthers(); }, toolArrays, voxelCombine, voxelRemesh, coreStart, get working() { return working; }, sliceByPlane, mirrorWeldArrays, mirrorWeld, mirrorFlip, applyNoise, snapView, setOrtho, historyJump, polyframe, get cam() { return cam; }, trimByPlane, applyCut, tubeArrays, immShape, hasOpenEdges, get curve() { return liveCurve(); }, dropCurve, get immFile() { return immFile; }, set immFile(v) { immFile = v; }, get LAYERS() { return LAYERS; }, get recLayer() { return recLayer; }, addLayer, deleteLayer, toggleLayer, recordLayer, setLayerStrength, bakeLayers, groupOp, maskAllBut, groupNear, get mesh() { return mesh; }, get stroke() { return stroke; }, get gesture() { return gesture; }, get nav() { return nav; }, get MR() { return MR; }, syncSym, get SYM() { return SYM; }, setLevel, divide, deleteLower, deleteHigher, camera, orbit, pick, selectTool, brush, brushById, maskOp, remesh, undo, redo, subdivide, setDyntopo, floodDetail, S, get undoStack() { return undoStack; } };
+window.__glina = { makeCube, polishFeatures, sliceGroups, makeGear, makeTube, makeRing, revolve, meshToAxis, straighten, transformTools, gizmoTools, eigenSym3, subdivideArrays, slimeBridge, nanoMesh, maskIslands, texturedFiles, zipMany, levelArrays, zmBuild, quadsOf, exportSTL, renderPrintInfo, decimate, decimateArrays, printScale, projectBytes, saveProject, openProject, packValue, unpackValue, panelLoops, balloonTool, shellFrom, refOpen, refState, refColourAt, refLayout, smoothViewUpdate, get smoothViewObj() { return smoothViewObj; }, recallFrom, makeFibers, fiberArrays, projectAll, storeMorph, switchMorph, dropMorph, morphOf, fillColour, cavityColour, zsOpen, zsClose, zsSkin, get zs() { return zs; }, xtract, latticeLive, latticeScreen, get lattice() { return lattice; }, surfaceContrast, snapshotPNG, maskHidden, startCloth, stopCloth, get clothRun() { return clothRun; }, hideSelection, hideGroup, showAll, invertVisibility, hideMasked, deleteHidden, hiddenCount, setHiddenUndoable, deform, makeArray, arrayArrays, setGizmoMode, get gizmoPin() { return gizmoPin; }, set gizmoPin(v) { gizmoPin = v; }, exportOBJ, scheduleAutosave, get TOOLS() { return TOOLS; }, get curTool() { return curTool; }, activateTool, addTool, appendPrimitive, duplicateTool, deleteTool, moveTool, mergeDown, splitGroups, extractTool, extractShell, makeBoolean, newScene, gizmoHandle, gizmoScreen, get solo() { return solo; }, set solo(v) { solo = v; renderOthers(); }, toolArrays, voxelCombine, voxelRemesh, coreStart, get working() { return working; }, sliceByPlane, mirrorWeldArrays, mirrorWeld, mirrorFlip, applyNoise, snapView, setOrtho, historyJump, polyframe, get cam() { return cam; }, trimByPlane, applyCut, tubeArrays, immShape, hasOpenEdges, get curve() { return liveCurve(); }, dropCurve, get immFile() { return immFile; }, set immFile(v) { immFile = v; }, get LAYERS() { return LAYERS; }, get recLayer() { return recLayer; }, addLayer, deleteLayer, toggleLayer, recordLayer, setLayerStrength, bakeLayers, groupOp, maskAllBut, groupNear, get mesh() { return mesh; }, get stroke() { return stroke; }, get gesture() { return gesture; }, get nav() { return nav; }, get MR() { return MR; }, syncSym, get SYM() { return SYM; }, setLevel, divide, deleteLower, deleteHigher, camera, orbit, pick, selectTool, brush, brushById, maskOp, remesh, undo, redo, subdivide, setDyntopo, floodDetail, S, get undoStack() { return undoStack; } };
 </script>
