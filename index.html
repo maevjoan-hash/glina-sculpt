@@ -92,6 +92,8 @@ button, input, select { font: inherit; color: inherit; }
 #view { grid-area: view; position: relative; min-width: 0; overflow: hidden;
   background: radial-gradient(ellipse at 50% 38%, #2b3139 0%, #1a1e24 55%, #111317 100%); }
 #gl { position: absolute; inset: 0; width: 100%; height: 100%; display: block; touch-action: none; outline: none; }
+#refImg { position: absolute; left: 50%; top: 50%; pointer-events: none; transform-origin: 50% 50%; user-select: none; }
+#refImg.front { z-index: 2; }
 #overlay { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; overflow: visible; }
 #history { position: absolute; top: 8px; left: 50%; transform: translateX(-50%); width: min(60%, 520px); height: 12px; display: flex; justify-content: center; gap: 1px; align-items: stretch; z-index: 3; }
 #history[hidden] { display: none; }
@@ -240,6 +242,7 @@ input[type=range] { width: 100%; height: 26px; accent-color: var(--wax); backgro
   <nav id="rail" aria-label="Четки"></nav>
 
   <main id="view">
+    <img id="refImg" alt="" hidden>
     <canvas id="gl" tabindex="0"></canvas>
     <div id="cursor2d" hidden></div>
     <svg id="overlay" aria-hidden="true"></svg>
@@ -341,6 +344,7 @@ input[type=range] { width: 100%; height: 26px; accent-color: var(--wax); backgro
       <div class="two"><button class="btn wide" id="bSolo" aria-pressed="false" title="Solo: само активният се вижда">Само този</button><button class="btn wide" id="bToolSplit" title="Groups Split: всяка група става подобект">Раздели по групи</button></div>
       <div class="row"><label for="sExtract">Дебелина при изваждане</label><output id="oExtract"></output><input type="range" id="sExtract" min="0.02" max="1" step="0.02"></div>
       <button class="btn wide" id="bExtract" title="Extract: дреха, броня или панел от маскираното">Извади от маската</button>
+      <div class="two"><button class="btn wide" id="bBalloon" title="MeshBalloon: маската, надута като възглавница">Надуй от маската</button><button class="btn wide" id="bPanels" title="Panel Loops: всяка група става панел с процеп и скосен ръб">Панели от групите</button></div>
       <button class="btn wide" id="bBoolean" title="Make Boolean Mesh: видимите подобекти, по ред, с + − ∩">Булево от видимите</button>
       <button class="btn wide" id="bProject" title="Project All: активният взема формата и цвета на видимите, които застъпва">Пренеси детайла от видимите</button>
       <p class="note">Щракване върху друг подобект на модела го прави активен. „+ − ∩“ до името казва как участва в „Булево“: добавя, изважда или оставя общото. Gizmo (Z) мести, върти и мащабира.</p>
@@ -462,6 +466,7 @@ input[type=range] { width: 100%; height: 26px; accent-color: var(--wax); backgro
       <div class="two"><button class="btn wide" id="bDelLower" title="Текущото ниво става основа">Изтрий по-ниските</button><button class="btn wide" id="bDelHigher">Изтрий по-високите</button></div>
       <p class="note">Всяко разделяне пази предишните нива. На ниско ниво местите голямата форма, на високо добавяте детайл; детайлът следва формата, когато се върнете горе.</p>
       <label class="toggle">Изглаждане при разделяне <input type="checkbox" id="tLoop" checked></label>
+      <label class="toggle" title="Dynamic Subdivision: ниската мрежа се показва гладка (разделена веднъж или два пъти), без да се променя">Гладък преглед <input type="checkbox" id="tSmoothView"></label>
       <button class="btn wide" id="bSmoothAll">Изглади целия модел</button>
       <div class="row"><label for="sVoxel">Плътност на преизграждането</label><output id="oVoxel"></output><input type="range" id="sVoxel" min="48" max="256" step="8"></div>
       <button class="btn wide" id="bRemesh" title="DynaMesh: нова равна мрежа по формата на модела">Преизгради мрежата (DynaMesh)</button>
@@ -479,6 +484,16 @@ input[type=range] { width: 100%; height: 26px; accent-color: var(--wax); backgro
     </section>
 
     <section class="sec">
+      <h2>Референтна картинка <em>Spotlight</em></h2>
+      <p class="note">Снимка или рисунка над или зад модела, за да моделирате по нея. С „Нагласи“ влаченето я мести, а колелцето я мащабира. Боята може да взема цвета си от картинката: така снимката се „прожектира“ върху модела.</p>
+      <div class="two"><button class="btn wide" id="bRefOpen">Картинка…</button><button class="btn wide" id="bRefClear" disabled>Махни</button></div>
+      <div class="row"><label for="sRefOp">Прозрачност</label><output id="oRefOp"></output><input type="range" id="sRefOp" min="0.05" max="1" step="0.05"></div>
+      <div class="row"><label for="sRefSc">Размер</label><output id="oRefSc"></output><input type="range" id="sRefSc" min="0.2" max="4" step="0.05"></div>
+      <label class="toggle">Пред модела <input type="checkbox" id="tRefFront"></label>
+      <div class="two"><button class="btn wide" id="bRefAdjust" aria-pressed="false">Нагласи</button><button class="btn wide" id="bRefPaint" aria-pressed="false" title="Боята взема цвета от картинката под всяка точка">Боя от картинката</button></div>
+    </section>
+
+    <section class="sec">
       <h2>Материал</h2>
       <div class="swatches" id="matcaps"></div>
       <label class="toggle">Плоско засенчване <input type="checkbox" id="tFlat"></label>
@@ -486,6 +501,7 @@ input[type=range] { width: 100%; height: 26px; accent-color: var(--wax); backgro
   </aside>
 </div>
 <input type="file" id="fileIn" accept=".obj,.stl" hidden>
+<input type="file" id="refIn" accept="image/*" hidden>
 <input type="file" id="brushIn" accept=".json,application/json" hidden>
 <input type="file" id="alphaIn" accept="image/*" hidden>
 <input type="file" id="immIn" accept=".obj,.stl" hidden>
@@ -648,6 +664,8 @@ const S = {
   dynRef: 4,           // the camera distance at which the brush has its set size
   noiseScale: 0.5, noiseAmt: 0.3,
   extract: 0.3,        // Extract: thickness of the shell
+  refOpacity: 0.5, refScale: 1, refFront: true, paintFromRef: false,
+  smoothView: false,
   fibCount: 800, fibLength: 0.15, fibWidth: 0.006, fibGravity: 0.4, fibVary: 0.4,
   clothGravity: 1, clothStretch: 0.9, clothBend: 0.15, clothFloor: true, clothTime: 5, clothSelf: true,
   defAxis: 1, defTo: 0,  // deformers: along which axis, and (bend) toward which of the other two
@@ -2401,6 +2419,7 @@ function resize() {
   viewport.w = Math.max(1, r.width); viewport.h = Math.max(1, r.height);
   renderer.setSize(viewport.w, viewport.h, false);
   camera.aspect = viewport.w / viewport.h; camera.updateProjectionMatrix();
+  requestAnimationFrame(() => refLayout());   // (the reference picture is sized to the view; after the script has run)
   requestRender();
 }
 new ResizeObserver(resize).observe(canvas);
@@ -3076,9 +3095,18 @@ function applyBrush(tool, c, n, r, s, sign, dab = {}) {
       return;
     }
     case 'paint': {
-      const [cr, cg, cb] = sign < 0 ? [1, 1, 1] : S.paint;
+      let [cr, cg, cb] = sign < 0 ? [1, 1, 1] : S.paint;
+      const fromRef = S.paintFromRef && refState.px && sign > 0;
+      const e = fromRef ? new THREE.Matrix4().multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse).elements : null;
       for (let k = 0; k < count; k++) {
-        const i = G[k], w = Math.min(1, F[k] * s * 0.6) * (1 - MK[i]); if (w <= 0) continue; touchVert(i);
+        const i = G[k]; let w = Math.min(1, F[k] * s * 0.6) * (1 - MK[i]); if (w <= 0) continue;
+        if (fromRef) {
+          const x = P[i * 3], y = P[i * 3 + 1], z = P[i * 3 + 2], ww = e[3] * x + e[7] * y + e[11] * z + e[15];
+          const c = ww > 0 ? refColourAt(((e[0] * x + e[4] * y + e[8] * z + e[12]) / ww * 0.5 + 0.5) * viewport.w, (0.5 - (e[1] * x + e[5] * y + e[9] * z + e[13]) / ww * 0.5) * viewport.h) : null;
+          if (!c) continue;
+          [cr, cg, cb] = c; w = Math.min(1, w * 1.6);
+        }
+        touchVert(i);
         CL[i * 3] += (cr - CL[i * 3]) * w; CL[i * 3 + 1] += (cg - CL[i * 3 + 1]) * w; CL[i * 3 + 2] += (cb - CL[i * 3 + 2]) * w;
       }
       frame_.colors = true;
@@ -3852,6 +3880,7 @@ canvas.addEventListener('pointerdown', (e) => {
   } else {
     capture(e);
   }
+  if (refState.adjust && refState.img && e.button === 0) { gesture = { kind: 'refmove', x0: x, y0: y, x, y, id: e.pointerId, ox: refState.x, oy: refState.y }; return; }
   if (clothRun && e.pointerType !== 'touch') { nav = { mode: e.button === 1 || e.altKey ? 'pan' : 'orbit', x, y, id: e.pointerId }; return; }
   if (stroke || nav || gesture || working) return;
   const barrel = e.pointerType === 'pen' && (e.buttons & 2);
@@ -3924,6 +3953,7 @@ canvas.addEventListener('pointermove', (e) => {
     if (gesture.kind === 'hidesel') gesture.alt = e.altKey;
     if (gesture.kind === 'cutline') { gesture.alt = e.altKey; gesture.snap = e.shiftKey; drawOverlay(); return; }
     if (gesture.kind === 'insert') { showInsertPreview(gesture); return; }
+    if (gesture.kind === 'refmove') { refState.x = gesture.ox + x - gesture.x0; refState.y = gesture.oy + y - gesture.y0; refLayout(); return; }
     if (gesture.kind === 'gizmo') { applyGizmo(gesture); drawOverlay(); return; }
     if (gesture.kind === 'ffd') { moveLatticeDrag(gesture); drawOverlay(); return; }
     if (gesture.kind === 'zsadd' || gesture.kind === 'zsmove' || gesture.kind === 'zsscale') { zsMove(gesture); return; }
@@ -3972,7 +4002,8 @@ function endPointer(e) {
     if (e.type === 'pointercancel') { cancelGesture(); return; }
     const g = gesture; gesture = null; drawOverlay();
     const moved = !!g.moved || Math.hypot(g.x - g.x0, g.y - g.y0) > 4;
-    if (g.kind === 'cutline') { if (moved) applyCut(g); }
+    if (g.kind === 'refmove') { /* (the picture has moved already) */ }
+    else if (g.kind === 'cutline') { if (moved) applyCut(g); }
     else if (g.kind === 'insert') insertShape(g);
     else if (g.kind === 'gizmo') endGizmo(g, true);
     else if (g.kind === 'ffd') endLatticeDrag(g, true);
@@ -4004,6 +4035,7 @@ canvas.addEventListener('pointercancel', endPointer);
 canvas.addEventListener('pointerleave', (e) => { if (!stroke && e.pointerType !== 'touch') { hoverXY = null; hideRing(); requestRender(); } });
 canvas.addEventListener('wheel', (e) => {
   e.preventDefault();
+  if (refState.adjust && refState.img) { S.refScale = Math.min(4, Math.max(0.2, S.refScale * Math.exp(-e.deltaY * 0.0012))); refLayout(); syncRefSc(); return; }
   if (e.ctrlKey && Math.abs(e.deltaY) < 50) zoom(Math.exp(e.deltaY * 0.01));   // trackpad pinch
   else zoom(Math.exp(e.deltaY * 0.0012));
 }, { passive: false });
@@ -4056,6 +4088,7 @@ function frame() {
   renderQueued = false;
   if (stroke) { refitBVH(); dynSplitsLeft = DYN_FRAME_SPLITS; dynCollapsesLeft = DYN_FRAME_COLLAPSES; processStroke(); flushFrame(); }
   else updateHover();
+  if (S.smoothView || smoothViewObj) smoothViewUpdate();
   renderer.render(scene, camera);
   if ((curve && !gesture) || brush().base === 'gizmo' || brush().base === 'ffd') drawOverlay();
   if (stroke && stroke.queue.length) requestRender();
@@ -4308,6 +4341,111 @@ function extractShell(a, thick) {
     for (const [p, q] of [[i, j], [j, k], [k, i]]) if (!edges.has(q * 4294967296 + p)) idx.push(q, p, m + p, q, m + p, m + q);   // the rim's wall
   }
   return { pos, idx: Uint32Array.from(idx), col, mask, grp };
+}
+// A shell over a set of faces, with an outline (ZBrush: Panel Loops, MeshBalloon). Each face of `sel`
+// becomes a face on top (lifted by its corner's height h) and one underneath (just off the surface); the
+// rim is pulled in by `inset` along the surface and closed by a wall, with the top's rim pulled in a
+// little more (the bevel). h is per vertex of the mesh; where it is 0 the two layers meet (a balloon's rim).
+function shellFrom(a, sel, h, inset, bevel) {
+  const n = a.pos.length / 3, P = a.pos, N = new Float64Array(n * 3);
+  for (let f = 0; f < a.idx.length / 3; f++) {
+    const i = a.idx[f * 3], j = a.idx[f * 3 + 1], k = a.idx[f * 3 + 2];
+    const ux = P[j * 3] - P[i * 3], uy = P[j * 3 + 1] - P[i * 3 + 1], uz = P[j * 3 + 2] - P[i * 3 + 2], vx = P[k * 3] - P[i * 3], vy = P[k * 3 + 1] - P[i * 3 + 1], vz = P[k * 3 + 2] - P[i * 3 + 2];
+    const nx = uy * vz - uz * vy, ny = uz * vx - ux * vz, nz = ux * vy - uy * vx;
+    for (const v of [i, j, k]) { N[v * 3] += nx; N[v * 3 + 1] += ny; N[v * 3 + 2] += nz; }
+  }
+  const map = new Int32Array(n).fill(-1), used = [], edges = new Set();
+  for (const f of sel) for (let e = 0; e < 3; e++) { const v = a.idx[f * 3 + e]; if (map[v] < 0) { map[v] = used.length; used.push(v); } }
+  for (const f of sel) for (let e = 0; e < 3; e++) edges.add(map[a.idx[f * 3 + e]] * 4294967296 + map[a.idx[f * 3 + (e + 1) % 3]]);
+  // the rim, and for each rim vertex the way into its panel (toward the centres of its faces)
+  const m = used.length, rim = new Uint8Array(m), inward = new Float64Array(m * 3);
+  for (const f of sel) {
+    const t = [0, 1, 2].map((e) => map[a.idx[f * 3 + e]]);
+    for (let e = 0; e < 3; e++) { const p = t[e], q = t[(e + 1) % 3]; if (!edges.has(q * 4294967296 + p)) { rim[p] = 1; rim[q] = 1; } }
+    const cx = (P[used[t[0]] * 3] + P[used[t[1]] * 3] + P[used[t[2]] * 3]) / 3, cy = (P[used[t[0]] * 3 + 1] + P[used[t[1]] * 3 + 1] + P[used[t[2]] * 3 + 1]) / 3, cz = (P[used[t[0]] * 3 + 2] + P[used[t[1]] * 3 + 2] + P[used[t[2]] * 3 + 2]) / 3;
+    for (const q of t) { const v = used[q]; inward[q * 3] += cx - P[v * 3]; inward[q * 3 + 1] += cy - P[v * 3 + 1]; inward[q * 3 + 2] += cz - P[v * 3 + 2]; }
+  }
+  // the rim straightened along itself: groups follow the triangles' edges, which zigzag
+  const L = new Float64Array(m * 3); used.forEach((v, q) => { for (let c = 0; c < 3; c++) L[q * 3 + c] = P[v * 3 + c]; });
+  const rimNb = new Map();
+  for (const f of sel) for (let e = 0; e < 3; e++) {
+    const p = map[a.idx[f * 3 + e]], q = map[a.idx[f * 3 + (e + 1) % 3]];
+    if (edges.has(q * 4294967296 + p)) continue;
+    if (!rimNb.has(p)) rimNb.set(p, []); if (!rimNb.has(q)) rimNb.set(q, []);
+    rimNb.get(p).push(q); rimNb.get(q).push(p);
+  }
+  for (let it = 0; it < 8; it++) {
+    const T = new Map();
+    for (const [q, nb] of rimNb) { if (nb.length !== 2) continue; const [x, y] = nb; T.set(q, [0, 1, 2].map((c) => L[q * 3 + c] * 0.5 + (L[x * 3 + c] + L[y * 3 + c]) * 0.25)); }
+    for (const [q, v] of T) for (let c = 0; c < 3; c++) L[q * 3 + c] = v[c];
+  }
+  const pos = new Float32Array(m * 6), col = new Float32Array(m * 6), mask = new Float32Array(m * 2), grp = new Float32Array(m * 2);
+  used.forEach((v, q) => {
+    const l = Math.hypot(N[v * 3], N[v * 3 + 1], N[v * 3 + 2]) || 1, nn = [N[v * 3] / l, N[v * 3 + 1] / l, N[v * 3 + 2] / l];
+    let ix = inward[q * 3], iy = inward[q * 3 + 1], iz = inward[q * 3 + 2];
+    const along = ix * nn[0] + iy * nn[1] + iz * nn[2]; ix -= nn[0] * along; iy -= nn[1] * along; iz -= nn[2] * along;
+    const il = Math.hypot(ix, iy, iz) || 1, sIn = rim[q] ? inset : 0, sTop = rim[q] ? inset + bevel : 0;
+    const hv = h[v];
+    for (let c = 0; c < 3; c++) {
+      const id = [ix, iy, iz][c] / il;
+      pos[q * 3 + c] = L[q * 3 + c] + nn[c] * hv + id * sTop;                       // top
+      pos[(m + q) * 3 + c] = L[q * 3 + c] + nn[c] * Math.min(hv, h.base) + id * sIn;  // underneath
+      col[q * 3 + c] = col[(m + q) * 3 + c] = a.col[v * 3 + c];
+    }
+    grp[q] = grp[m + q] = a.grp ? a.grp[v] : 0;
+  });
+  const idx = [];
+  for (const f of sel) {
+    const i = map[a.idx[f * 3]], j = map[a.idx[f * 3 + 1]], k = map[a.idx[f * 3 + 2]];
+    idx.push(i, j, k, m + i, m + k, m + j);
+    for (const [p, q] of [[i, j], [j, k], [k, i]]) if (!edges.has(q * 4294967296 + p)) idx.push(q, p, m + p, q, m + p, m + q);   // the wall
+  }
+  return { pos, idx: Uint32Array.from(idx), col, mask, grp };
+}
+// every polygroup becomes its own panel: lifted, with a gap and a bevel round it (ZBrush: Panel Loops)
+function panelLoops() {
+  if (stroke || working) return;
+  if (!askDropLevels('Панелите')) return;
+  stashActive();
+  const a = toolArrays(TOOLS[curTool]), { r } = mesh.bounds(), e = meanEdge(a.pos, a.idx);
+  const faceG = (f) => { const g0 = a.grp[a.idx[f * 3]], g1 = a.grp[a.idx[f * 3 + 1]], g2 = a.grp[a.idx[f * 3 + 2]]; return g1 === g2 ? g1 : g0; };
+  const byG = new Map();
+  for (let f = 0; f < a.idx.length / 3; f++) { const g = faceG(f); if (!byG.has(g)) byG.set(g, []); byG.get(g).push(f); }
+  const thick = S.extract * r * 0.05, h = new Float32Array(a.pos.length / 3).fill(thick);
+  h.base = thick * 0.08;
+  const parts = [];
+  for (const faces of byG.values()) parts.push(shellFrom(a, faces, h, e * 0.8, e * 0.6));
+  let nv = 0, nt = 0; for (const q of parts) { nv += q.pos.length / 3; nt += q.idx.length / 3; }
+  const pos = new Float32Array(nv * 3), idx = new Uint32Array(nt * 3), col = new Float32Array(nv * 3), grp = new Float32Array(nv);
+  let v0 = 0, t0 = 0;
+  for (const q of parts) { pos.set(q.pos, v0 * 3); col.set(q.col, v0 * 3); grp.set(q.grp, v0); for (let k = 0; k < q.idx.length; k++) idx[t0 * 3 + k] = q.idx[k] + v0; v0 += q.pos.length / 3; t0 += q.idx.length / 3; }
+  const paused = replaceMesh(new SculptMesh(pos, idx, col, new Float32Array(nv), 0, grp));
+  toast(`Панели: ${byG.size} (по една за всяка група), с дебелината от „Дебелина при изваждане“.` + (byG.size < 2 ? ' За повече панели първо направете групи (Настройки → Групи, „Групи“ A).' : '') + (paused ? ' ' + DYN_PAUSED_MSG : ''));
+}
+// a pillow from the masked area: thickest in the middle, thin at the rim (ZBrush: MeshBalloon)
+function balloonTool() {
+  if (stroke || working) return;
+  stashActive();
+  const a = toolArrays(TOOLS[curTool]), { r } = mesh.bounds(), n = a.pos.length / 3, sel = [];
+  for (let f = 0; f < a.idx.length / 3; f++) if (a.mask[a.idx[f * 3]] >= 0.5 && a.mask[a.idx[f * 3 + 1]] >= 0.5 && a.mask[a.idx[f * 3 + 2]] >= 0.5) sel.push(f);
+  if (!sel.length) { toast('Първо маскирайте формата, която да се надуе (Ctrl+рисуване).'); return; }
+  // how far each vertex is from the rim, along the edges (Dijkstra from the rim)
+  const inSel = new Uint8Array(n), dist = new Float64Array(n).fill(Infinity), nb = new Map();
+  const edges = new Set();
+  for (const f of sel) for (let e = 0; e < 3; e++) { const p = a.idx[f * 3 + e], q = a.idx[f * 3 + (e + 1) % 3]; inSel[p] = 1; edges.add(p * 4294967296 + q); if (!nb.has(p)) nb.set(p, []); nb.get(p).push(q); if (!nb.has(q)) nb.set(q, []); nb.get(q).push(p); }
+  const queue = [];
+  for (const f of sel) for (let e = 0; e < 3; e++) { const p = a.idx[f * 3 + e], q = a.idx[f * 3 + (e + 1) % 3]; if (!edges.has(q * 4294967296 + p)) { dist[p] = 0; dist[q] = 0; queue.push(p, q); } }
+  for (let it = 0; it < queue.length; it++) {
+    const v = queue[it];
+    for (const u of nb.get(v)) { const d = dist[v] + Math.sqrt(edgeLen2(a.pos, v, u)); if (d < dist[u] - 1e-12) { dist[u] = d; queue.push(u); } }
+  }
+  let most = 0; for (let v = 0; v < n; v++) if (inSel[v] && Number.isFinite(dist[v])) most = Math.max(most, dist[v]);
+  const top = S.extract * r * 0.12, h = new Float32Array(n);
+  for (let v = 0; v < n; v++) if (inSel[v]) { const t = most > 0 && Number.isFinite(dist[v]) ? Math.min(1, dist[v] / most) : 1; h[v] = top * Math.sqrt(1 - (1 - t) * (1 - t)); }
+  h.base = top * 0.03;   // (the underside just off the surface inside, on it at the rim)
+  const out = shellFrom(a, sel, h, 0, 0);
+  addTool(new SculptMesh(out.pos, out.idx, out.col, out.mask, 0, out.grp), 'Възглавница');
+  toast('Нов подобект: маската, надута като възглавница (дебелината е от „Дебелина при изваждане“).');
 }
 function extractTool() {
   stashActive();
@@ -4988,6 +5126,82 @@ function xtract(hit) {
   syncBrushUI(); saveSettings();
   toast('Релефът е взет в четката. Опънете го върху модела (DragRect): Alt го обръща.');
   return true;
+}
+
+/* ---------- Reference picture (ZBrush: Spotlight, in short) ----------
+   A picture over or behind the model, moved and scaled on screen. With „Боя от картинката“ the Paint
+   brush takes each point's colour from the picture under it (Spotlight's projection). */
+const refState = { img: null, px: null, w: 0, h: 0, x: 0, y: 0, adjust: false };
+function refLayout() {
+  const el = $('refImg'); if (!refState.img) { el.hidden = true; return; }
+  el.hidden = false;
+  const H = viewport.h * 0.9 * S.refScale, W = H * (refState.w / refState.h);
+  el.style.width = W + 'px'; el.style.height = H + 'px';
+  el.style.transform = `translate(calc(-50% + ${refState.x}px), calc(-50% + ${refState.y}px))`;
+  el.style.opacity = S.refOpacity;
+  el.classList.toggle('front', S.refFront);
+  $('bRefClear').disabled = false;
+}
+function refOpen(file) {
+  const url = URL.createObjectURL(file), img = new Image();
+  img.onload = () => {
+    // a copy of the pixels, at most 2048 across, for painting from it
+    const k = Math.min(1, 2048 / Math.max(img.width, img.height)), c = document.createElement('canvas');
+    c.width = Math.round(img.width * k); c.height = Math.round(img.height * k);
+    const g = c.getContext('2d'); g.drawImage(img, 0, 0, c.width, c.height);
+    refState.px = g.getImageData(0, 0, c.width, c.height); refState.w = c.width; refState.h = c.height; refState.img = img;
+    refState.x = refState.y = 0;
+    $('refImg').src = url;
+    refLayout();
+    toast('Картинката е тук. „Нагласи“ я мести и мащабира.');
+  };
+  img.onerror = () => { URL.revokeObjectURL(url); toast('Картинката не може да се отвори.'); };
+  img.src = url;
+}
+function refClear() { refState.img = refState.px = null; $('refImg').hidden = true; $('refImg').removeAttribute('src'); $('bRefClear').disabled = true; if (refState.adjust) { refState.adjust = false; setPressed('bRefAdjust', false); } }
+// the picture's colour at a canvas point, or null outside it
+function refColourAt(sx, sy) {
+  const R = refState; if (!R.px) return null;
+  const H = viewport.h * 0.9 * S.refScale, W = H * (R.w / R.h);
+  const u = (sx - (viewport.w / 2 + R.x - W / 2)) / W, v = (sy - (viewport.h / 2 + R.y - H / 2)) / H;
+  if (u < 0 || v < 0 || u >= 1 || v >= 1) return null;
+  const o = (Math.floor(v * R.h) * R.w + Math.floor(u * R.w)) * 4, d = R.px.data;
+  if (d[o + 3] < 8) return null;
+  // (display colours to the linear-ish vertex colour the matcap multiplies: about the same)
+  return [d[o] / 255, d[o + 1] / 255, d[o + 2] / 255];
+}
+
+/* ---------- Dynamic Subdivision (ZBrush: Dynamic Subdiv), a smooth view of a low mesh ----------
+   The mesh is drawn subdivided (once, or twice when it is light), while the brushes keep working on the
+   mesh itself: during a stroke the real mesh shows, afterwards the smooth copy is made again. */
+let smoothViewObj = null, smoothViewKey = '';
+function smoothViewUpdate() {
+  const want = S.smoothView && !zs && mesh.f <= 400000;
+  const key = want ? undoSerial + ':' + curTool + ':' + mesh.n + ':' + mesh.f + ':' + (mesh.dyn ? 1 : 0) : '';
+  if (!want) {
+    if (smoothViewObj) { scene.remove(smoothViewObj); smoothViewObj.geometry.dispose(); smoothViewObj = null; smoothViewKey = ''; }
+    if (gmesh && !zs) gmesh.visible = true;
+    return;
+  }
+  if (stroke) { if (smoothViewObj) smoothViewObj.visible = false; gmesh.visible = true; return; }
+  if (key !== smoothViewKey) {
+    if (smoothViewObj) { scene.remove(smoothViewObj); smoothViewObj.geometry.dispose(); smoothViewObj = null; }
+    const a = meshArrays();
+    let r = subdivideArrays(Float32Array.from(a.pos), Uint32Array.from(a.idx), Float32Array.from(a.col), Float32Array.from(a.mask), true, Float32Array.from(a.grp));
+    if (r.idx.length / 3 <= 150000) r = subdivideArrays(r.pos, r.idx, r.col, r.mask, true, r.grp);
+    const g = new THREE.BufferGeometry(), nv = r.pos.length / 3;
+    g.setAttribute('position', new THREE.BufferAttribute(r.pos, 3));
+    g.setIndex(new THREE.BufferAttribute(r.idx, 1));
+    g.computeVertexNormals();
+    g.setAttribute('aColor', new THREE.BufferAttribute(r.col, 3));
+    g.setAttribute('aMask', new THREE.BufferAttribute(r.mask, 1));
+    g.setAttribute('aGroup', new THREE.BufferAttribute(r.grp, 1));
+    g.setAttribute('aHide', new THREE.BufferAttribute(new Float32Array(nv), 1));
+    smoothViewObj = new THREE.Mesh(g, material); smoothViewObj.frustumCulled = false; smoothViewObj.raycast = () => {};
+    scene.add(smoothViewObj);
+    smoothViewKey = key;
+  }
+  smoothViewObj.visible = true; gmesh.visible = false;
 }
 
 /* ---------- FiberMesh (ZBrush: FiberMesh) ----------
@@ -7057,6 +7271,8 @@ $('bToolMerge').onclick = mergeDown;
 $('bToolSplit').onclick = splitGroups;
 $('bSolo').onclick = () => { solo = !solo; renderTools(); renderOthers(); };
 $('bExtract').onclick = extractTool;
+$('bBalloon').onclick = balloonTool;
+$('bPanels').onclick = panelLoops;
 $('bFfdReset').onclick = () => { lattice = null; drawOverlay(); };
 $('bShowAll').onclick = showAll;
 $('bVisInvert').onclick = invertVisibility;
@@ -7094,6 +7310,18 @@ bindRange('sFibW', 'oFibW', () => S.fibWidth, (v) => (S.fibWidth = v), (v) => (v
 bindRange('sFibG', 'oFibG', () => S.fibGravity, (v) => (S.fibGravity = v), pct);
 bindRange('sFibV', 'oFibV', () => S.fibVary, (v) => (S.fibVary = v), pct);
 $('bFibers').onclick = makeFibers;
+$('bRefOpen').onclick = () => $('refIn').click();
+$('refIn').onchange = () => { const f = $('refIn').files[0]; $('refIn').value = ''; if (f) refOpen(f); };
+$('bRefClear').onclick = refClear;
+bindRange('sRefOp', 'oRefOp', () => S.refOpacity, (v) => { S.refOpacity = v; refLayout(); }, pct);
+const syncRefSc = bindRange('sRefSc', 'oRefSc', () => S.refScale, (v) => { S.refScale = v; refLayout(); }, (v) => '×' + v.toFixed(2));
+$('tRefFront').checked = S.refFront;
+$('tRefFront').addEventListener('change', () => { S.refFront = $('tRefFront').checked; refLayout(); saveSettings(); });
+$('bRefAdjust').onclick = () => { refState.adjust = !refState.adjust && !!refState.img; setPressed('bRefAdjust', refState.adjust); if (refState.adjust) toast('Влачете картинката; колелцето я мащабира. „Нагласи“ пак за скулптиране.'); };
+setPressed('bRefPaint', S.paintFromRef);
+$('bRefPaint').onclick = () => { S.paintFromRef = !S.paintFromRef; setPressed('bRefPaint', S.paintFromRef); saveSettings(); if (S.paintFromRef) { selectTool('paint'); if (!refState.img) toast('Първо изберете картинка.'); } };
+$('tSmoothView').checked = S.smoothView;
+$('tSmoothView').addEventListener('change', () => { S.smoothView = $('tSmoothView').checked; saveSettings(); smoothViewUpdate(); requestRender(); });
 $('tClothSelf').checked = S.clothSelf;
 $('tClothSelf').addEventListener('change', () => { S.clothSelf = $('tClothSelf').checked; saveSettings(); });
 $('bBoolean').onclick = makeBoolean;
@@ -7234,5 +7462,5 @@ loadAutosave().then((d) => {
     toast('Продължавате последния модел. „Нов“ започва отначало.');
   }
 });
-window.__glina = { recallFrom, makeFibers, fiberArrays, projectAll, storeMorph, switchMorph, dropMorph, morphOf, fillColour, cavityColour, zsOpen, zsClose, zsSkin, get zs() { return zs; }, xtract, latticeLive, latticeScreen, get lattice() { return lattice; }, surfaceContrast, snapshotPNG, maskHidden, startCloth, stopCloth, get clothRun() { return clothRun; }, hideSelection, hideGroup, showAll, invertVisibility, hideMasked, deleteHidden, hiddenCount, setHiddenUndoable, deform, makeArray, arrayArrays, setGizmoMode, get gizmoPin() { return gizmoPin; }, set gizmoPin(v) { gizmoPin = v; }, exportOBJ, scheduleAutosave, get TOOLS() { return TOOLS; }, get curTool() { return curTool; }, activateTool, addTool, appendPrimitive, duplicateTool, deleteTool, moveTool, mergeDown, splitGroups, extractTool, extractShell, makeBoolean, newScene, gizmoHandle, gizmoScreen, get solo() { return solo; }, set solo(v) { solo = v; renderOthers(); }, toolArrays, voxelCombine, voxelRemesh, coreStart, get working() { return working; }, sliceByPlane, mirrorWeldArrays, mirrorWeld, mirrorFlip, applyNoise, snapView, setOrtho, historyJump, polyframe, get cam() { return cam; }, trimByPlane, applyCut, tubeArrays, immShape, hasOpenEdges, get curve() { return liveCurve(); }, dropCurve, get immFile() { return immFile; }, set immFile(v) { immFile = v; }, get LAYERS() { return LAYERS; }, get recLayer() { return recLayer; }, addLayer, deleteLayer, toggleLayer, recordLayer, setLayerStrength, bakeLayers, groupOp, maskAllBut, groupNear, get mesh() { return mesh; }, get stroke() { return stroke; }, get gesture() { return gesture; }, get nav() { return nav; }, get MR() { return MR; }, syncSym, get SYM() { return SYM; }, setLevel, divide, deleteLower, deleteHigher, camera, orbit, pick, selectTool, brush, brushById, maskOp, remesh, undo, redo, subdivide, setDyntopo, floodDetail, S, get undoStack() { return undoStack; } };
+window.__glina = { panelLoops, balloonTool, shellFrom, refOpen, refState, refColourAt, refLayout, smoothViewUpdate, get smoothViewObj() { return smoothViewObj; }, recallFrom, makeFibers, fiberArrays, projectAll, storeMorph, switchMorph, dropMorph, morphOf, fillColour, cavityColour, zsOpen, zsClose, zsSkin, get zs() { return zs; }, xtract, latticeLive, latticeScreen, get lattice() { return lattice; }, surfaceContrast, snapshotPNG, maskHidden, startCloth, stopCloth, get clothRun() { return clothRun; }, hideSelection, hideGroup, showAll, invertVisibility, hideMasked, deleteHidden, hiddenCount, setHiddenUndoable, deform, makeArray, arrayArrays, setGizmoMode, get gizmoPin() { return gizmoPin; }, set gizmoPin(v) { gizmoPin = v; }, exportOBJ, scheduleAutosave, get TOOLS() { return TOOLS; }, get curTool() { return curTool; }, activateTool, addTool, appendPrimitive, duplicateTool, deleteTool, moveTool, mergeDown, splitGroups, extractTool, extractShell, makeBoolean, newScene, gizmoHandle, gizmoScreen, get solo() { return solo; }, set solo(v) { solo = v; renderOthers(); }, toolArrays, voxelCombine, voxelRemesh, coreStart, get working() { return working; }, sliceByPlane, mirrorWeldArrays, mirrorWeld, mirrorFlip, applyNoise, snapView, setOrtho, historyJump, polyframe, get cam() { return cam; }, trimByPlane, applyCut, tubeArrays, immShape, hasOpenEdges, get curve() { return liveCurve(); }, dropCurve, get immFile() { return immFile; }, set immFile(v) { immFile = v; }, get LAYERS() { return LAYERS; }, get recLayer() { return recLayer; }, addLayer, deleteLayer, toggleLayer, recordLayer, setLayerStrength, bakeLayers, groupOp, maskAllBut, groupNear, get mesh() { return mesh; }, get stroke() { return stroke; }, get gesture() { return gesture; }, get nav() { return nav; }, get MR() { return MR; }, syncSym, get SYM() { return SYM; }, setLevel, divide, deleteLower, deleteHigher, camera, orbit, pick, selectTool, brush, brushById, maskOp, remesh, undo, redo, subdivide, setDyntopo, floodDetail, S, get undoStack() { return undoStack; } };
 </script>
