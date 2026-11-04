@@ -15,6 +15,7 @@
 
 pub mod cloth;
 pub mod decimate;
+pub mod uv;
 
 use std::alloc::{alloc, dealloc, Layout};
 use std::cell::RefCell;
@@ -537,6 +538,44 @@ pub unsafe extern "C" fn decimate_raw(pos: *const f32, nv: usize, idx: *const u3
     OUT.with(|c| *c.borrow_mut() = Output { pos: m.pos, idx: m.idx, col: m.col, mask: m.mask, grp: m.grp, res: 0, quads: Vec::new() });
     0
 }
+
+thread_local! { static UV: RefCell<(Vec<f32>, Vec<u32>, Vec<u8>)> = const { RefCell::new((Vec::new(), Vec::new(), Vec::new())) }; }
+/// Unwrap: the UVs and the corners' UV vertices go to `uv_ptr(0)` / `uv_ptr(1)`; returns the charts.
+/// # Safety
+/// Every pointer must point to as many values as its count says.
+#[no_mangle]
+pub unsafe extern "C" fn uv_unwrap_raw(pos: *const f32, nv: usize, idx: *const u32, nt: usize) -> i32 {
+    let idx = std::slice::from_raw_parts(idx, nt * 3);
+    if idx.iter().any(|&v| v as usize >= nv) { return -1; }
+    let u = uv::unwrap(std::slice::from_raw_parts(pos, nv * 3), idx);
+    UV.with(|c| { let mut c = c.borrow_mut(); c.0 = u.uv; c.1 = u.corner; });
+    u.charts as i32
+}
+/// The colour map into `uv_ptr(2)` (RGBA), from the last unwrap.
+/// # Safety
+/// As above.
+#[no_mangle]
+pub unsafe extern "C" fn uv_bake_color_raw(idx: *const u32, nt: usize, col: *const f32, nv: usize, size: usize) -> i32 {
+    let idx = std::slice::from_raw_parts(idx, nt * 3);
+    let col = std::slice::from_raw_parts(col, nv * 3);
+    UV.with(|c| { let mut c = c.borrow_mut(); let img = uv::bake_color(&c.0, &c.1, idx, col, size); c.2 = img; });
+    0
+}
+/// The normal map into `uv_ptr(2)` (RGBA), from the last unwrap, against a finer surface.
+/// # Safety
+/// As above.
+#[no_mangle]
+pub unsafe extern "C" fn uv_bake_normals_raw(pos: *const f32, nv: usize, idx: *const u32, nt: usize, nrm: *const f32, hpos: *const f32, hnv: usize, hidx: *const u32, hnt: usize, size: usize, reach: f32) -> i32 {
+    let hidx = std::slice::from_raw_parts(hidx, hnt * 3);
+    if hidx.iter().any(|&v| v as usize >= hnv) { return -1; }
+    let (pos, idx, nrm, hpos) = (std::slice::from_raw_parts(pos, nv * 3), std::slice::from_raw_parts(idx, nt * 3), std::slice::from_raw_parts(nrm, nv * 3), std::slice::from_raw_parts(hpos, hnv * 3));
+    UV.with(|c| { let mut c = c.borrow_mut(); let img = uv::bake_normals(pos, idx, nrm, &c.0, &c.1, hpos, hidx, size, reach as f64); c.2 = img; });
+    0
+}
+#[no_mangle]
+pub extern "C" fn uv_ptr(kind: u32) -> *const u8 { UV.with(|c| { let c = c.borrow(); match kind { 0 => c.0.as_ptr() as *const u8, 1 => c.1.as_ptr() as *const u8, _ => c.2.as_ptr() } }) }
+#[no_mangle]
+pub extern "C" fn uv_len(kind: u32) -> usize { UV.with(|c| { let c = c.borrow(); match kind { 0 => c.0.len(), 1 => c.1.len(), _ => c.2.len() } }) }
 
 thread_local! { static CLOTH: RefCell<Option<(cloth::Cloth, Vec<f32>)>> = const { RefCell::new(None) }; }
 
