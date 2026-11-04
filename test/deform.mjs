@@ -106,6 +106,25 @@ check('Array in a circle around Y: six copies, as high as one', ac.f === d0.f * 
 await G(() => window.__glina.undo()); await frames(2);
 check('undo takes the array back', (await st()).f === d0.f);
 
+// Surface Contrast: more detail, less detail, one step each
+await G(() => { const W = window.__glina; W.activateTool(0); W.selectTool('draw'); }); await frames(2);
+await drag([[box.x + box.w / 2 - 80, box.y + box.h / 2], [box.x + box.w / 2 + 80, box.y + box.h / 2]]);
+const roughness = () => G(() => { const m = window.__glina.mesh; let s = 0; for (let i = 0; i < m.n; i++) { let x = 0, y = 0, z = 0, c = 0; for (let j = m.vvOff[i]; j < m.vvOff[i + 1]; j++) { const u = m.vv[j]; x += m.pos[u * 3]; y += m.pos[u * 3 + 1]; z += m.pos[u * 3 + 2]; c++; } s += Math.hypot(m.pos[i * 3] - x / c, m.pos[i * 3 + 1] - y / c, m.pos[i * 3 + 2] - z / c); } return s; });
+const r0 = await roughness(), u0 = (await st()).undo;
+await G(() => window.__glina.surfaceContrast(1.5)); await frames(2);
+const r1 = await roughness(), u1 = (await st()).undo;
+await G(() => window.__glina.undo()); await frames(2);
+await G(() => window.__glina.surfaceContrast(-0.8)); await frames(2);
+const r2 = await roughness();
+await G(() => window.__glina.undo()); await frames(2);
+const r3 = await roughness();
+check('Surface Contrast: + sharpens, − softens, one undo step, undo exact', r1 > r0 * 1.2 && r2 < r0 * 0.9 && u1 === u0 + 1 && Math.abs(r3 - r0) < 1e-9 * r0, { r0, r1, r2, r3 });
+// a picture with soft shadows, twice the canvas size
+const snap = await G(async () => { const url = await window.__glina.snapshotPNG(2); const img = new Image(); img.src = url; await img.decode(); const c = document.createElement('canvas'); c.width = img.width; c.height = img.height; const g = c.getContext('2d'); g.drawImage(img, 0, 0); const d = g.getImageData(0, 0, c.width, c.height).data; const seen = new Set(); for (let i = 0; i < d.length; i += 4 * 997) seen.add(d[i] >> 4 << 8 | d[i + 1] >> 4); const r = document.getElementById('gl').getBoundingClientRect(); return { w: img.width, h: img.height, cw: Math.round(r.width * 2), ch: Math.round(r.height * 2), colours: seen.size, png: url.startsWith('data:image/png') }; });
+check('snapshot: a PNG twice the canvas size, with a real picture in it', snap.png && snap.w === snap.cw && snap.h === snap.ch && snap.colours > 10, snap);
+const after = await G(() => { const r = document.getElementById('gl'); return { w: r.width, h: r.height }; });
+check('the canvas is its own size again after the snapshot', after.w < snap.w, after);
+
 check('no page errors', errors.length === 0, errors.slice(0, 5));
 console.log(`\n${results.filter(Boolean).length}/${results.length} passed`);
 await browser.close();
