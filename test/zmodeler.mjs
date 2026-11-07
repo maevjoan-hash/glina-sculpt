@@ -41,6 +41,21 @@ await G(() => window.__glina.undo()); await frames(2);
 await G(() => window.__glina.undo()); await frames(2);
 const e = await st();
 check('undo takes all three back', e.f === a.f && e.n === a.n, { e });
+// Bevel: out and narrower at once: the top of the lifted group is smaller than its foot
+await G(() => { window.__glina.brush().zm = 'bevel'; });
+const pb = await G(() => Array.from(window.__glina.mesh.pos.subarray(0, window.__glina.mesh.n * 3)));
+await drag([[cx, cy], [cx, cy - 40]]);
+const bev = await G(() => {
+  const W = window.__glina, m = W.mesh, c = W.camera.position.clone().normalize();
+  // the points furthest out (the new top) and how wide they spread square to the view
+  let top = 0; for (let i = 0; i < m.n; i++) top = Math.max(top, m.pos[i * 3] * c.x + m.pos[i * 3 + 1] * c.y + m.pos[i * 3 + 2] * c.z);
+  let w = 0; for (let i = 0; i < m.n; i++) { const h = m.pos[i * 3] * c.x + m.pos[i * 3 + 1] * c.y + m.pos[i * 3 + 2] * c.z; if (h > top - 1e-4) { const px = m.pos[i * 3] - c.x * h, py = m.pos[i * 3 + 1] - c.y * h, pz = m.pos[i * 3 + 2] - c.z * h; w = Math.max(w, Math.hypot(px, py, pz)); } }
+  return { top, w, open: W.hasOpenEdges(m.idx.subarray(0, m.f * 3)), undo: W.undoStack.length };
+});
+// the group's own width at its foot: the cap of the sphere beyond 0.85 has radius sqrt(1 − 0.85²) ≈ 0.53
+check('Bevel: lifted with a chamfer (its top narrower than its foot), closed, one step', bev.top > 1.03 && bev.w < 0.5 && !bev.open && bev.undo === e.undo + 1, bev);
+await G(() => window.__glina.undo()); await frames(2);
+await G(() => { window.__glina.brush().zm = 'extrude'; });
 // a press and no drag changes nothing
 await page.mouse.click(cx, cy); await frames(3);
 check('a click without a drag changes nothing', (await st()).f === a.f && (await st()).undo === e.undo);

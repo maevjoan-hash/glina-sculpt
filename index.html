@@ -321,10 +321,12 @@ input[type=range] { width: 100%; height: 26px; accent-color: var(--wax); backgro
         <label class="toggle" id="groupRow">Само групата под четката <input type="checkbox" id="tGroupOnly"></label>
         <div class="grp" id="grabGrp"><div class="note lab">Хващане</div><div class="chips" id="grabChips"></div></div>
         <div class="grp" id="zmGrp"><div class="note lab">Действие</div><div class="chips" id="zmChips"></div>
-          <p class="note">Натиснете група и влачете нагоре (навън) или надолу (навътре). „Изтегли“ я изважда със стени (Extrude), „Вдлъбни“ прави ръб около нея навътре (Inset); двете заедно правят бутони, ребра, прозорци. Работи върху цялата група под пръста.</p></div>
+          <p class="note">Натиснете група и влачете нагоре (навън) или надолу (навътре). „Изтегли“ я изважда със стени (Extrude), „Вдлъбни“ прави ръб около нея навътре (Inset), „Скос“ я изважда със скосен ръб (Bevel); двете заедно правят бутони, ребра, прозорци. Работи върху цялата група под пръста.</p></div>
         <div class="grp" id="ffdGrp"><div class="chips" id="ffdModeChips"></div><div class="note lab">Точки по всяка страна</div><div class="chips" id="ffdChips"></div>
           <p class="note">Клетка около незамаскираната част на активния подобект. Влачете точка: формата вътре я следва плавно. „Крива“ (Bend Curve): линия от точки по оста от „Деформации“ през средата; формата я следва, напречните сечения се завъртат по нея. Влачене другаде върти изгледа.</p>
           <button class="btn wide" id="bFfdReset">Нова клетка</button></div>
+        <div class="grp" id="topoGrp"><p class="note">Чертайте линии по модела: където се пресичат, стават ъгли; всяка затворена клетка става стена. „Направи“ прави от стените нов подобект с дебелината от „Дебелина при изваждане“. Краищата на линиите, близо до друга линия, се залепват за нея.</p>
+          <div class="two"><button class="btn wide" id="bTopoMake">Направи от линиите</button><button class="btn wide" id="bTopoClear">Изчисти</button></div></div>
         <div class="grp" id="shadowGrp"><p class="note">Начертайте затворен контур (влачене): той става силует, гледан по най-близката ос — отпред, отстрани или отгоре. С Shift при въртене изгледът застава точно по ос. Новият силует по същата ос заменя стария. „Направи“ прави подобект: това, което се вижда като всеки от силуетите от неговата страна.</p>
           <div class="two"><button class="btn wide" id="bShadowMake">Направи от силуетите</button><button class="btn wide" id="bShadowClear">Изчисти</button></div></div>
         <div class="grp" id="clothGrp"><div class="note lab">Плат</div><div class="chips" id="clothChips"></div></div>
@@ -387,6 +389,9 @@ input[type=range] { width: 100%; height: 26px; accent-color: var(--wax); backgro
       <div class="row"><label for="sNanoN">Брой</label><output id="oNanoN"></output><input type="range" id="sNanoN" min="5" max="1000" step="5"></div>
       <div class="row"><label for="sNanoS">Размер</label><output id="oNanoS"></output><input type="range" id="sNanoS" min="0.005" max="0.3" step="0.005"></div>
       <button class="btn wide" id="bNano">Пръсни формите по маската</button>
+      <h2 style="margin-top:14px">Форма във всяка стена <em>MicroPoly</em></h2>
+      <div class="chips" id="microChips"></div>
+      <button class="btn wide" id="bMicro" title="Всяка стена на активния подобект получава малка форма, нагодена по нея (най-добре след ретопология с четириъгълници)">Сложи форма във всяка стена</button>
       <h2 style="margin-top:14px">Плат <em>Dynamics</em></h2>
       <p class="note">Активният подобект пада като плат: маскираното стои закачено, останалото се спуска по другите видими подобекти и пода. Гънките му не минават една през друга. Започнете с „Извади от маската“ за дреха, после маскирайте мястото, където да виси.</p>
       <div class="row"><label for="sClothG">Гравитация</label><output id="oClothG"></output><input type="range" id="sClothG" min="0.1" max="3" step="0.05"></div>
@@ -574,6 +579,7 @@ const ICON = {
   snake: '<path d="M4 19c4 0 3-7 7-7s4-6 8-8"/><circle cx="19" cy="4" r="1.6"/>',
   snakecurve: '<path d="M4 20c4 0 3-7 7-7s4-6 8-8" stroke-dasharray="2.5 2"/><circle cx="4" cy="20" r="1.6"/><path d="M15 4h4v4" opacity=".6"/>',
   vdm: '<path d="M3 19h18"/><path d="M7 19c0-6 2-10 7-11 3-.5 4 1.5 3 3-1 1.5-3 1-3-1" /><path d="M10 19c0-3 1-5 3-6" opacity=".5"/>',
+  topology: '<path d="M4 6c5 1 11 1 16 0M4 12c5 1 11 1 16 0M4 18c5 1 11 1 16 0"/><path d="M7 4c-1 5-1 11 0 16M12 4c-.5 5-.5 11 0 16M17 4c1 5 1 11 0 16" opacity=".6"/>',
   shadowbox: '<path d="M4 8l8-4 8 4v9l-8 4-8-4z" opacity=".45"/><path d="M8 13c0-3 2-5 4-5s4 2 4 5-2 4-4 4-4-1-4-4z"/>',
   dimple: '<path d="M3 9h5c1 0 1.5 1 2 3 .7 2.5 3.3 2.5 4 0 .5-2 1-3 2-3h5"/><path d="M3 19h18" opacity=".45"/>',
   clip: '<path d="M3 21L21 3" stroke-dasharray="3 2"/><path d="M6 12c0-4 3-7 6-7l-6 13z" fill="currentColor" opacity=".35"/><path d="M14 19c3 0 6-3 6-6"/>',
@@ -613,7 +619,7 @@ const BASES = [
   { id: 'draw', name: 'Рисуване (Standard)' }, { id: 'clay', name: 'Глина (Clay)' }, { id: 'claystrips', name: 'Глина на ивици (ClayBuildup)' },
   { id: 'inflate', name: 'Надуване (Inflate)' }, { id: 'flatten', name: 'Изравняване (hPolish)' }, { id: 'scrape', name: 'Подрязване (TrimDynamic)' },
   { id: 'pinch', name: 'Притискане (Pinch)' }, { id: 'crease', name: 'Гънка' }, { id: 'smooth', name: 'Изглаждане (Smooth)' },
-  { id: 'grab', name: 'Хващане (Move)' }, { id: 'snake', name: 'Издърпване (SnakeHook)' }, { id: 'vdm', name: 'Векторна форма (VDM)' }, { id: 'shadowbox', name: 'Силуети (ShadowBox)' }, { id: 'pose', name: 'Поза (Pose)' }, { id: 'insert', name: 'Вмъкване на форма (InsertMesh)' }, { id: 'gizmo', name: 'Местене, завъртане, мащаб (Gizmo 3D)' }, { id: 'cloth', name: 'Плат (Cloth brushes)' }, { id: 'groom', name: 'Сресване на косми (Groom)' }, { id: 'ffd', name: 'Клетка (FFD)' }, { id: 'zmodel', name: 'Полигони (ZModeler)' }, { id: 'planar', name: 'Равнина (Planar)' }, { id: 'morph', name: 'Връщане към запомнената форма (Morph)' }, { id: 'layer', name: 'Слой (Layer)' }, { id: 'slice', name: 'Разделяне на групи (SliceCurve)' }, { id: 'tube', name: 'Тръба по крива (CurveTube)' }, { id: 'clip', name: 'Отсичане (ClipCurve)' }, { id: 'cut', name: 'Отрязване (TrimCurve)' }, { id: 'mask', name: 'Маска' }, { id: 'paint', name: 'Боя' },
+  { id: 'grab', name: 'Хващане (Move)' }, { id: 'snake', name: 'Издърпване (SnakeHook)' }, { id: 'vdm', name: 'Векторна форма (VDM)' }, { id: 'shadowbox', name: 'Силуети (ShadowBox)' }, { id: 'topology', name: 'Топология (Topology)' }, { id: 'pose', name: 'Поза (Pose)' }, { id: 'insert', name: 'Вмъкване на форма (InsertMesh)' }, { id: 'gizmo', name: 'Местене, завъртане, мащаб (Gizmo 3D)' }, { id: 'cloth', name: 'Плат (Cloth brushes)' }, { id: 'groom', name: 'Сресване на косми (Groom)' }, { id: 'ffd', name: 'Клетка (FFD)' }, { id: 'zmodel', name: 'Полигони (ZModeler)' }, { id: 'planar', name: 'Равнина (Planar)' }, { id: 'morph', name: 'Връщане към запомнената форма (Morph)' }, { id: 'layer', name: 'Слой (Layer)' }, { id: 'slice', name: 'Разделяне на групи (SliceCurve)' }, { id: 'tube', name: 'Тръба по крива (CurveTube)' }, { id: 'clip', name: 'Отсичане (ClipCurve)' }, { id: 'cut', name: 'Отрязване (TrimCurve)' }, { id: 'mask', name: 'Маска' }, { id: 'paint', name: 'Боя' },
 ];
 // a complete brush; presets only list what differs
 const BRUSH_DEFAULTS = {
@@ -664,6 +670,7 @@ const PRESETS = [
   { id: 'clothinflate', name: 'Плат: надуване', short: 'Възгл.', base: 'cloth', icon: 'cloth', cloth: 'inflate', radius: 50, strength: 0.5, zb: 'ClothInflate' },
   { id: 'zmodel', name: 'Полигони: изтегли или вдлъбни групата', short: 'ZModel', base: 'zmodel', zb: 'ZModeler: Extrude / Inset (Polygroup All)' },
   { id: 'ffd', name: 'Клетка (FFD)', short: 'FFD', base: 'ffd', zb: 'Gizmo Deformer: FFD' },
+  { id: 'topology', name: 'Топология (Topology)', short: 'Топол.', base: 'topology', zb: 'Topology brush' },
   { id: 'shadowbox', name: 'Силуети (ShadowBox)', short: 'Силует', base: 'shadowbox', zb: 'ShadowBox' },
   { id: 'gizmo', name: 'Gizmo: местене, завъртане, мащаб', short: 'Gizmo', key: 'z', base: 'gizmo', zb: 'Gizmo 3D' },
   { id: 'imm', name: 'Вмъкване на форма', short: 'Вмъкни', key: 'j', base: 'insert', radius: 40, zb: 'InsertMesh (IMM)' },
@@ -721,7 +728,7 @@ const S = {
   texSize: 2048,       // UV maps: pixels a side
   refOpacity: 0.5, refScale: 1, refFront: true, paintFromRef: false,
   smoothView: false,
-  slimeN: 12, nanoCount: 60, nanoSize: 0.05, nanoShape: 'sphere',
+  slimeN: 12, nanoCount: 60, nanoSize: 0.05, nanoShape: 'sphere', microShape: 'ring',
   fibCount: 800, fibLength: 0.15, fibWidth: 0.006, fibGravity: 0.4, fibVary: 0.4,
   clothGravity: 1, clothStretch: 0.9, clothBend: 0.15, clothFloor: true, clothTime: 5, clothSelf: true,
   defAxis: 1, defTo: 0,  // deformers: along which axis, and (bend) toward which of the other two
@@ -732,7 +739,7 @@ try { savedSettings = JSON.parse(localStorage.getItem('glina.settings') || 'null
 if (savedSettings) for (const k of Object.keys(savedSettings)) if (k in S && k !== 'penSeen' && k !== 'brushes') S[k] = savedSettings[k];
 // one brush field from settings or a file: right type and range, or undefined
 const ENUMS = { tip: ['round', 'square'], alphaRot: ['fixed', 'stroke', 'random'], stroke: ['dots', 'dragrect', 'dragdot', 'spray', 'line', 'curve'], grab: ['soft', 'elastic'],
-  imm: ['sphere', 'cube', 'cylinder', 'cone', 'torus', 'file'], gz: ['move', 'rotate', 'scale'], cloth: ['pinch', 'slide', 'inflate', 'hook', 'twist'], zm: ['extrude', 'inset'], ffdMode: ['cage', 'curve'] };
+  imm: ['sphere', 'cube', 'cylinder', 'cone', 'torus', 'file'], gz: ['move', 'rotate', 'scale'], cloth: ['pinch', 'slide', 'inflate', 'hook', 'twist'], zm: ['extrude', 'inset', 'bevel'], ffdMode: ['cage', 'curve'] };
 const RANGES = { radius: [4, 320], strength: [0.01, 1], focal: [-1, 1], alphaMid: [0, 1], alphaAngle: [0, 360], spacing: [0.03, 0.6], mod: [-1, 1], volume: [0, 0.49], taper: [0, 1], ffdN: [2, 5] };
 function brushField(k, v) {
   if (k === 'curve') return Array.isArray(v) && v.length >= 2 && v.length <= 32 && v.every((p) => Array.isArray(p) && p.length === 2 && p.every((x) => Number.isFinite(x) && x >= 0 && x <= 1)) ? v.map((p) => p.slice()) : undefined;
@@ -4108,6 +4115,7 @@ canvas.addEventListener('pointerdown', (e) => {
     if (og && (!hit || og.distance < camera.position.distanceTo(hit.point))) { gesture = { kind: 'picktool', tool: og.tool, x0: x, y0: y, x, y, id: e.pointerId }; hideRing(); return; }
     nav = { mode: e.altKey ? 'pan' : 'orbit', x, y, id: e.pointerId }; hideRing(); return;
   }
+  if (cb.base === 'topology' && !e.shiftKey && hit) { gesture = { kind: 'topodraw', pts: [[x, y]], x0: x, y0: y, x, y, id: e.pointerId }; hideRing(); drawOverlay(); return; }
   if (cb.base === 'shadowbox' && !e.shiftKey) { gesture = { kind: 'shadowdraw', pts: [[x, y]], x0: x, y0: y, x, y, id: e.pointerId }; hideRing(); drawOverlay(); return; }
   // another subtool in front: a click selects it, a drag turns the view (combing fibres aims through it)
   const oh = cb.base === 'groom' ? null : pickOther(x, y);
@@ -4151,6 +4159,7 @@ canvas.addEventListener('pointermove', (e) => {
     if (gesture.kind === 'zsadd' || gesture.kind === 'zsmove' || gesture.kind === 'zsscale') { zsMove(gesture); return; }
     if (gesture.kind === 'picktool') { if (gesture.moved) { nav = { mode: 'orbit', x, y, id: gesture.id }; gesture = null; } return; }
     if (gesture.kind === 'curveedit') { drawOverlay(); return; }
+    if (gesture.kind === 'topodraw') { const lp = gesture.pts[gesture.pts.length - 1]; if (Math.hypot(x - lp[0], y - lp[1]) > 3) { gesture.pts.push([x, y]); drawOverlay(); } return; }
     if (gesture.kind === 'shadowdraw') { const lp = gesture.pts[gesture.pts.length - 1]; if (Math.hypot(x - lp[0], y - lp[1]) > 3) { gesture.pts.push([x, y]); drawOverlay(); } return; }
     if (gesture.kind === 'curvedraw') { const lp = gesture.pts[gesture.pts.length - 1]; if (Math.hypot(x - lp[0], y - lp[1]) > 2) { gesture.pts.push([x, y]); drawOverlay(); } return; }
     if ((gesture.kind === 'maskrect' || gesture.kind === 'hidesel') && gesture.pts) { const lp = gesture.pts[gesture.pts.length - 1]; if (Math.hypot(x - lp[0], y - lp[1]) > 3) gesture.pts.push([x, y]); }
@@ -4206,6 +4215,7 @@ function endPointer(e) {
     else if (g.kind === 'picktool') { const k = TOOLS.indexOf(g.tool); if (k >= 0) { activateTool(k); toast(`Активен подобект: ${g.tool.name}`); } }
     else if (g.kind === 'curvedraw') { if (moved) finishCurve(g); }
     else if (g.kind === 'shadowdraw') { if (moved) shadowAdd(g.pts); }
+    else if (g.kind === 'topodraw') { if (moved) topoAdd(g.pts); }
     else if (g.kind === 'curveedit') finishCurveEdit(g, false);
     else if (g.kind === 'hidesel') {
       if (moved) hideSelection(g);
@@ -4528,6 +4538,7 @@ function extractShell(a, thick) {
       pos[(m + q) * 3 + c] = a.pos[v * 3 + c] + nn * thick * 0.12;    // inner, just off the surface
       col[q * 3 + c] = col[(m + q) * 3 + c] = a.col[v * 3 + c];
     }
+    if (a.grp) grp[q] = grp[m + q] = a.grp[v];   // (the groups come along)
   });
   const idx = [], edges = new Set();
   for (const f of sel) for (let e = 0; e < 3; e++) edges.add(map[a.idx[f * 3 + e]] * 4294967296 + map[a.idx[f * 3 + (e + 1) % 3]]);
@@ -5348,7 +5359,8 @@ function zmBuild(a, g, action) {
   const isRim = new Uint8Array(n); for (let k = 0; k < rimEdges.length; k++) isRim[rimEdges[k]] = 1;
   // new points: extrude copies every point of the group, inset only those of its rim
   const copyOf = new Int32Array(n).fill(-1), news = [];
-  for (let v = 0; v < n; v++) if (used[v] && (action === 'extrude' || isRim[v])) { copyOf[v] = n + news.length; news.push(v); }
+  const lifts = action === 'extrude' || action === 'bevel';
+  for (let v = 0; v < n; v++) if (used[v] && (lifts || isRim[v])) { copyOf[v] = n + news.length; news.push(v); }
   const m2 = news.length, pos = new Float32Array((n + m2) * 3), col = new Float32Array((n + m2) * 3), mask = new Float32Array(n + m2), grp = new Float32Array(n + m2);
   pos.set(P); col.set(a.col.subarray(0, n * 3)); mask.set(a.mask.subarray(0, n)); grp.set(a.grp.subarray(0, n));
   news.forEach((v, q) => {
@@ -5369,11 +5381,13 @@ function zmBuild(a, g, action) {
     if (!used[v]) continue;
     const l = Math.hypot(N[v * 3], N[v * 3 + 1], N[v * 3 + 2]) || 1, nx = N[v * 3] / l, ny = N[v * 3 + 1] / l, nz = N[v * 3 + 2] / l;
     if (action === 'extrude') { moving.push(copyOf[v]); dirs.push(nx, ny, nz); scale.push(1); continue; }
-    const who = isRim[v] ? copyOf[v] : v;
+    const who = isRim[v] || action === 'bevel' ? copyOf[v] : v;
     let dx = C[0] - P[v * 3], dy = C[1] - P[v * 3 + 1], dz = C[2] - P[v * 3 + 2];
     const dl = Math.hypot(dx, dy, dz);
     const al = dx * nx + dy * ny + dz * nz; dx -= nx * al; dy -= ny * al; dz -= nz * al;
     const tl = Math.hypot(dx, dy, dz) || 1;
+    // bevel: out along the normal and in toward the middle at once (a chamfered step, 45° at the rim)
+    if (action === 'bevel') { moving.push(who); dirs.push(nx + dx / tl * (dl / Ravg), ny + dy / tl * (dl / Ravg), nz + dz / tl * (dl / Ravg)); scale.push(1); continue; }
     moving.push(who); dirs.push(dx / tl, dy / tl, dz / tl); scale.push(dl / Ravg);
   }
   // faces: the group's on the new points, plus walls (or the ring) along the rim
@@ -5388,7 +5402,7 @@ function zmBuild(a, g, action) {
   // (old points of the group that nothing uses any more, after extrude: dropped)
   const map = dropUnusedVerts(r);
   const ids = Uint32Array.from(moving.map((v) => (map ? map[v] : v)));
-  return { r, news, ids, dir: Float32Array.from(dirs), scale: Float32Array.from(scale) };
+  return { r, news, ids, dir: Float32Array.from(dirs), scale: Float32Array.from(scale), ravg: Ravg };
 }
 /* ---------- VDM brush (ZBrush: Vector Displacement Mesh) ----------
    A shape kept as a grid of 3D displacements over a disc (sideways too, so it can hang over: a horn
@@ -5569,14 +5583,14 @@ function zmStart(e, x, y, hit) {
   if (g < 0) return false;
   const a = meshArrays(), before = snapshot(); before.mrBytes = mrBytesOnly(MR, null);
   const action = brush().zm || 'extrude';
-  const { r, news, ids, dir, scale } = zmBuild(a, g, action);
+  const { r, news, ids, dir, scale, ravg } = zmBuild(a, g, action);
   if (!news.length) { toast('Тук няма група за изтегляне.'); return false; }
   const m = new SculptMesh(r.pos, r.idx, r.col, r.mask, 0, r.grp);
   MR = null; LAYERS = []; recLayer = -1;
   setMesh(m, { quiet: true });
   const base = new Float32Array(ids.length * 3);
   ids.forEach((v, q) => { for (let c = 0; c < 3; c++) base[q * 3 + c] = m.pos[v * 3 + c]; });
-  gesture = { kind: 'zm', x0: x, y0: y, x, y, id: e.pointerId, before, ids, base, dir, scale, wpp: worldPerPx(hit.point), action, mesh: m };
+  gesture = { kind: 'zm', x0: x, y0: y, x, y, id: e.pointerId, before, ids, base, dir, scale, ravg, wpp: worldPerPx(hit.point), action, mesh: m };
   return true;
 }
 function zmMove(g) {
@@ -5584,6 +5598,8 @@ function zmMove(g) {
   // up the screen: out (extrude) or wider inset; down: in
   let d = -(g.y - g.y0) * g.wpp;
   if (g.action === 'inset') d = Math.max(0, Math.abs(d));
+  // (a bevel deeper than the group is wide would turn its top inside out)
+  if (g.action === 'bevel') d = Math.max(-g.ravg * 0.9, Math.min(g.ravg * 0.9, d));
   for (let q = 0; q < g.ids.length; q++) { const v = g.ids[q], k = d * g.scale[q]; for (let c = 0; c < 3; c++) m.pos[v * 3 + c] = g.base[q * 3 + c] + g.dir[q * 3 + c] * k; }
   const all = Uint32Array.from({ length: m.n }, (_, i) => i);
   m.updateNormals(all, m.n); uploadAll(geo.attributes.position); uploadAll(geo.attributes.normal); bvhDirty = true; requestRender();
@@ -5594,6 +5610,193 @@ function zmEnd(g, commit) {
   const b = g.before;
   MR = b.mr || null; if ('layers' in b) { LAYERS = b.layers || []; recLayer = b.layers ? b.recLayer : -1; }
   setMesh(new SculptMesh(b.pos, b.idx, b.col, b.mask, b.level, b.grp), { quiet: true });
+}
+
+/* ---------- Topology brush (ZBrush: Topology) ----------
+   Lines drawn on the model; where they cross (or where a line ends close to another) are the corners,
+   the pieces of line between corners the edges, and every closed cell a face. „Направи“ meshes the
+   faces (their edges shared, so the result is one piece), lays the inside onto the model and gives it
+   a thickness: a new subtool, a group per face. Works in the view the lines are seen in now. */
+let topoLines = [];   // [[{ p: Vector3 }]]
+function topoAdd(pts2) {
+  const line = [];
+  for (const [x, y] of pts2) { const h = pick(x, y); if (h) line.push({ p: h.point.clone() }); }
+  if (line.length < 2) { toast('Линията трябва да е върху модела.'); return; }
+  topoLines.push(line);
+  drawOverlay();
+}
+function drawTopo(el) {
+  camera.updateMatrixWorld();
+  for (const L of topoLines) {
+    const pts = L.map((q) => toScreen(q.p)).filter((q) => q[2] < 1).map((q) => q[0].toFixed(1) + ',' + q[1].toFixed(1));
+    if (pts.length > 1) el('polyline', { points: pts.join(' '), fill: 'none', stroke: '#9fd3ff', 'stroke-width': 2, 'stroke-linejoin': 'round' });
+  }
+}
+function topoBuild() {
+  camera.updateMatrixWorld();
+  const SNAP = 14;
+  // the lines on screen now, with their points on the model
+  const lines = topoLines.map((L) => L.map((q) => { const s2 = toScreen(q.p); return { x: s2[0], y: s2[1], p: q.p }; }));
+  const nodes = [], ev = lines.map(() => []);   // ev: per line, { s: segment + t, node }
+  const addNode = (x, y, p) => { for (let k = 0; k < nodes.length; k++) if (Math.hypot(nodes[k].x - x, nodes[k].y - y) < 4) return k; nodes.push({ x, y, p }); return nodes.length - 1; };
+  const at = (L, s) => { const i = Math.min(L.length - 2, Math.floor(s)), t = s - i, a = L[i], b = L[i + 1]; return { x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t, p: a.p.clone().lerp(b.p, t) }; };
+  // crossings of two lines
+  for (let A = 0; A < lines.length; A++) for (let B = A + 1; B < lines.length; B++) {
+    const P = lines[A], Q = lines[B];
+    for (let i = 0; i + 1 < P.length; i++) for (let j = 0; j + 1 < Q.length; j++) {
+      const a = P[i], b = P[i + 1], c = Q[j], d = Q[j + 1];
+      const den = (b.x - a.x) * (d.y - c.y) - (b.y - a.y) * (d.x - c.x);
+      if (Math.abs(den) < 1e-9) continue;
+      const t = ((c.x - a.x) * (d.y - c.y) - (c.y - a.y) * (d.x - c.x)) / den, u = ((c.x - a.x) * (b.y - a.y) - (c.y - a.y) * (b.x - a.x)) / den;
+      if (t < 0 || t > 1 || u < 0 || u > 1) continue;
+      const q = at(P, i + t), k = addNode(q.x, q.y, q.p);
+      ev[A].push({ s: i + t, node: k }); ev[B].push({ s: j + u, node: k });
+    }
+  }
+  // an end near another line (or near its own start: a closed loop) sticks to it
+  lines.forEach((L, A) => {
+    for (const end of [0, L.length - 1]) {
+      const e = L[end], es = end === 0 ? 0 : L.length - 1;
+      if (ev[A].some((q) => Math.abs(q.s - es) < 1.5 && Math.hypot(nodes[q.node].x - e.x, nodes[q.node].y - e.y) < SNAP)) continue;
+      let best = null;
+      lines.forEach((M, B) => {
+        for (let j = 0; j + 1 < M.length; j++) {
+          if (B === A && Math.abs(j - es) < 4) continue;
+          const c = M[j], d = M[j + 1], dx = d.x - c.x, dy = d.y - c.y, l2 = dx * dx + dy * dy || 1;
+          const u = Math.max(0, Math.min(1, ((e.x - c.x) * dx + (e.y - c.y) * dy) / l2)), px = c.x + dx * u, py = c.y + dy * u, dd = Math.hypot(e.x - px, e.y - py);
+          if (dd < SNAP && (!best || dd < best.dd)) best = { dd, B, s: j + u };
+        }
+      });
+      if (!best) continue;
+      const q = at(lines[best.B], best.s), k = addNode(q.x, q.y, q.p);
+      ev[best.B].push({ s: best.s, node: k }); ev[A].push({ s: es, node: k });
+    }
+  });
+  // edges: the pieces between consecutive corners along each line (the loose ends go)
+  const edges = [];
+  lines.forEach((L, A) => {
+    const E = ev[A].sort((a, b) => a.s - b.s);
+    for (let k = 0; k + 1 < E.length; k++) {
+      const a = E[k], b = E[k + 1];
+      if (a.node === b.node) continue;
+      const pts = [nodes[a.node]];
+      for (let i = Math.ceil(a.s + 1e-6); i < b.s; i++) pts.push(L[i]);
+      pts.push(nodes[b.node]);
+      edges.push({ a: a.node, b: b.node, pts });
+    }
+  });
+  // no corner with one edge only (repeat until none)
+  let alive = edges.map(() => true);
+  for (let changed = true; changed;) {
+    changed = false;
+    const deg = new Array(nodes.length).fill(0);
+    edges.forEach((e, i) => { if (alive[i]) { deg[e.a]++; deg[e.b]++; } });
+    edges.forEach((e, i) => { if (alive[i] && (deg[e.a] < 2 || deg[e.b] < 2)) { alive[i] = false; changed = true; } });
+  }
+  // half-edges around every corner, by the angle they leave it at
+  const out = nodes.map(() => []);
+  edges.forEach((e, i) => {
+    if (!alive[i]) return;
+    const f = e.pts[1], l = e.pts[e.pts.length - 2];
+    out[e.a].push({ e: i, fwd: true, to: e.b, ang: Math.atan2(f.y - nodes[e.a].y, f.x - nodes[e.a].x) });
+    out[e.b].push({ e: i, fwd: false, to: e.a, ang: Math.atan2(l.y - nodes[e.b].y, l.x - nodes[e.b].x) });
+  });
+  for (const o of out) o.sort((p, q) => p.ang - q.ang);
+  const used = new Set(), faces = [];
+  out.forEach((o, u) => o.forEach((h0) => {
+    if (used.has(h0.e + (h0.fwd ? 'f' : 'b'))) return;
+    const cyc = [];
+    let h = h0, from = u;
+    for (let guard = 0; guard < 400; guard++) {
+      used.add(h.e + (h.fwd ? 'f' : 'b'));
+      cyc.push({ from, h });
+      const v = h.to, list = out[v], back = list.findIndex((x) => x.e === h.e && x.fwd !== h.fwd);
+      const nx = list[(back - 1 + list.length) % list.length];
+      from = v; h = nx;
+      if (h === h0 && from === u) break;
+      if (used.has(h.e + (h.fwd ? 'f' : 'b'))) { cyc.length = 0; break; }
+    }
+    if (cyc.length >= 2) faces.push(cyc);
+  }));
+  // the boundary of each face as a polyline; its signed area tells the inside faces from the outside one
+  const ring = (cyc) => { const R = []; for (const { h } of cyc) { const P = edges[h.e].pts, seq = h.fwd ? P : P.slice().reverse(); for (let i = 0; i + 1 < seq.length; i++) R.push(seq[i]); } return R; };
+  const area = (R) => { let s = 0; for (let i = 0; i < R.length; i++) { const a = R[i], b = R[(i + 1) % R.length]; s += a.x * b.y - b.x * a.y; } return s / 2; };
+  const fl = faces.map((c) => { const R = ring(c); return { c, R, A: area(R) }; });
+  if (!fl.length) return null;
+  const big = fl.reduce((a, b) => (Math.abs(b.A) > Math.abs(a.A) ? b : a));
+  return { nodes, edges, faces: fl.filter((f) => Math.sign(f.A) !== Math.sign(big.A) && Math.abs(f.A) > 30) };
+}
+function topoMake() {
+  if (working || stroke) return;
+  const T = topoBuild();
+  if (!T || !T.faces.length) { toast('Няма затворени клетки: линиите трябва да се пресичат и да ограждат места.'); return; }
+  const pos = [], idx = [], grp = [], key = new Map();
+  const vert = (k, x, y, p) => { if (k !== null && key.has(k)) return key.get(k); const i = pos.length / 3; pos.push(p.x, p.y, p.z); if (k !== null) key.set(k, i); return i; };
+  // every edge cut into pieces of about 12 px, shared by the faces on both sides
+  const edgePts = T.edges.map((e) => {
+    const len = e.pts.reduce((s, q, i) => (i ? s + Math.hypot(q.x - e.pts[i - 1].x, q.y - e.pts[i - 1].y) : 0), 0), k = Math.max(1, Math.min(40, Math.round(len / 12)));
+    const outp = [];
+    for (let j = 0; j <= k; j++) {
+      let want = (len * j) / k, i = 0;
+      while (i + 1 < e.pts.length - 1 && want > Math.hypot(e.pts[i + 1].x - e.pts[i].x, e.pts[i + 1].y - e.pts[i].y)) { want -= Math.hypot(e.pts[i + 1].x - e.pts[i].x, e.pts[i + 1].y - e.pts[i].y); i++; }
+      const a = e.pts[i], b = e.pts[Math.min(e.pts.length - 1, i + 1)], l = Math.hypot(b.x - a.x, b.y - a.y) || 1, t = Math.min(1, want / l);
+      outp.push({ x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t, p: a.p.clone().lerp(b.p, t) });
+    }
+    return outp;
+  });
+  const camDir = camera.position.clone().sub(cam.target).normalize();
+  T.faces.forEach((F, gi) => {
+    // the boundary: shared corners and edge points
+    const B = [];
+    for (const { from, h } of F.c) {
+      const e = T.edges[h.e], P = edgePts[h.e], seq = h.fwd ? P.map((q, j) => ({ q, j })) : P.map((q, j) => ({ q, j })).reverse();
+      for (let i = 0; i + 1 < seq.length; i++) {
+        const { q, j } = seq[i];
+        const k = j === 0 ? 'n' + e.a : j === P.length - 1 ? 'n' + e.b : 'e' + h.e + ':' + j;
+        B.push(vert(k, q.x, q.y, q.p));
+        B[B.length - 1] = { i: B[B.length - 1], x: q.x, y: q.y, p: q.p };
+      }
+      void from;
+    }
+    const M = B.length; if (M < 3) return;
+    // rings toward the middle, laid onto the model (or, off it, between the boundary's own points)
+    let cx = 0, cy = 0; const c3 = new THREE.Vector3();
+    for (const b of B) { cx += b.x; cy += b.y; c3.add(b.p); }
+    cx /= M; cy /= M; c3.divideScalar(M);
+    const perim = B.reduce((s, b, i) => s + Math.hypot(b.x - B[(i + 1) % M].x, b.y - B[(i + 1) % M].y), 0);
+    const R = Math.max(1, Math.min(12, Math.round(perim / (2 * Math.PI) / 12)));
+    const rings = [B.map((b) => b.i)];
+    for (let r = 1; r < R; r++) {
+      const f = 1 - r / R, ringIds = [];
+      for (const b of B) {
+        const x = cx + (b.x - cx) * f, y = cy + (b.y - cy) * f, h = pick(x, y);
+        ringIds.push(vert(null, x, y, h ? h.point : c3.clone().lerp(b.p, f)));
+      }
+      rings.push(ringIds);
+    }
+    const hc = pick(cx, cy), centre = vert(null, cx, cy, hc ? hc.point : c3);
+    const tris = [];
+    for (let r = 0; r + 1 < rings.length; r++) for (let i = 0; i < M; i++) { const a = rings[r][i], b = rings[r][(i + 1) % M], c = rings[r + 1][(i + 1) % M], d = rings[r + 1][i]; tris.push(a, b, c, a, c, d); }
+    const last = rings[rings.length - 1];
+    for (let i = 0; i < M; i++) tris.push(last[i], last[(i + 1) % M], centre);
+    // facing the viewer (the lines were drawn on the side seen)
+    const t0 = tris.slice(0, 3).map((v) => new THREE.Vector3(pos[v * 3], pos[v * 3 + 1], pos[v * 3 + 2]));
+    let nrm = new THREE.Vector3();
+    for (let t = 0; t < tris.length; t += 3) { const [a, b, c] = [tris[t], tris[t + 1], tris[t + 2]].map((v) => new THREE.Vector3(pos[v * 3], pos[v * 3 + 1], pos[v * 3 + 2])); nrm.add(b.sub(a).cross(c.sub(a))); }
+    void t0;
+    if (nrm.dot(camDir) < 0) for (let t = 0; t < tris.length; t += 3) { const x = tris[t + 1]; tris[t + 1] = tris[t + 2]; tris[t + 2] = x; }
+    for (const v of tris) idx.push(v);
+    for (let t = 0; t < tris.length; t += 3) grp.push(gi);
+  });
+  const n = pos.length / 3;
+  const vg = new Float32Array(n); for (let t = 0; t < idx.length / 3; t++) for (let e = 0; e < 3; e++) vg[idx[t * 3 + e]] = grp[t];
+  const a = { pos: Float32Array.from(pos), idx: Uint32Array.from(idx), col: new Float32Array(n * 3).fill(1), mask: new Float32Array(n).fill(1), grp: vg };
+  const { r } = mesh.bounds(), out = extractShell(a, S.extract * r * 0.08);
+  if (!out) return;
+  stashActive();
+  addTool(new SculptMesh(out.pos, out.idx, out.col, new Float32Array(out.pos.length / 3), 0, out.grp), 'Топология');
+  topoLines = []; drawOverlay();
+  toast(`Нов подобект от ${T.faces.length} ${T.faces.length === 1 ? 'клетка' : 'клетки'}, всяка своя група.`);
 }
 
 /* ---------- ShadowBox (ZBrush: ShadowBox) ----------
@@ -6108,6 +6311,46 @@ function nanoMesh() {
   const j = joinParts(parts);
   addTool(new SculptMesh(j.pos, j.idx, new Float32Array(j.n * 3).fill(1), new Float32Array(j.n), 0, new Float32Array(j.n)), 'NanoMesh');
   toast(`${S.nanoCount} форми по маскираното, като нов подобект.`);
+}
+// (ZBrush: MicroPoly) every face of the active subtool — its quads after „Ретопология с
+// четириъгълници“, its triangles otherwise — gets a small shape fitted into it (bent along with the
+// face), as a new subtool: rings that link like chain mail, tiles, beads
+function microPoly(kind = S.microShape) {
+  if (stroke || working) return;
+  stashActive();
+  const m = mesh, Q = quadsOf(m), P = m.pos, faces = [];
+  if (Q) for (let q = 0; q < Q.length; q += 4) faces.push([Q[q], Q[q + 1], Q[q + 2], Q[q + 3] === 0xffffffff ? Q[q + 2] : Q[q + 3]]);
+  else for (let t = 0; t < m.f; t++) faces.push([m.idx[t * 3], m.idx[t * 3 + 1], m.idx[t * 3 + 2], m.idx[t * 3 + 2]]);
+  if (faces.length > 20000) { toast(`${fmt(faces.length)} стени са твърде много: първо „Ретопология с четириъгълници“ с по-малко стени.`); return null; }
+  // the shape in the unit square (u, v in −½…½) and its height w, in units of the face's size
+  let sh;
+  if (kind === 'tile') { const c = makeCube(3); sh = { pos: c.pos.slice(0, c.n * 3), idx: c.idx.slice(0, c.f * 3), map: (x, y, z) => [x * 0.56, z * 0.56, y * 0.12 + 0.1] }; }
+  else if (kind === 'bead') { const c = makeSphere(2); sh = { pos: c.pos.slice(0, c.n * 3), idx: c.idx.slice(0, c.f * 3), map: (x, y, z) => [x * 0.36, z * 0.36, y * 0.36 + 0.3] }; }
+  else { const c = makeTorus(0.5, 0.075, 24, 8); sh = { pos: c.pos.slice(0, c.n * 3), idx: c.idx.slice(0, c.f * 3), map: (x, y, z) => [x, z, y + 0.12], tilt: 0.38 }; }
+  const nv = sh.pos.length / 3, nt = sh.idx.length / 3, pos = new Float32Array(faces.length * nv * 3), idx = new Uint32Array(faces.length * nt * 3), grp = new Float32Array(faces.length * nv);
+  const V = (i) => [P[i * 3], P[i * 3 + 1], P[i * 3 + 2]];
+  faces.forEach(([a, b, c, d], f) => {
+    const A = V(a), B = V(b), C = V(c), D = V(d);
+    const n = [0, 1, 2].map((k) => 0), e1 = [C[0] - A[0], C[1] - A[1], C[2] - A[2]], e2 = [D[0] - B[0], D[1] - B[1], D[2] - B[2]];
+    n[0] = e1[1] * e2[2] - e1[2] * e2[1]; n[1] = e1[2] * e2[0] - e1[0] * e2[2]; n[2] = e1[0] * e2[1] - e1[1] * e2[0];
+    const nl = Math.hypot(n[0], n[1], n[2]) || 1, size = Math.sqrt(nl / 2);
+    for (let k = 0; k < 3; k++) n[k] /= nl;
+    // (rings lean one way and the next the other, so neighbours pass through each other)
+    const tilt = sh.tilt ? ((f & 1) ? sh.tilt : -sh.tilt) : 0, ct = Math.cos(tilt), st = Math.sin(tilt);
+    for (let i = 0; i < nv; i++) {
+      let [u, v, w] = sh.map(sh.pos[i * 3], sh.pos[i * 3 + 1], sh.pos[i * 3 + 2]);
+      if (tilt) { const w0 = w - 0.12; const v2 = v * ct - w0 * st; w = v * st + w0 * ct + 0.12; v = v2; }
+      const s = u + 0.5, t = v + 0.5, o = (f * nv + i) * 3;
+      for (let k = 0; k < 3; k++) pos[o + k] = (A[k] * (1 - s) + B[k] * s) * (1 - t) + (D[k] * (1 - s) + C[k] * s) * t + n[k] * w * size;
+      grp[f * nv + i] = f % 7;
+    }
+    for (let q = 0; q < nt * 3; q++) idx[f * nt * 3 + q] = sh.idx[q] + f * nv;
+  });
+  if (idx.length / 3 > MAX_TRIS) { toast('Резултатът би бил твърде голям: първо намалете броя на стените.'); return null; }
+  const n = pos.length / 3;
+  addTool(new SculptMesh(pos, idx, new Float32Array(n * 3).fill(1), new Float32Array(n), 0, grp), 'MicroPoly');
+  toast(`${fmt(faces.length)} ${Q ? 'четириъгълника' : 'триъгълника'}, във всеки по ${kind === 'ring' ? 'халка' : kind === 'tile' ? 'плочка' : 'мънисто'}: ${fmt(idx.length / 3)} триъгълника като нов подобект.`);
+  return faces.length;
 }
 function makeFibers() {
   if (stroke || working) return;
@@ -6835,7 +7078,8 @@ function drawOverlay() {
   const el = (tag, attrs) => { const e = document.createElementNS(SVGNS, tag); for (const k in attrs) e.setAttribute(k, attrs[k]); svg.appendChild(e); return e; };
   // a curve: being drawn, being bent, or waiting to be bent
   let line = null;
-  if (g && (g.kind === 'curvedraw' || g.kind === 'shadowdraw')) line = g.pts;
+  if (g && (g.kind === 'curvedraw' || g.kind === 'shadowdraw' || g.kind === 'topodraw')) line = g.pts;
+  if (brush().base === 'topology') drawTopo(el);
   if (brush().base === 'shadowbox') drawShadows(el);
   else if (g && g.kind === 'curveedit') line = bentCurve(g);
   else if (!g && liveCurve()) { camera.updateMatrixWorld(); line = curve.pts.map((q) => toScreen(q.p)).filter((q) => q[2] < 1); }
@@ -8289,7 +8533,7 @@ brushSyncs.push(
     { id: 'line', name: 'Линия', title: 'Права линия от мястото на натискане до писалката; виждате я, докато я опъвате' },
     { id: 'curve', name: 'Крива', title: 'Curve Mode: линия по повърхността, която после може да огъвате; щрихът се прави наново' },
   ], 'stroke'),
-  brushChips('zmChips', [{ id: 'extrude', name: 'Изтегли (Extrude)' }, { id: 'inset', name: 'Вдлъбни ръба (Inset)' }], 'zm'),
+  brushChips('zmChips', [{ id: 'extrude', name: 'Изтегли (Extrude)' }, { id: 'inset', name: 'Вдлъбни ръба (Inset)' }, { id: 'bevel', name: 'Скос (Bevel)' }], 'zm'),
   brushChips('ffdChips', [2, 3, 4, 5].map((k) => ({ id: k, name: k + '×' + k + '×' + k })), 'ffdN', () => { lattice = null; drawOverlay(); }),
   brushChips('ffdModeChips', [{ id: 'cage', name: 'Клетка (FFD)' }, { id: 'curve', name: 'Крива (Bend Curve)' }], 'ffdMode', () => { lattice = null; drawOverlay(); }),
   brushChips('clothChips', [{ id: 'pinch', name: 'Събира (ClothPinch)' }, { id: 'slide', name: 'Бута по щриха (ClothSlide)' }, { id: 'inflate', name: 'Надува (ClothInflate)' }, { id: 'hook', name: 'Кука: тегли след писалката (ClothHook)' }, { id: 'twist', name: 'Усуква (ClothTwister)' }], 'cloth'),
@@ -8314,7 +8558,7 @@ $('bName').addEventListener('input', () => {
 function syncBrushUI() {
   syncRadius(); syncStrength();
   const b = brush(), base = b.base;
-  const moves = base === 'grab' || base === 'snake' || base === 'vdm' || base === 'shadowbox' || base === 'pose' || base === 'clip' || base === 'cut' || base === 'slice' || base === 'insert' || base === 'tube' || base === 'gizmo' || base === 'ffd' || base === 'zmodel';
+  const moves = base === 'grab' || base === 'snake' || base === 'vdm' || base === 'shadowbox' || base === 'topology' || base === 'pose' || base === 'clip' || base === 'cut' || base === 'slice' || base === 'insert' || base === 'tube' || base === 'gizmo' || base === 'ffd' || base === 'zmodel';
   $('bName').value = b.name; $('bName').disabled = b.builtin;
   $('bName').title = b.builtin ? 'Готовите четки не се преименуват; „Нова от тази“ прави ваше копие' : '';
   $('bBase').value = base;
@@ -8331,6 +8575,7 @@ function syncBrushUI() {
   $('clothGrp').hidden = base !== 'cloth';
   $('ffdGrp').hidden = base !== 'ffd';
   $('shadowGrp').hidden = base !== 'shadowbox';
+  $('topoGrp').hidden = base !== 'topology';
   $('zmGrp').hidden = base !== 'zmodel';
   syncGizmoBar();
   $('taperRow').hidden = $('curveNote').hidden = !isCurveBrush(b);
@@ -8624,6 +8869,8 @@ $('bBalloon').onclick = balloonTool;
 $('bPanels').onclick = panelLoops;
 $('bFfdReset').onclick = () => { lattice = null; drawOverlay(); };
 $('bShadowMake').onclick = shadowMake;
+$('bTopoMake').onclick = topoMake;
+$('bTopoClear').onclick = () => { topoLines = []; drawOverlay(); };
 $('bShadowClear').onclick = () => { shadows = [null, null, null]; drawOverlay(); };
 $('bShowAll').onclick = showAll;
 $('bVisInvert').onclick = invertVisibility;
@@ -8668,6 +8915,8 @@ bindRange('sFibV', 'oFibV', () => S.fibVary, (v) => (S.fibVary = v), pct);
 $('bFibers').onclick = makeFibers;
 bindRange('sSlimeN', 'oSlimeN', () => S.slimeN, (v) => (S.slimeN = v), (v) => String(v));
 $('bSlime').onclick = slimeBridge;
+chips('microChips', [{ id: 'ring', name: 'Халки (плетка)' }, { id: 'tile', name: 'Плочки' }, { id: 'bead', name: 'Мъниста' }], () => S.microShape, (v) => (S.microShape = v));
+$('bMicro').onclick = () => microPoly();
 chips('nanoChips', IMM.filter((x) => x.id !== 'file').map((x) => ({ id: x.id, name: x.name })), () => S.nanoShape, (v) => (S.nanoShape = v));
 bindRange('sNanoN', 'oNanoN', () => S.nanoCount, (v) => (S.nanoCount = v), (v) => String(v));
 bindRange('sNanoS', 'oNanoS', () => S.nanoSize, (v) => (S.nanoSize = v), (v) => (v * 100).toFixed(1) + '%');
@@ -8856,5 +9105,5 @@ loadAutosave().then((d) => {
     toast('Продължавате последния модел. „Нов“ започва отначало.');
   }
 });
-window.__glina = { shadowAdd, shadowMake, get shadows() { return shadows; }, set shadows(v) { shadows = v; }, earClip, shadowPrism, viewAxis, bendBuild, vdmCapture, vdmReset, get vdmField() { return vdmField; }, set vdmField(v) { vdmField = v; }, vdmDefault, snakeAlongCurve, quadRemesh, quadRemeshArrays, surfaceStats, get coreSync() { return coreSync; }, set subdivCore(v) { subdivCore = v; }, polyTris, studioPNG, setCustomMatcap, dropCustomMatcap, get customMatcap() { return customMatcap; }, matcapTextures, material, get gmesh() { return gmesh; }, renderer, makeCube, polishFeatures, sliceGroups, makeGear, makeTube, makeRing, revolve, meshToAxis, straighten, transformTools, gizmoTools, eigenSym3, subdivideArrays, slimeBridge, nanoMesh, maskIslands, texturedFiles, zipMany, levelArrays, zmBuild, quadsOf, exportSTL, renderPrintInfo, decimate, decimateArrays, printScale, projectBytes, saveProject, openProject, packValue, unpackValue, panelLoops, balloonTool, shellFrom, refOpen, refState, refColourAt, refLayout, smoothViewUpdate, get smoothViewObj() { return smoothViewObj; }, recallFrom, makeFibers, fiberArrays, projectAll, storeMorph, switchMorph, dropMorph, morphOf, fillColour, cavityColour, zsOpen, zsClose, zsSkin, get zs() { return zs; }, xtract, latticeLive, latticeScreen, get lattice() { return lattice; }, surfaceContrast, snapshotPNG, maskHidden, startCloth, stopCloth, get clothRun() { return clothRun; }, hideSelection, hideGroup, showAll, invertVisibility, hideMasked, deleteHidden, hiddenCount, setHiddenUndoable, deform, makeArray, arrayArrays, setGizmoMode, get gizmoPin() { return gizmoPin; }, set gizmoPin(v) { gizmoPin = v; }, exportOBJ, scheduleAutosave, get TOOLS() { return TOOLS; }, get curTool() { return curTool; }, activateTool, addTool, appendPrimitive, duplicateTool, deleteTool, moveTool, mergeDown, splitGroups, extractTool, extractShell, makeBoolean, newScene, gizmoHandle, gizmoScreen, get solo() { return solo; }, set solo(v) { solo = v; renderOthers(); }, toolArrays, voxelCombine, voxelRemesh, coreStart, get working() { return working; }, sliceByPlane, mirrorWeldArrays, mirrorWeld, mirrorFlip, applyNoise, snapView, setOrtho, historyJump, polyframe, get cam() { return cam; }, trimByPlane, applyCut, tubeArrays, immShape, hasOpenEdges, get curve() { return liveCurve(); }, dropCurve, get immFile() { return immFile; }, set immFile(v) { immFile = v; }, get LAYERS() { return LAYERS; }, get recLayer() { return recLayer; }, addLayer, deleteLayer, toggleLayer, recordLayer, setLayerStrength, bakeLayers, groupOp, maskAllBut, groupNear, get mesh() { return mesh; }, get stroke() { return stroke; }, get gesture() { return gesture; }, get nav() { return nav; }, get MR() { return MR; }, syncSym, get SYM() { return SYM; }, setLevel, divide, deleteLower, deleteHigher, camera, orbit, pick, selectTool, brush, brushById, maskOp, remesh, undo, redo, subdivide, setDyntopo, floodDetail, S, get undoStack() { return undoStack; } };
+window.__glina = { microPoly, topoAdd, topoBuild, topoMake, get topoLines() { return topoLines; }, set topoLines(v) { topoLines = v; }, shadowAdd, shadowMake, get shadows() { return shadows; }, set shadows(v) { shadows = v; }, earClip, shadowPrism, viewAxis, bendBuild, vdmCapture, vdmReset, get vdmField() { return vdmField; }, set vdmField(v) { vdmField = v; }, vdmDefault, snakeAlongCurve, quadRemesh, quadRemeshArrays, surfaceStats, get coreSync() { return coreSync; }, set subdivCore(v) { subdivCore = v; }, polyTris, studioPNG, setCustomMatcap, dropCustomMatcap, get customMatcap() { return customMatcap; }, matcapTextures, material, get gmesh() { return gmesh; }, renderer, makeCube, polishFeatures, sliceGroups, makeGear, makeTube, makeRing, revolve, meshToAxis, straighten, transformTools, gizmoTools, eigenSym3, subdivideArrays, slimeBridge, nanoMesh, maskIslands, texturedFiles, zipMany, levelArrays, zmBuild, quadsOf, exportSTL, renderPrintInfo, decimate, decimateArrays, printScale, projectBytes, saveProject, openProject, packValue, unpackValue, panelLoops, balloonTool, shellFrom, refOpen, refState, refColourAt, refLayout, smoothViewUpdate, get smoothViewObj() { return smoothViewObj; }, recallFrom, makeFibers, fiberArrays, projectAll, storeMorph, switchMorph, dropMorph, morphOf, fillColour, cavityColour, zsOpen, zsClose, zsSkin, get zs() { return zs; }, xtract, latticeLive, latticeScreen, get lattice() { return lattice; }, surfaceContrast, snapshotPNG, maskHidden, startCloth, stopCloth, get clothRun() { return clothRun; }, hideSelection, hideGroup, showAll, invertVisibility, hideMasked, deleteHidden, hiddenCount, setHiddenUndoable, deform, makeArray, arrayArrays, setGizmoMode, get gizmoPin() { return gizmoPin; }, set gizmoPin(v) { gizmoPin = v; }, exportOBJ, scheduleAutosave, get TOOLS() { return TOOLS; }, get curTool() { return curTool; }, activateTool, addTool, appendPrimitive, duplicateTool, deleteTool, moveTool, mergeDown, splitGroups, extractTool, extractShell, makeBoolean, newScene, gizmoHandle, gizmoScreen, get solo() { return solo; }, set solo(v) { solo = v; renderOthers(); }, toolArrays, voxelCombine, voxelRemesh, coreStart, get working() { return working; }, sliceByPlane, mirrorWeldArrays, mirrorWeld, mirrorFlip, applyNoise, snapView, setOrtho, historyJump, polyframe, get cam() { return cam; }, trimByPlane, applyCut, tubeArrays, immShape, hasOpenEdges, get curve() { return liveCurve(); }, dropCurve, get immFile() { return immFile; }, set immFile(v) { immFile = v; }, get LAYERS() { return LAYERS; }, get recLayer() { return recLayer; }, addLayer, deleteLayer, toggleLayer, recordLayer, setLayerStrength, bakeLayers, groupOp, maskAllBut, groupNear, get mesh() { return mesh; }, get stroke() { return stroke; }, get gesture() { return gesture; }, get nav() { return nav; }, get MR() { return MR; }, syncSym, get SYM() { return SYM; }, setLevel, divide, deleteLower, deleteHigher, camera, orbit, pick, selectTool, brush, brushById, maskOp, remesh, undo, redo, subdivide, setDyntopo, floodDetail, S, get undoStack() { return undoStack; } };
 </script>
