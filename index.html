@@ -489,6 +489,8 @@ input[type=range] { width: 100%; height: 26px; accent-color: var(--wax); backgro
       <label class="toggle" title="Dual contouring: ъглите и ръбовете остават остри (за твърди форми); без него всичко леко се заобля">Остри ръбове при преизграждане <input type="checkbox" id="tSharpRemesh"></label>
       <button class="btn wide" id="bRemesh" title="DynaMesh: нова равна мрежа по формата на модела">Преизгради мрежата (DynaMesh)</button>
       <p class="note">Прави нови еднакви триъгълници по цялата форма: оправя разтегнатите места след дълго дърпане и слива частите, които се застъпват. Цветът и маската се запазват; по-фините детайли от плътността изчезват.</p>
+      <div class="row" title="ZRemesher: колко четириъгълника да има новата мрежа"><label for="sQuadT">Четириъгълници</label><output id="oQuadT"></output><input type="range" id="sQuadT" min="200" max="20000" step="100"></div>
+      <button class="btn wide" id="bQuad" title="ZRemesher: нова мрежа от четириъгълници, чиито ръбове следват формата">Ретопология с четириъгълници (ZRemesher)</button>
       <div class="row"><label for="sDecim">Остават от триъгълниците</label><output id="oDecim"></output><input type="range" id="sDecim" min="0.02" max="0.9" step="0.01"></div>
       <button class="btn wide" id="bDecimate" title="Decimation Master: по-малко триъгълници, същата форма">Намали триъгълниците</button>
       <div class="row"><label for="nPrint">Размер при експорт: най-дългата страна, мм (0 — както е)</label><input type="number" id="nPrint" min="0" max="10000" step="1" style="width:90px"></div>
@@ -682,6 +684,7 @@ const S = {
   radialAxis: 'y',
   loop: true,
   crease: false,
+  quadTarget: 2000,
   gizmoAll: false,
   wire: false,
   flat: false,
@@ -1584,7 +1587,23 @@ function placePart(shape, M, o) {
 // crease: (with grp) edges along a polygroup border stay sharp, as Loop's boundary rule keeps an open edge
 // (ZBrush: Crease PG); a vertex where three or more such edges meet stays where it is. Groups here belong
 // to vertices, so a border edge is one that bends (over ~25°) where more than one group meets.
+// (the Rust core does the same, numbered the same, several times faster: it is used once it is loaded)
+let coreSync = null, subdivCore = true;
+function subdivideCore(X, pos, idx, col, mask, smooth, grp, crease) {
+  const n = pos.length / 3, f = idx.length / 3;
+  const fit = (a, k, T) => (a && a.length >= n * k ? (a instanceof T ? a.subarray(0, n * k) : T.from(a.subarray ? a.subarray(0, n * k) : a.slice(0, n * k))) : null);
+  const ins = [fit(pos, 3, Float32Array), idx instanceof Uint32Array ? idx.subarray(0, f * 3) : Uint32Array.from(idx), fit(col, 3, Float32Array), fit(mask, 1, Float32Array), fit(grp, 1, Float32Array)];
+  const ptrs = ins.map((a) => { if (!a) return 0; const p = X.mem_alloc(a.byteLength); new Uint8Array(X.memory.buffer, p, a.byteLength).set(new Uint8Array(a.buffer, a.byteOffset, a.byteLength)); return p; });
+  const rc = X.subdiv_raw(ptrs[0], n, ptrs[1], f, ptrs[2], ptrs[3], ptrs[4], (smooth ? 1 : 0) | (crease && ins[4] ? 2 : 0));
+  ins.forEach((a, k) => { if (a) X.mem_free(ptrs[k], a.byteLength); });
+  if (rc !== 0) { X.sub_free(); return null; }
+  const get = (k, T) => new T(X.memory.buffer, X.sub_ptr(k), X.sub_len(k)).slice();
+  const out = { pos: get(0, Float32Array), idx: get(1, Uint32Array), col: get(2, Float32Array), mask: get(3, Float32Array), grp: get(4, Float32Array) };
+  X.sub_free();
+  return out;
+}
 function subdivideArrays(pos, idx, col, mask, smooth, grp = null, crease = false) {
+  if (coreSync && subdivCore && pos.length > 3000) { try { const r = subdivideCore(coreSync, pos, idx, col, mask, smooth, grp, crease); if (r) return r; } catch (e) { console.warn('Глина: subdivision in the core failed, using JavaScript', e); } }
   const n = pos.length / 3, f = idx.length / 3;
   // adjacency (vertex -> neighbours) to number edges without a hash map
   const tmp = new SculptMesh(pos, idx, col, mask);
@@ -2416,6 +2435,18 @@ function buildGeometry() {
     wgeo.setAttribute('aHide', geo.attributes.aHide);
     wgeo.setIndex(new THREE.BufferAttribute(W, 1).setUsage(THREE.DynamicDrawUsage));
     wgeo.setDrawRange(0, m.f * 6);
+    wmesh = new THREE.LineSegments(wgeo, wireLineMat);
+  } else if (quadsOf(m)) {
+    // a quad mesh shows its quads, not the triangles they are drawn with
+    const Q = m.quads, seen = new Set(), L = [];
+    for (let q = 0; q < Q.length; q += 4) {
+      const c = Q[q + 3] === 0xffffffff ? 3 : 4;
+      for (let e = 0; e < c; e++) { const a = Q[q + e], b = Q[q + (e + 1) % c], k = a < b ? a * 4294967296 + b : b * 4294967296 + a; if (!seen.has(k)) { seen.add(k); L.push(a, b); } }
+    }
+    wgeo = new THREE.BufferGeometry();
+    wgeo.setAttribute('position', geo.attributes.position);
+    wgeo.setAttribute('aHide', geo.attributes.aHide);
+    wgeo.setIndex(new THREE.BufferAttribute(Uint32Array.from(L), 1));
     wmesh = new THREE.LineSegments(wgeo, wireLineMat);
   } else wmesh = new THREE.Mesh(geo, wireMat);
   wmesh.frustumCulled = false; wmesh.visible = S.wire; wmesh.raycast = () => {};
@@ -4621,7 +4652,7 @@ function makeBoolean() {
     .then((r) => {
       if (r.idx.length < 12) { toast('Нищо не остана: проверете „−“ и „∩“.'); return; }
       const nm = new SculptMesh(r.pos, r.idx, r.col, r.mask, 0, r.grp);
-      if (r.quads && r.quads.length / 4 * 2 === r.idx.length / 3) nm.quads = r.quads;
+      if (r.quads && polyTris(r.quads) === r.idx.length / 3) nm.quads = r.quads;
       toolsStep(() => {
         for (const t of vis) t.visible = false;
         TOOLS.push(makeTool(nm, 'Булево'));
@@ -5801,7 +5832,10 @@ async function projectAll() {
    A copy of the shape as it is now. The Morph brush paints back to it; Switch swaps the two shapes.
    It belongs to the mesh: anything that changes the number of points (remesh, trim, levels…) drops it. */
 // the remesh's quads, while the triangles are still those it made (strokes move points, not faces)
-function quadsOf(m) { return m.quads && !m.dyn && m.quads.length / 4 * 2 === m.f ? m.quads : null; }
+// the faces of a quad mesh: four corners each, 0xffffffff as the fourth of a triangle (the sculpting
+// mesh has their triangles: two for a quad, one for a triangle)
+function polyTris(q) { let t = 0; for (let k = 3; k < q.length; k += 4) t += q[k] === 0xffffffff ? 1 : 2; return t; }
+function quadsOf(m) { return m.quads && !m.dyn && polyTris(m.quads) === m.f ? m.quads : null; }
 function morphOf(m) { return m.morph && m.morph.length === m.n * 3 && !m.dyn ? m.morph : null; }
 function storeMorph() {
   if (mesh.dyn) { toast('Изключете динамичната топология: тя сменя точките и запомнената форма не би съвпаднала.'); return; }
@@ -6200,6 +6234,29 @@ const OP = { add: 0, subtract: 1, intersect: 2 };
 function coreCall(X, m) {
   const ins = [m.pos, m.idx, m.col, m.mask, m.grp, m.parts];
   const ptrs = ins.map((a) => { const p = X.mem_alloc(a.byteLength); new Uint8Array(X.memory.buffer, p, a.byteLength).set(new Uint8Array(a.buffer, a.byteOffset, a.byteLength)); return p; });
+  if (m.op === 'quad') {
+    const nf = X.quad_raw(ptrs[0], m.pos.length / 3, ptrs[1], m.idx.length / 3, ptrs[2], ptrs[3], ptrs[4], m.target, m.seed | 0);
+    ins.forEach((a, k) => X.mem_free(ptrs[k], a.byteLength));
+    if (nf < 0) throw new Error('the core refused the input');
+    const get = (k, T) => new T(X.memory.buffer, X.quad_ptr(k), X.quad_len(k)).slice();
+    const pos = get(0, Float32Array), quads = get(1, Uint32Array), col = get(2, Float32Array), mask = get(3, Float32Array), grp = get(4, Float32Array);
+    X.quad_free();
+    // the triangles of the faces (a quad: two), for the sculpting mesh; the faces stay for export
+    let nt = 0; for (let q = 3; q < quads.length; q += 4) nt += quads[q] === 0xffffffff ? 1 : 2;
+    // (a quad is cut along its shorter diagonal, unless that is an edge of the mesh already)
+    const edges = new Set(), key = (a, b) => (a < b ? a * 4294967296 + b : b * 4294967296 + a);
+    for (let q = 0; q < quads.length; q += 4) { const c = quads[q + 3] === 0xffffffff ? 3 : 4; for (let e = 0; e < c; e++) edges.add(key(quads[q + e], quads[q + (e + 1) % c])); }
+    const d2 = (a, b) => { let s = 0; for (let k = 0; k < 3; k++) { const x = pos[a * 3 + k] - pos[b * 3 + k]; s += x * x; } return s; };
+    const idx = new Uint32Array(nt * 3); let t = 0;
+    for (let q = 0; q < quads.length; q += 4) {
+      const [a, b, c, d] = [quads[q], quads[q + 1], quads[q + 2], quads[q + 3]];
+      if (d === 0xffffffff) { idx[t++] = a; idx[t++] = b; idx[t++] = c; continue; }
+      const ac = !edges.has(key(a, c)), bd = !edges.has(key(b, d));
+      if (ac && (!bd || d2(a, c) <= d2(b, d))) { idx.set([a, b, c, a, c, d], t); edges.add(key(a, c)); } else { idx.set([b, c, d, b, d, a], t); edges.add(key(b, d)); }
+      t += 6;
+    }
+    return { pos, idx, col, mask, grp, quads, res: 0 };
+  }
   const rc = m.op === 'decimate'
     ? X.decimate_raw(ptrs[0], m.pos.length / 3, ptrs[1], m.idx.length / 3, ptrs[2], ptrs[3], ptrs[4], m.target)
     : X.voxel_csg_raw(ptrs[0], m.pos.length / 3, ptrs[1], m.idx.length / 3, ptrs[2], ptrs[3], ptrs[4], ptrs[5], m.parts.length / 3, m.res, m.flags | 0);
@@ -6296,6 +6353,50 @@ function decimate() {
     .catch((e) => toast('Намаляването не успя: ' + e.message))
     .finally(() => { working = false; busy(false); });
 }
+/* ---------- Quad remesh along the form (ZBrush: ZRemesher) ----------
+   The Rust core lays a cross field and a square lattice over the surface (Instant Meshes) and makes
+   about the wanted number of quads, with their edges along the form; a few triangles where the field
+   turns. Colour, mask and groups come over from the old surface. A mesh too coarse for the lattice is
+   divided first (without smoothing, so its shape stays). */
+async function quadRemeshArrays(a, target, seed = 1) {
+  const core = await coreStart();
+  if (core.where !== 'worker' && core.where !== 'page') throw new Error('no core');
+  const n = a.pos.length / 3;
+  return core.run({ op: 'quad', pos: Float32Array.from(a.pos), idx: Uint32Array.from(a.idx), col: Float32Array.from(a.col.subarray(0, n * 3)), mask: Float32Array.from(a.mask.subarray(0, n)), grp: Float32Array.from(a.grp.subarray(0, n)), parts: new Uint32Array(0), target, seed });
+}
+function surfaceStats(pos, idx) {
+  let area = 0, len = 0;
+  for (let t = 0; t < idx.length; t += 3) {
+    const a = idx[t] * 3, b = idx[t + 1] * 3, c = idx[t + 2] * 3;
+    const ux = pos[b] - pos[a], uy = pos[b + 1] - pos[a + 1], uz = pos[b + 2] - pos[a + 2], vx = pos[c] - pos[a], vy = pos[c + 1] - pos[a + 1], vz = pos[c + 2] - pos[a + 2];
+    area += Math.hypot(uy * vz - uz * vy, uz * vx - ux * vz, ux * vy - uy * vx) / 2;
+    len += Math.hypot(ux, uy, uz);
+  }
+  return { area, edge: len / Math.max(1, idx.length / 3) };
+}
+function quadRemesh() {
+  if (stroke || mrPending || working) return;
+  if (!askDropLevels('Квадовата ретопология')) return;
+  let a = meshArrays();
+  const target = Math.max(50, Math.round(S.quadTarget));
+  const st = surfaceStats(a.pos, a.idx), h = Math.sqrt(st.area / target);
+  let edge = st.edge;
+  while (edge > h / 2.5 && a.idx.length / 3 * 4 <= 2.5e6) { a = subdivideArrays(a.pos, a.idx, a.col, a.mask, false, a.grp); edge /= 2; }
+  busy(true); working = true;
+  const t0 = performance.now(), f0 = mesh.f;
+  quadRemeshArrays(a, target)
+    .then((r) => {
+      if (r.idx.length < 12) { toast('Не се получи мрежа: опитайте с повече четириъгълници.'); return; }
+      const nm = new SculptMesh(r.pos, r.idx, r.col, r.mask, 0, r.grp);
+      nm.quads = r.quads;
+      const paused = replaceMesh(nm);
+      const nq = r.quads.length / 4;
+      let quads = 0; for (let k = 3; k < r.quads.length; k += 4) if (r.quads[k] !== 0xffffffff) quads++;
+      toast(`${fmt(f0)} триъгълника → ${fmt(quads)} четириъгълника${nq - quads ? ` и ${fmt(nq - quads)} триъгълника` : ''} за ${((performance.now() - t0) / 1000).toFixed(1)} с. OBJ ги записва като четириъгълници.` + (paused ? ' ' + DYN_PAUSED_MSG : ''));
+    })
+    .catch((e) => toast('Ретопологията не успя: ' + e.message))
+    .finally(() => { working = false; busy(false); });
+}
 let working = false;   // a long job is running: the model must not change under it
 function remesh() {
   if (stroke || mrPending || working) return;
@@ -6310,7 +6411,7 @@ function remesh() {
     .then((r) => {
       if (r.idx.length < 12) { toast('Моделът е твърде тънък за тази плътност. Увеличете плътността.'); return; }
       const nm = new SculptMesh(r.pos, r.idx, r.col, r.mask, 0, r.grp);
-      if (r.quads && r.quads.length / 4 * 2 === r.idx.length / 3) nm.quads = r.quads;
+      if (r.quads && polyTris(r.quads) === r.idx.length / 3) nm.quads = r.quads;
       const paused = replaceMesh(nm);
       toast(`Нова мрежа: ${fmt(mesh.f)} триъгълника за ${((performance.now() - t0) / 1000).toFixed(1)} с.` + (r.res < S.voxel ? ` Плътността е намалена до ${r.res}, за да стигне паметта.` : '') + (paused ? ' ' + DYN_PAUSED_MSG : ''));
     })
@@ -7465,7 +7566,7 @@ async function openProject(bytes, name) {
     const mrOk = t.mr && Array.isArray(t.mr.levels) && t.mr.levels[t.mr.cur] && t.mr.levels[t.mr.cur].n === n;
     const m = new SculptMesh(g.pos, g.idx, g.col, g.mask, mrOk ? t.mr.cur : 0, g.grp);
     if (g.morph && g.morph.length === n * 3) m.morph = g.morph;
-    if (g.quads && g.quads.length / 4 * 2 === g.idx.length / 3 && g.quads.every((v) => v < n)) m.quads = g.quads;
+    if (g.quads && polyTris(g.quads) === g.idx.length / 3 && g.quads.every((v) => v < n || v === 0xffffffff)) m.quads = g.quads;
     const tt = makeTool(m, String(t.name || 'Подобект').slice(0, 30));
     tt.visible = t.visible !== false; tt.op = ['add', 'subtract', 'intersect'].includes(t.op) ? t.op : 'add';
     tt.zs = Array.isArray(t.zs) ? t.zs : undefined; tt.MR = mrOk ? t.mr : null;
@@ -7518,7 +7619,7 @@ function exportOBJ() {
       const p = `v ${a.pos[i * 3].toFixed(6)} ${a.pos[i * 3 + 1].toFixed(6)} ${a.pos[i * 3 + 2].toFixed(6)}`;
       parts.push(painted ? `${p} ${cl(a.col[i * 3])} ${cl(a.col[i * 3 + 1])} ${cl(a.col[i * 3 + 2])}\n` : p + '\n');
     }
-    if (it.quads) for (let q = 0; q < it.quads.length; q += 4) parts.push(`f ${it.quads[q] + base} ${it.quads[q + 1] + base} ${it.quads[q + 2] + base} ${it.quads[q + 3] + base}\n`);
+    if (it.quads) for (let q = 0; q < it.quads.length; q += 4) parts.push(it.quads[q + 3] === 0xffffffff ? `f ${it.quads[q] + base} ${it.quads[q + 1] + base} ${it.quads[q + 2] + base}\n` : `f ${it.quads[q] + base} ${it.quads[q + 1] + base} ${it.quads[q + 2] + base} ${it.quads[q + 3] + base}\n`);
     else for (let t = 0; t < a.idx.length; t += 3) parts.push(`f ${a.idx[t] + base} ${a.idx[t + 1] + base} ${a.idx[t + 2] + base}\n`);
     base += n;
   }
@@ -8115,6 +8216,8 @@ $('tSharpRemesh').addEventListener('change', () => { S.sharpRemesh = $('tSharpRe
 $('bPersp').onclick = () => setOrtho(!S.ortho);
 $('bMirror').onclick = mirrorFlip;
 $('bMorphStore').onclick = storeMorph;
+$('bQuad').onclick = quadRemesh;
+bindRange('sQuadT', 'oQuadT', () => S.quadTarget, (v) => (S.quadTarget = v), (v) => fmt(v));
 $('bDecimate').onclick = decimate;
 bindRange('sDecim', 'oDecim', () => S.decimateKeep, (v) => (S.decimateKeep = v), pct);
 $('nPrint').value = S.printSize;
@@ -8271,6 +8374,7 @@ function applyMatcap() {
 }
 function renderMat() { [...$('matcaps').children].forEach((el, i) => el.setAttribute('aria-pressed', i === S.matcap)); }
 renderMatcapSwatches();
+coreLocal().then((X) => { coreSync = X; }).catch(() => {});
 {
   let saved = null; try { saved = localStorage.getItem('glina.matcap'); } catch (e) {}
   const want = S.matcap;
@@ -8378,5 +8482,5 @@ loadAutosave().then((d) => {
     toast('Продължавате последния модел. „Нов“ започва отначало.');
   }
 });
-window.__glina = { studioPNG, setCustomMatcap, dropCustomMatcap, get customMatcap() { return customMatcap; }, matcapTextures, material, get gmesh() { return gmesh; }, renderer, makeCube, polishFeatures, sliceGroups, makeGear, makeTube, makeRing, revolve, meshToAxis, straighten, transformTools, gizmoTools, eigenSym3, subdivideArrays, slimeBridge, nanoMesh, maskIslands, texturedFiles, zipMany, levelArrays, zmBuild, quadsOf, exportSTL, renderPrintInfo, decimate, decimateArrays, printScale, projectBytes, saveProject, openProject, packValue, unpackValue, panelLoops, balloonTool, shellFrom, refOpen, refState, refColourAt, refLayout, smoothViewUpdate, get smoothViewObj() { return smoothViewObj; }, recallFrom, makeFibers, fiberArrays, projectAll, storeMorph, switchMorph, dropMorph, morphOf, fillColour, cavityColour, zsOpen, zsClose, zsSkin, get zs() { return zs; }, xtract, latticeLive, latticeScreen, get lattice() { return lattice; }, surfaceContrast, snapshotPNG, maskHidden, startCloth, stopCloth, get clothRun() { return clothRun; }, hideSelection, hideGroup, showAll, invertVisibility, hideMasked, deleteHidden, hiddenCount, setHiddenUndoable, deform, makeArray, arrayArrays, setGizmoMode, get gizmoPin() { return gizmoPin; }, set gizmoPin(v) { gizmoPin = v; }, exportOBJ, scheduleAutosave, get TOOLS() { return TOOLS; }, get curTool() { return curTool; }, activateTool, addTool, appendPrimitive, duplicateTool, deleteTool, moveTool, mergeDown, splitGroups, extractTool, extractShell, makeBoolean, newScene, gizmoHandle, gizmoScreen, get solo() { return solo; }, set solo(v) { solo = v; renderOthers(); }, toolArrays, voxelCombine, voxelRemesh, coreStart, get working() { return working; }, sliceByPlane, mirrorWeldArrays, mirrorWeld, mirrorFlip, applyNoise, snapView, setOrtho, historyJump, polyframe, get cam() { return cam; }, trimByPlane, applyCut, tubeArrays, immShape, hasOpenEdges, get curve() { return liveCurve(); }, dropCurve, get immFile() { return immFile; }, set immFile(v) { immFile = v; }, get LAYERS() { return LAYERS; }, get recLayer() { return recLayer; }, addLayer, deleteLayer, toggleLayer, recordLayer, setLayerStrength, bakeLayers, groupOp, maskAllBut, groupNear, get mesh() { return mesh; }, get stroke() { return stroke; }, get gesture() { return gesture; }, get nav() { return nav; }, get MR() { return MR; }, syncSym, get SYM() { return SYM; }, setLevel, divide, deleteLower, deleteHigher, camera, orbit, pick, selectTool, brush, brushById, maskOp, remesh, undo, redo, subdivide, setDyntopo, floodDetail, S, get undoStack() { return undoStack; } };
+window.__glina = { quadRemesh, quadRemeshArrays, surfaceStats, get coreSync() { return coreSync; }, set subdivCore(v) { subdivCore = v; }, polyTris, studioPNG, setCustomMatcap, dropCustomMatcap, get customMatcap() { return customMatcap; }, matcapTextures, material, get gmesh() { return gmesh; }, renderer, makeCube, polishFeatures, sliceGroups, makeGear, makeTube, makeRing, revolve, meshToAxis, straighten, transformTools, gizmoTools, eigenSym3, subdivideArrays, slimeBridge, nanoMesh, maskIslands, texturedFiles, zipMany, levelArrays, zmBuild, quadsOf, exportSTL, renderPrintInfo, decimate, decimateArrays, printScale, projectBytes, saveProject, openProject, packValue, unpackValue, panelLoops, balloonTool, shellFrom, refOpen, refState, refColourAt, refLayout, smoothViewUpdate, get smoothViewObj() { return smoothViewObj; }, recallFrom, makeFibers, fiberArrays, projectAll, storeMorph, switchMorph, dropMorph, morphOf, fillColour, cavityColour, zsOpen, zsClose, zsSkin, get zs() { return zs; }, xtract, latticeLive, latticeScreen, get lattice() { return lattice; }, surfaceContrast, snapshotPNG, maskHidden, startCloth, stopCloth, get clothRun() { return clothRun; }, hideSelection, hideGroup, showAll, invertVisibility, hideMasked, deleteHidden, hiddenCount, setHiddenUndoable, deform, makeArray, arrayArrays, setGizmoMode, get gizmoPin() { return gizmoPin; }, set gizmoPin(v) { gizmoPin = v; }, exportOBJ, scheduleAutosave, get TOOLS() { return TOOLS; }, get curTool() { return curTool; }, activateTool, addTool, appendPrimitive, duplicateTool, deleteTool, moveTool, mergeDown, splitGroups, extractTool, extractShell, makeBoolean, newScene, gizmoHandle, gizmoScreen, get solo() { return solo; }, set solo(v) { solo = v; renderOthers(); }, toolArrays, voxelCombine, voxelRemesh, coreStart, get working() { return working; }, sliceByPlane, mirrorWeldArrays, mirrorWeld, mirrorFlip, applyNoise, snapView, setOrtho, historyJump, polyframe, get cam() { return cam; }, trimByPlane, applyCut, tubeArrays, immShape, hasOpenEdges, get curve() { return liveCurve(); }, dropCurve, get immFile() { return immFile; }, set immFile(v) { immFile = v; }, get LAYERS() { return LAYERS; }, get recLayer() { return recLayer; }, addLayer, deleteLayer, toggleLayer, recordLayer, setLayerStrength, bakeLayers, groupOp, maskAllBut, groupNear, get mesh() { return mesh; }, get stroke() { return stroke; }, get gesture() { return gesture; }, get nav() { return nav; }, get MR() { return MR; }, syncSym, get SYM() { return SYM; }, setLevel, divide, deleteLower, deleteHigher, camera, orbit, pick, selectTool, brush, brushById, maskOp, remesh, undo, redo, subdivide, setDyntopo, floodDetail, S, get undoStack() { return undoStack; } };
 </script>

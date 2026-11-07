@@ -15,6 +15,8 @@
 
 pub mod cloth;
 pub mod decimate;
+pub mod quadmesh;
+pub mod subdiv;
 pub mod uv;
 
 use std::alloc::{alloc, dealloc, Layout};
@@ -576,6 +578,60 @@ pub unsafe extern "C" fn uv_bake_normals_raw(pos: *const f32, nv: usize, idx: *c
 pub extern "C" fn uv_ptr(kind: u32) -> *const u8 { UV.with(|c| { let c = c.borrow(); match kind { 0 => c.0.as_ptr() as *const u8, 1 => c.1.as_ptr() as *const u8, _ => c.2.as_ptr() } }) }
 #[no_mangle]
 pub extern "C" fn uv_len(kind: u32) -> usize { UV.with(|c| { let c = c.borrow(); match kind { 0 => c.0.len(), 1 => c.1.len(), _ => c.2.len() } }) }
+
+thread_local! { static SUB: RefCell<Option<subdiv::Sub>> = const { RefCell::new(None) }; }
+/// Loop subdivision (subdiv.rs). `col`, `mask`, `grp` may be null. `flags`: 1 smooth, 2 crease.
+/// The result is read with `sub_ptr` / `sub_len` (0 pos, 1 idx, 2 col, 3 mask, 4 grp). Returns 0 or −1.
+/// # Safety
+/// Every non-null pointer must point to as many values as its count says.
+#[no_mangle]
+pub unsafe extern "C" fn subdiv_raw(pos: *const f32, nv: usize, idx: *const u32, nt: usize, col: *const f32, mask: *const f32, grp: *const f32, flags: u32) -> i32 {
+    let idx = std::slice::from_raw_parts(idx, nt * 3);
+    if idx.iter().any(|&v| v as usize >= nv) { return -1; }
+    let opt = |p: *const f32, k: usize| if p.is_null() { None } else { Some(std::slice::from_raw_parts(p, nv * k)) };
+    let r = subdiv::subdivide(std::slice::from_raw_parts(pos, nv * 3), idx, opt(col, 3), opt(mask, 1), opt(grp, 1), flags & 1 != 0, flags & 2 != 0);
+    SUB.with(|c| *c.borrow_mut() = Some(r));
+    0
+}
+#[no_mangle]
+pub extern "C" fn sub_ptr(kind: u32) -> *const u8 {
+    SUB.with(|c| match c.borrow().as_ref() {
+        None => std::ptr::null(),
+        Some(r) => match kind { 0 => r.pos.as_ptr() as *const u8, 1 => r.idx.as_ptr() as *const u8, 2 => r.col.as_ptr() as *const u8, 3 => r.mask.as_ptr() as *const u8, _ => r.grp.as_ptr() as *const u8 },
+    })
+}
+#[no_mangle]
+pub extern "C" fn sub_len(kind: u32) -> usize {
+    SUB.with(|c| match c.borrow().as_ref() { None => 0, Some(r) => match kind { 0 => r.pos.len(), 1 => r.idx.len(), 2 => r.col.len(), 3 => r.mask.len(), _ => r.grp.len() } })
+}
+#[no_mangle]
+pub extern "C" fn sub_free() { SUB.with(|c| *c.borrow_mut() = None); }
+
+thread_local! { static QUAD: RefCell<Option<quadmesh::QuadMesh>> = const { RefCell::new(None) }; }
+/// Quad remesh along the form (quadmesh.rs), about `target` quads. Read with `quad_ptr` / `quad_len`
+/// (0 positions, 1 faces: four corners each, u32::MAX as the fourth of a triangle, 2 colour, 3 mask,
+/// 4 polygroup). `col`, `mask`, `grp` may be null. Returns the face count, or −1.
+/// # Safety
+/// Every pointer must point to as many values as its count says.
+#[no_mangle]
+pub unsafe extern "C" fn quad_raw(pos: *const f32, nv: usize, idx: *const u32, nt: usize, col: *const f32, mask: *const f32, grp: *const f32, target: u32, seed: u32) -> i32 {
+    let opt = |p: *const f32, k: usize| if p.is_null() { &[][..] } else { std::slice::from_raw_parts(p, nv * k) };
+    let at = quadmesh::Attrs { col: opt(col, 3), mask: opt(mask, 1), grp: opt(grp, 1) };
+    let r = quadmesh::remesh(std::slice::from_raw_parts(pos, nv * 3), std::slice::from_raw_parts(idx, nt * 3), target as usize, seed as u64, &at);
+    let n = r.as_ref().map_or(-1, |q| (q.faces.len() / 4) as i32);
+    QUAD.with(|c| *c.borrow_mut() = r);
+    n
+}
+#[no_mangle]
+pub extern "C" fn quad_ptr(kind: u32) -> *const u8 {
+    QUAD.with(|c| match c.borrow().as_ref() { None => std::ptr::null(), Some(q) => match kind { 0 => q.pos.as_ptr() as *const u8, 1 => q.faces.as_ptr() as *const u8, 2 => q.col.as_ptr() as *const u8, 3 => q.mask.as_ptr() as *const u8, _ => q.grp.as_ptr() as *const u8 } })
+}
+#[no_mangle]
+pub extern "C" fn quad_len(kind: u32) -> usize {
+    QUAD.with(|c| match c.borrow().as_ref() { None => 0, Some(q) => match kind { 0 => q.pos.len(), 1 => q.faces.len(), 2 => q.col.len(), 3 => q.mask.len(), _ => q.grp.len() } })
+}
+#[no_mangle]
+pub extern "C" fn quad_free() { QUAD.with(|c| *c.borrow_mut() = None); }
 
 thread_local! { static CLOTH: RefCell<Option<(cloth::Cloth, Vec<f32>)>> = const { RefCell::new(None) }; }
 
