@@ -4275,9 +4275,11 @@ function placeRing(point, normal, r) {
   $('cursor2d').hidden = true;
 }
 function hideRing() { ring.visible = false; for (const r of symRings) r.visible = false; $('cursor2d').hidden = true; }
+// brushes that draw their own things on the overlay (and no brush ring)
+const OVERLAY_BASES = new Set(['gizmo', 'ffd', 'topology', 'shadowbox']);
 function updateHover() {
   if (!hoverXY || stroke || nav) return;
-  if (zs || brush().base === 'gizmo' || brush().base === 'ffd') { hideRing(); return; }
+  if (zs || OVERLAY_BASES.has(brush().base)) { hideRing(); return; }
   const hit = pick(hoverXY.x, hoverXY.y);
   if (hit) {
     const pr = S.prRadius ? pressureOf(Math.max(lastPressure, 0.5)) : 1;
@@ -4296,7 +4298,8 @@ function frame() {
   else updateHover();
   if (S.smoothView || smoothViewObj) smoothViewUpdate();
   renderer.render(scene, camera);
-  if ((curve && !gesture) || brush().base === 'gizmo' || brush().base === 'ffd') drawOverlay();
+  // the overlay follows the view; and whatever is left on it from a brush no longer chosen goes
+  if ((curve && !gesture) || OVERLAY_BASES.has(brush().base) || (!gesture && $('overlay').childElementCount)) drawOverlay();
   if (stroke && stroke.queue.length) requestRender();
 }
 
@@ -7079,10 +7082,11 @@ function drawOverlay() {
   // a curve: being drawn, being bent, or waiting to be bent
   let line = null;
   if (g && (g.kind === 'curvedraw' || g.kind === 'shadowdraw' || g.kind === 'topodraw')) line = g.pts;
-  if (brush().base === 'topology') drawTopo(el);
-  if (brush().base === 'shadowbox') drawShadows(el);
   else if (g && g.kind === 'curveedit') line = bentCurve(g);
   else if (!g && liveCurve()) { camera.updateMatrixWorld(); line = curve.pts.map((q) => toScreen(q.p)).filter((q) => q[2] < 1); }
+  // (the lines, silhouettes, gizmo and cage belong to their own brushes: with any other they are gone)
+  if (brush().base === 'topology') drawTopo(el);
+  if (brush().base === 'shadowbox') drawShadows(el);
   if (brush().base === 'gizmo' && (!g || g.kind === 'gizmo')) drawGizmo(el);
   if (brush().base === 'ffd' && (!g || g.kind === 'ffd')) drawLattice(el);
   if (line && line.length > 1) {
@@ -8486,7 +8490,7 @@ function selectTool(id) {
   const b = brush();
   $('brushName').textContent = b.name;
   $('paintSec').style.outline = b.base === 'paint' ? '1px solid var(--wax)' : '';
-  syncBrushUI(); saveSettings(); requestRender();
+  syncBrushUI(); saveSettings(); drawOverlay(); requestRender();
 }
 function bindRange(id, out, get, set, fmtv) {
   const el = $(id);
