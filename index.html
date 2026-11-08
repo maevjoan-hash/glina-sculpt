@@ -169,6 +169,15 @@ input[type=range] { width: 100%; height: 26px; accent-color: var(--wax); backgro
   background: var(--panel-2); color: var(--fg); font: inherit;
 }
 #brushEdit { display: grid; gap: 10px; }
+/* the chosen brush's own box: its icon, name, what it does and only its settings */
+.brushbox { margin: 10px 10px 4px; border: 1px solid color-mix(in srgb, var(--wax) 55%, var(--line)); border-radius: 10px; background: var(--panel-2); }
+.bbHead { display: flex; gap: 10px; align-items: center; }
+.bbIcon { width: 38px; height: 38px; flex: none; border-radius: 9px; display: grid; place-items: center; background: var(--wax); color: var(--wax-ink); }
+.bbIcon svg { width: 24px; height: 24px; }
+.bbKicker { font-size: 10px; font-weight: 600; letter-spacing: .09em; text-transform: uppercase; color: var(--muted); }
+.bbName { font-family: var(--font-display); font-size: 14px; color: var(--fg); line-height: 1.25; }
+.bbZb { font-size: 11px; color: var(--muted); font-family: var(--font-mono); }
+.brushbox > .grp { gap: 8px; }
 #brushEdit > summary { cursor: pointer; color: var(--wax); list-style: none; padding: 2px 0; }
 #brushEdit > summary::-webkit-details-marker { display: none; }
 #brushEdit > summary::before { content: "▸ "; }
@@ -285,14 +294,45 @@ input[type=range] { width: 100%; height: 26px; accent-color: var(--wax); backgro
   </main>
 
   <aside id="drawer">
-    <section class="sec">
-      <h2>Четка <em id="brushName">Рисуване</em></h2>
-      <div class="row"><label for="sRadius">Радиус</label><output id="oRadius"></output><input type="range" id="sRadius" min="4" max="320" step="1"></div>
-      <div class="row"><label for="sStrength">Сила</label><output id="oStrength"></output><input type="range" id="sStrength" min="0.01" max="1" step="0.01"></div>
-      <label class="toggle">Обърната посока (Alt) <input type="checkbox" id="tInvert"></label>
-      <label class="toggle" title="Dynamic: при приближаване четката остава със същия размер върху модела">Размерът следва модела <input type="checkbox" id="tDynSize"></label>
+    <section class="sec brushbox" id="brushBox">
+      <div class="bbHead"><span class="bbIcon" id="bbIcon" aria-hidden="true"></span><div class="bbTitle"><div class="bbKicker">Четка</div><div class="bbName" id="brushName">Рисуване</div><div class="bbZb" id="bbZb"></div></div></div>
+      <p class="note" id="bbAbout"></p>
+      <div class="row" id="radiusRow"><label for="sRadius">Радиус</label><output id="oRadius"></output><input type="range" id="sRadius" min="4" max="320" step="1"></div>
+      <div class="row" id="strengthRow"><label for="sStrength">Сила</label><output id="oStrength"></output><input type="range" id="sStrength" min="0.01" max="1" step="0.01"></div>
+      <label class="toggle" id="invRow">Обърната посока (Alt) <input type="checkbox" id="tInvert"></label>
+      <label class="toggle" id="dynSizeRow" title="Dynamic: при приближаване четката остава със същия размер върху модела">Размерът следва модела <input type="checkbox" id="tDynSize"></label>
+      <div class="grp" id="paintGrp"><div class="note lab">Цвят</div>
+        <div class="paint-row" id="paintRow"><input type="color" id="cPaint" value="#b8443a" aria-label="Цвят"></div>
+        <div class="two"><button class="btn wide" id="bFill" title="Fill Object: целият подобект с цвета">Залей</button><button class="btn wide" id="bCavCol" title="Polypaint From Cavity: вдлъбнатините с цвета">Оцвети вдлъбнатините</button></div>
+      </div>
+      <div class="grp" id="vdmGrp"><div class="note lab">Формата на четката</div>
+        <div class="two"><button class="btn wide" id="bVdmSave" title="Запомнете формата на равна част, изваяйте и запазете: това, което е мръднало, става формата на четката VDM">Запази от модела</button><button class="btn wide" id="bVdmReset">Вградената (рог)</button></div>
+        <p class="note">Своя форма: „Нов“ → „Равнина“, „Запомни формата“, извайте и натиснете „Запази от модела“.</p>
+        <button class="btn wide" id="bbMorphStore2">Запомни формата</button>
+      </div>
+      <div class="grp" id="morphGrp"><div class="two"><button class="btn wide" id="bbMorphStore">Запомни формата</button><button class="btn wide" id="bbMorphSwitch">Размени</button></div><p class="note" id="bbMorphNote"></p></div>
+      <div class="grp" id="gzGrp"><div class="note lab">Gizmo</div><div class="chips" id="gzChips"></div>
+        <p class="note">Стрелките X, Y, Z работят по оста, кръгчето в средата — по екрана. Мести се незамаскираната част на активния подобект; влачене другаде върти изгледа.</p></div>
+      <div class="grp" id="immGrp"><div class="note lab">Форма за вмъкване</div><div class="chips" id="immChips"></div>
+        <p class="note">Натиснете върху модела и влачете: дължината е размерът, посоката я завърта. Щракване вмъква с размера на четката.</p></div>
+      <div class="grp" id="grabGrp"><div class="note lab">Хващане</div><div class="chips" id="grabChips"></div></div>
+      <div class="row" id="volRow"><label for="sVolume">Запазване на обема</label><output id="oVolume"></output><input type="range" id="sVolume" min="0" max="0.49" step="0.01"></div>
+      <label class="toggle" id="topoRow">Само свързаната повърхност <input type="checkbox" id="tTopo"></label>
+      <label class="toggle" id="deepRow" title="Move Infinite Depth: хваща и задната страна">Във всяка дълбочина <input type="checkbox" id="tDeep"></label>
+      <div class="grp" id="clothGrp"><div class="note lab">Плат</div><div class="chips" id="clothChips"></div></div>
+      <div class="grp" id="zmGrp"><div class="note lab">Действие</div><div class="chips" id="zmChips"></div>
+        <p class="note">Натиснете група и влачете нагоре (навън) или надолу (навътре). „Изтегли“ я изважда със стени (Extrude), „Вдлъбни“ прави ръб около нея навътре (Inset), „Скос“ я изважда със скосен ръб (Bevel); двете заедно правят бутони, ребра, прозорци. Работи върху цялата група под пръста.</p></div>
+      <div class="grp" id="ffdGrp"><div class="chips" id="ffdModeChips"></div><div id="ffdAxisRow"><div class="note lab">Ос на кривата</div><div class="chips" id="ffdAxisChips"></div></div><div class="note lab">Точки по всяка страна</div><div class="chips" id="ffdChips"></div>
+        <p class="note">„Крива“ (Bend Curve): точки на линия по оста през средата; формата следва кривата и напречните сечения се завъртат с нея. Влачене другаде върти изгледа.</p>
+        <button class="btn wide" id="bFfdReset">Нова клетка</button></div>
+      <div class="grp" id="topoGrp"><p class="note">Чертайте линии по модела: където се пресичат, стават ъгли; всяка затворена клетка става стена. „Направи“ прави от стените нов подобект с дебелината от „Дебелина при изваждане“. Краищата на линиите, близо до друга линия, се залепват за нея.</p>
+        <div class="two"><button class="btn wide" id="bTopoMake">Направи от линиите</button><button class="btn wide" id="bTopoClear">Изчисти</button></div></div>
+      <div class="grp" id="shadowGrp"><p class="note">Начертайте затворен контур (влачене): той става силует, гледан по най-близката ос — отпред, отстрани или отгоре. С Shift при въртене изгледът застава точно по ос. Новият силует по същата ос заменя стария. „Направи“ прави подобект: това, което се вижда като всеки от силуетите от неговата страна.</p>
+        <div class="two"><button class="btn wide" id="bShadowMake">Направи от силуетите</button><button class="btn wide" id="bShadowClear">Изчисти</button></div></div>
+      <div class="row" id="taperRow"><label for="sTaper">Изтъняване към краищата на кривата</label><output id="oTaper"></output><input type="range" id="sTaper" min="0" max="1" step="0.05"></div>
+      <p class="note" id="curveNote">Кривата остава след щриха: хванете я и я огънете, и щрихът се прави наново. Esc или друга четка я пуска.</p>
       <details id="brushEdit">
-        <summary>Форма и щрих на четката</summary>
+        <summary>Още настройки на четката</summary>
         <div class="field"><label for="bName">Име</label><input type="text" id="bName" maxlength="40" autocomplete="off"></div>
         <div class="field"><label for="bBase">Действие</label><select id="bBase"></select></div>
         <div class="grp" id="dirGrp"><div class="note lab">Посока</div><div class="chips" id="dirChips"></div></div>
@@ -316,27 +356,7 @@ input[type=range] { width: 100%; height: 26px; accent-color: var(--wax); backgro
         </div>
         <div class="row" id="modRow"><label for="sMod">Притискане ↔ надуване (Brush Mod)</label><output id="oMod"></output><input type="range" id="sMod" min="-1" max="1" step="0.05"></div>
         <label class="toggle" id="frontRow">Само видимата страна <input type="checkbox" id="tFront"></label>
-        <label class="toggle" id="topoRow">Само свързаната повърхност <input type="checkbox" id="tTopo"></label>
-        <label class="toggle" id="deepRow" title="Move Infinite Depth: хваща и задната страна">Във всяка дълбочина <input type="checkbox" id="tDeep"></label>
         <label class="toggle" id="groupRow">Само групата под четката <input type="checkbox" id="tGroupOnly"></label>
-        <div class="grp" id="grabGrp"><div class="note lab">Хващане</div><div class="chips" id="grabChips"></div></div>
-        <div class="grp" id="zmGrp"><div class="note lab">Действие</div><div class="chips" id="zmChips"></div>
-          <p class="note">Натиснете група и влачете нагоре (навън) или надолу (навътре). „Изтегли“ я изважда със стени (Extrude), „Вдлъбни“ прави ръб около нея навътре (Inset), „Скос“ я изважда със скосен ръб (Bevel); двете заедно правят бутони, ребра, прозорци. Работи върху цялата група под пръста.</p></div>
-        <div class="grp" id="ffdGrp"><div class="chips" id="ffdModeChips"></div><div class="note lab">Точки по всяка страна</div><div class="chips" id="ffdChips"></div>
-          <p class="note">Клетка около незамаскираната част на активния подобект. Влачете точка: формата вътре я следва плавно. „Крива“ (Bend Curve): линия от точки по оста от „Деформации“ през средата; формата я следва, напречните сечения се завъртат по нея. Влачене другаде върти изгледа.</p>
-          <button class="btn wide" id="bFfdReset">Нова клетка</button></div>
-        <div class="grp" id="topoGrp"><p class="note">Чертайте линии по модела: където се пресичат, стават ъгли; всяка затворена клетка става стена. „Направи“ прави от стените нов подобект с дебелината от „Дебелина при изваждане“. Краищата на линиите, близо до друга линия, се залепват за нея.</p>
-          <div class="two"><button class="btn wide" id="bTopoMake">Направи от линиите</button><button class="btn wide" id="bTopoClear">Изчисти</button></div></div>
-        <div class="grp" id="shadowGrp"><p class="note">Начертайте затворен контур (влачене): той става силует, гледан по най-близката ос — отпред, отстрани или отгоре. С Shift при въртене изгледът застава точно по ос. Новият силует по същата ос заменя стария. „Направи“ прави подобект: това, което се вижда като всеки от силуетите от неговата страна.</p>
-          <div class="two"><button class="btn wide" id="bShadowMake">Направи от силуетите</button><button class="btn wide" id="bShadowClear">Изчисти</button></div></div>
-        <div class="grp" id="clothGrp"><div class="note lab">Плат</div><div class="chips" id="clothChips"></div></div>
-        <div class="grp" id="gzGrp"><div class="note lab">Gizmo</div><div class="chips" id="gzChips"></div>
-          <p class="note">Стрелките X, Y, Z работят по оста, кръгчето в средата — по екрана. Мести се незамаскираната част на активния подобект; влачене другаде върти изгледа.</p></div>
-        <div class="grp" id="immGrp"><div class="note lab">Форма за вмъкване</div><div class="chips" id="immChips"></div>
-          <p class="note">Натиснете върху модела и влачете: дължината е размерът, посоката я завърта. Щракване вмъква с размера на четката.</p></div>
-        <div class="row" id="taperRow"><label for="sTaper">Изтъняване към краищата на кривата</label><output id="oTaper"></output><input type="range" id="sTaper" min="0" max="1" step="0.05"></div>
-        <p class="note" id="curveNote">Кривата остава след щриха: хванете я и я огънете, и щрихът се прави наново. Esc или друга четка я пуска.</p>
-        <div class="row" id="volRow"><label for="sVolume">Запазване на обема</label><output id="oVolume"></output><input type="range" id="sVolume" min="0" max="0.49" step="0.01"></div>
         <div class="two"><button class="btn wide" id="bBrushNew">Нова от тази</button><button class="btn wide" id="bBrushReset">Нулирай</button></div>
         <div class="two"><button class="btn wide" id="bBrushExport">Изнеси</button><button class="btn wide" id="bBrushImport">Внеси</button></div>
       </details>
@@ -370,8 +390,6 @@ input[type=range] { width: 100%; height: 26px; accent-color: var(--wax); backgro
       <div class="row" title="Extender: далечната половина се мести по оста, средата се разтяга"><label for="sExtend">Удължаване ↔ скъсяване</label><output id="oExtend"></output><input type="range" id="sExtend" min="-0.5" max="1" step="0.02"></div>
       <div class="row" title="Flatten: всичко се приближава до средната равнина, напречна на оста"><label for="sFlatten">Сплескване</label><output id="oFlatten"></output><input type="range" id="sFlatten" min="0" max="1" step="0.02"></div>
       <button class="btn wide" id="bPolishF" title="Polish by Features: изглажда равните части, без да заобля ръбовете и ъглите">Полирай, без да заобляш ръбовете</button>
-      <div class="note lab">Векторна форма (VDM)</div>
-      <div class="two"><button class="btn wide" id="bVdmSave" title="Запомнете формата на равна част, изваяйте и запазете: това, което е мръднало, става формата на четката VDM">Запази от формата</button><button class="btn wide" id="bVdmReset">Вградената форма</button></div>
       <div class="two"><button class="btn wide" id="bSliceG" title="MultiSlice: незамаскираното се разделя на ивици по оста, всяка става група">Ивици от групи</button><label class="row" style="margin:0">Брой <input type="number" id="nSlices" min="2" max="40" value="4" style="width:4em"></label></div>
       <h2 style="margin-top:14px">Косми <em>FiberMesh</em></h2>
       <p class="note">Растат от маскираното на активния подобект и стават нов подобект.</p>
@@ -430,12 +448,6 @@ input[type=range] { width: 100%; height: 26px; accent-color: var(--wax); backgro
         <div class="chips" id="fingerChips"></div>
       </div>
       <p class="note" id="penInfo">Още не е засечен стилус. Докоснете с писалката, за да видите натиска долу вляво.</p>
-    </section>
-
-    <section class="sec" id="paintSec">
-      <h2>Цвят за рисуване</h2>
-      <div class="paint-row" id="paintRow"><input type="color" id="cPaint" value="#b8443a" aria-label="Цвят"></div>
-      <div class="two"><button class="btn wide" id="bFill" title="Fill Object: целият подобект с цвета">Залей</button><button class="btn wide" id="bCavCol" title="Polypaint From Cavity: вдлъбнатините с цвета">Оцвети вдлъбнатините</button></div>
     </section>
 
     <section class="sec">
@@ -8489,7 +8501,6 @@ function selectTool(id) {
   for (const el of rail.children) if (el.dataset.tool) el.setAttribute('aria-pressed', el.dataset.tool === id);
   const b = brush();
   $('brushName').textContent = b.name;
-  $('paintSec').style.outline = b.base === 'paint' ? '1px solid var(--wax)' : '';
   syncBrushUI(); saveSettings(); drawOverlay(); requestRender();
 }
 function bindRange(id, out, get, set, fmtv) {
@@ -8559,6 +8570,50 @@ $('bName').addEventListener('input', () => {
   b.name = $('bName').value.trim() || 'Моя четка'; b.short = b.name.slice(0, 7);
   $('brushName').textContent = b.name; renderRail(); saveSettings();
 });
+// what each brush does, in a line, for its box (custom brushes: by what they are made of)
+const BRUSH_ABOUT = {
+  draw: 'Издига повърхността под четката; с Alt я вдлъбва.', clay: 'Трупа глина до равнина над повърхността: широки, плоски пластове.',
+  claybuild: 'Квадратни ивици глина по посоката на щриха.', dam: 'Тясна, остра гънка: шевове, бръчки, клепачи.',
+  inflate: 'Надува навън по нормалите (Alt — свива).', pinch: 'Събира повърхността към щриха: изостря ръбове.', crease: 'Гънка с притискане.',
+  flatten: 'Изравнява с квадратен връх.', trim: 'Реже изпъкналото до равнината под четката: равни площи и ръбове.', smooth: 'Изглажда (и Shift с всяка четка).',
+  grab: 'Хваща и мести зоната под четката.', elastic: 'Мести като истинска глина: страните се прибират, обемът се пази.', grabtopo: 'Мести само свързаното: един пръст, без съседния.',
+  snake: 'Изтегля рога и пипала след писалката.', snakecurve: 'Начертайте линия от модела навън: повърхността се издърпва по нея.',
+  vdm: 'Щракване слага цяла форма (и с надвиснали части); влачене задава размера и посоката.', dimple: 'Натиснете: кръгла трапчинка.',
+  pose: 'Сгъва като става: натиснете ставата и дърпайте.', planar: 'Изравнява до равнината, в която е започнал щрихът.', morph: 'Връща към запомнената форма, където минете.',
+  layer: 'Слой с еднаква височина, колкото и пъти да минете.', magnify: 'Раздалечава от щриха.', blob: 'Буци и неравности.', movedeep: 'Хваща всичко под кръга, и отзад.',
+  curvedam: 'Начертайте линия: по нея минава гънка; после я огънете.', clothpinch: 'Плат: събира на гънки.', clothslide: 'Плат: бута гънките пред четката.',
+  clothhook: 'Плат: тегли след писалката и го набира.', clothtwist: 'Плат: завърта като вихър.', clothinflate: 'Плат: надува като възглавница.',
+  groom: 'Реши космите (FiberMesh) по щриха: върховете най-много.', zmodel: 'Натиснете група и дърпайте: изтегля, вдлъбва или скосява.',
+  ffd: 'Клетка или крива около незамаскираното: влачете точките.', topology: 'Линии по модела; затворените клетки стават нов подобект.',
+  shadowbox: 'Затворени контури отпред, отстрани, отгоре — модел от силуетите.', gizmo: 'Мести, върти и мащабира незамаскираното.',
+  imm: 'Натиснете и влачете: вмъква форма върху модела.', tube: 'Начертайте линия по модела: по нея става тръба.', clip: 'Линия: всичко от едната страна се изравнява до нея.',
+  cut: 'Линия: отрязва модела от едната страна и затваря среза.', slice: 'Линия: разделя модела на групи по нея.', mask: 'Рисува маска: маскираното не се променя.', paint: 'Рисува с цвят (полипейнт).',
+};
+const BASE_ABOUT = { draw: 'draw', clay: 'clay', claystrips: 'claybuild', inflate: 'inflate', pinch: 'pinch', crease: 'crease', flatten: 'flatten', scrape: 'trim', smooth: 'smooth', grab: 'grab', snake: 'snake', vdm: 'vdm', pose: 'pose', planar: 'planar', morph: 'morph', layer: 'layer', cloth: 'clothpinch', groom: 'groom', zmodel: 'zmodel', ffd: 'ffd', topology: 'topology', shadowbox: 'shadowbox', gizmo: 'gizmo', insert: 'imm', tube: 'tube', clip: 'clip', cut: 'cut', slice: 'slice', mask: 'mask', paint: 'paint' };
+// per kind of brush: which of the common settings it has
+const NO_SIZE = new Set(['gizmo', 'ffd', 'zmodel', 'topology', 'shadowbox', 'clip', 'cut', 'slice']);
+const NO_STRENGTH = new Set([...NO_SIZE, 'insert', 'tube']);
+const NO_INVERT = new Set([...NO_STRENGTH, 'grab', 'snake', 'pose', 'groom', 'smooth', 'paint', 'cloth']);
+function syncBrushBox(b) {
+  const base = b.base;
+  $('bbIcon').innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">${ICON[b.icon] || ICON[b.id] || ICON[base] || ICON.draw}</svg>`;
+  $('bbZb').textContent = b.zb ? 'ZBrush: ' + b.zb : (b.builtin ? '' : 'ваша четка');
+  $('bbAbout').textContent = BRUSH_ABOUT[b.builtin ? b.id : ''] || BRUSH_ABOUT[BASE_ABOUT[base]] || '';
+  $('radiusRow').hidden = $('dynSizeRow').hidden = NO_SIZE.has(base);
+  $('strengthRow').hidden = NO_STRENGTH.has(base);
+  $('invRow').hidden = NO_INVERT.has(base);
+  $('paintGrp').hidden = base !== 'paint';
+  $('vdmGrp').hidden = base !== 'vdm';
+  $('morphGrp').hidden = base !== 'morph';
+  const stored = !!(mesh && morphOf(mesh));
+  $('bbMorphSwitch').disabled = !stored;
+  $('bbMorphNote').textContent = stored ? 'Има запомнена форма: четката връща към нея.' : 'Още няма запомнена форма: „Запомни формата“, после променете модела и минете с четката.';
+  $('ffdAxisRow').hidden = (b.ffdMode || 'cage') !== 'curve';
+  $('ffdChips').previousElementSibling.textContent = (b.ffdMode || 'cage') === 'curve' ? 'Точки по кривата' : 'Точки по всяка страна';
+  // the shape and stroke settings: only for brushes that have them
+  const shaped = !NO_SIZE.has(base) && base !== 'insert';
+  for (const id of ['dirGrp', 'curveGrp', 'tipGrp', 'alphaGrp', 'strokeGrp']) if (!shaped) $(id).hidden = true;
+}
 function syncBrushUI() {
   syncRadius(); syncStrength();
   const b = brush(), base = b.base;
@@ -8582,11 +8637,13 @@ function syncBrushUI() {
   $('topoGrp').hidden = base !== 'topology';
   $('zmGrp').hidden = base !== 'zmodel';
   syncGizmoBar();
-  $('taperRow').hidden = $('curveNote').hidden = !isCurveBrush(b);
+  // (a snake curve is pulled once, not bent afterwards, and has no taper)
+  $('taperRow').hidden = $('curveNote').hidden = !isCurveBrush(b) || base === 'snake';
   $('sAngle').closest('.row').hidden = b.alphaRot === 'random';
   $('bBrushReset').textContent = b.builtin ? 'Нулирай' : 'Изтрий';
   for (const f of brushSyncs) f();
   $('tFront').checked = b.front; $('tTopo').checked = b.topo; $('tDeep').checked = b.deep; $('tGroupOnly').checked = b.group;
+  syncBrushBox(b);
   renderAlphas(); drawCurve();
 }
 $('tDynSize').checked = S.dynSize;
@@ -8758,6 +8815,7 @@ function chips(containerId, items, get, set) {
     c.appendChild(b);
   }
   render();
+  return render;
 }
 chips('selChips', [{ id: 'rect', name: 'Правоъгълник' }, { id: 'lasso', name: 'Ласо' }], () => S.selShape, (v) => (S.selShape = v));
 chips('fingerChips', [{ id: 'auto', name: 'Авто' }, { id: 'draw', name: 'Рисува' }, { id: 'navigate', name: 'Само изглед' }], () => S.finger, (v) => (S.finger = v));
@@ -8835,6 +8893,8 @@ $('tSharpRemesh').addEventListener('change', () => { S.sharpRemesh = $('tSharpRe
 $('bPersp').onclick = () => setOrtho(!S.ortho);
 $('bMirror').onclick = mirrorFlip;
 $('bMorphStore').onclick = storeMorph;
+$('bbMorphStore').onclick = $('bbMorphStore2').onclick = () => { storeMorph(); syncBrushUI(); };
+$('bbMorphSwitch').onclick = () => { switchMorph(); syncBrushUI(); };
 $('bQuad').onclick = quadRemesh;
 bindRange('sQuadT', 'oQuadT', () => S.quadTarget, (v) => (S.quadTarget = v), (v) => fmt(v));
 $('bDecimate').onclick = decimate;
@@ -8892,10 +8952,19 @@ $('bVdmReset').onclick = vdmReset;
 $('bSliceG').onclick = () => sliceGroups(Math.max(2, Math.min(40, Math.round(+$('nSlices').value) || 4)));
 // (chips compare string ids)
 chips('defToChips', [0, 1].map((k) => ({ id: String(k), name: '' })), () => String(S.defTo), (v) => (S.defTo = +v));
-chips('defAxisChips', [0, 1, 2].map((k) => ({ id: String(k), name: 'XYZ'[k] })), () => String(S.defAxis), (v) => {
+// (the deformers' axis, also the Bend Curve's: two rows of chips for one setting)
+let syncAxisChips = () => {};
+const renderDefAxis = chips('defAxisChips', [0, 1, 2].map((k) => ({ id: String(k), name: 'XYZ'[k] })), () => String(S.defAxis), (v) => {
   S.defAxis = +v;
   [...$('defToChips').children].forEach((el, k) => (el.textContent = 'XYZ'[(S.defAxis + 1 + k) % 3]));
+  syncAxisChips();
 });
+const renderFfdAxis = chips('ffdAxisChips', [0, 1, 2].map((k) => ({ id: String(k), name: 'XYZ'[k] })), () => String(S.defAxis), (v) => {
+  S.defAxis = +v;
+  [...$('defToChips').children].forEach((el, k) => (el.textContent = 'XYZ'[(S.defAxis + 1 + k) % 3]));
+  syncAxisChips(); lattice = null; drawOverlay();
+});
+syncAxisChips = () => { renderDefAxis(); renderFfdAxis(); };
 [...$('defToChips').children].forEach((el, k) => (el.textContent = 'XYZ'[(S.defAxis + 1 + k) % 3]));
 chips('arrModeChips', [{ id: 'line', name: 'В редица' }, { id: 'circle', name: 'В кръг' }], () => S.arrMode, (v) => { S.arrMode = v; $('arrGapRow').hidden = v === 'circle'; });
 $('arrGapRow').hidden = S.arrMode === 'circle';
