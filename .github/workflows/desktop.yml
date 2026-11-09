@@ -78,6 +78,38 @@ jobs:
         working-directory: desktop
         run: node test/smoke.mjs --exe out/win-unpacked/Glina.exe
 
+      # the real installer, the way people get it: first the last released one, then this one over it
+      # (an update), silently; the installed app must then pass the same smoke test
+      - name: Installer, as a fresh install and as an update (Windows)
+        if: matrix.platform == 'windows'
+        working-directory: desktop
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $dir = "$env:LOCALAPPDATA\Programs\Glina"
+          $tag = gh api "repos/$env:GITHUB_REPOSITORY/releases/latest" --jq .tag_name
+          if ($tag) {
+            gh release download $tag --repo $env:GITHUB_REPOSITORY --pattern 'Glina-Setup-*.exe' --dir prev
+            $old = (Get-ChildItem prev\Glina-Setup-*.exe | Select-Object -First 1).FullName
+            $p = Start-Process -Wait -PassThru -FilePath $old -ArgumentList '/S'
+            "previous ($tag) installer exit code: $($p.ExitCode)"
+            if (Test-Path "$dir\Glina.exe") { "previous installed: " + (Get-Item "$dir\Glina.exe").VersionInfo.ProductVersion }
+          }
+          $new = (Get-ChildItem out\Glina-Setup-*.exe | Select-Object -First 1).FullName
+          "new installer: $new"
+          $p = Start-Process -Wait -PassThru -FilePath $new -ArgumentList '/S'
+          "new installer exit code: $($p.ExitCode)"
+          if ($p.ExitCode -ne 0) { throw "the installer failed (exit code $($p.ExitCode))" }
+          if (!(Test-Path "$dir\Glina.exe")) { Get-ChildItem "$env:LOCALAPPDATA\Programs" -Recurse -Depth 1 | Format-Table FullName; throw "nothing installed in $dir" }
+          $v = (Get-Item "$dir\Glina.exe").VersionInfo.ProductVersion
+          "installed version: $v"
+          $want = node -p "require('../build/package.json').version"
+          if ($v -notlike "$want*") { throw "the update left version $v, not $want" }
+          $lnk = Get-ChildItem "$env:USERPROFILE\Desktop", "$env:PUBLIC\Desktop" -Filter '*.lnk' -ErrorAction SilentlyContinue
+          "desktop shortcuts: " + ($lnk.Name -join ', ')
+          node test/smoke.mjs --exe "$dir\Glina.exe"
+
       - name: Smoke test (Linux, headless)
         if: matrix.platform == 'linux'
         working-directory: desktop
