@@ -13,7 +13,7 @@ const results = [];
 const check = (name, ok, ev) => { results.push(ok); console.log(`${ok ? 'PASS' : 'FAIL'}  ${name}${ev !== undefined ? '  ' + JSON.stringify(ev) : ''}`); };
 // what is visible in the box for a brush
 const box = (id) => G((i) => {
-  window.__glina.selectTool(i);
+  window.__glina.selectTool(i); window.__glina.openBrushPanel();
   const vis = (el) => !!el && el.offsetParent !== null && !el.closest('[hidden]');
   const ids = ['radiusRow', 'strengthRow', 'invRow', 'paintGrp', 'vdmGrp', 'morphGrp', 'gzGrp', 'immGrp', 'grabGrp', 'clothGrp', 'zmGrp', 'ffdGrp', 'topoGrp', 'shadowGrp', 'taperRow'];
   const out = {}; for (const k of ids) out[k] = vis(document.getElementById(k));

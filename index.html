@@ -219,12 +219,43 @@ input[type=range] { width: 100%; height: 26px; accent-color: var(--wax); backgro
 .kv dt { color: var(--muted); }
 .kv dd { margin: 0; text-align: right; }
 
+/* ---------- the settings in tabs, the brush's own panel, all brushes ---------- */
+#drawerTabs { position: sticky; top: -4px; z-index: 2; display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px; padding: 8px 10px; background: var(--panel); border-bottom: 1px solid var(--line); }
+.dtab { height: 34px; border-radius: 8px; border: 1px solid var(--line); background: var(--panel-2); color: var(--muted); cursor: pointer; font: inherit; font-size: 13px; }
+.dtab[aria-selected="true"] { background: var(--wax); color: var(--wax-ink); border-color: var(--wax); font-weight: 600; }
+.floatpanel { position: absolute; left: 10px; top: 10px; z-index: 6; width: min(300px, calc(100% - 20px)); max-height: calc(100% - 20px); overflow-y: auto; background: var(--panel); border: 1px solid var(--line); border-radius: 12px; box-shadow: 0 18px 50px rgba(0,0,0,.5); }
+.floatpanel[hidden] { display: none; }
+.fpClose { position: absolute; right: 10px; top: 10px; z-index: 1; width: 32px; height: 32px; border-radius: 8px; border: 0; background: none; color: var(--muted); font-size: 22px; line-height: 1; cursor: pointer; }
+.fpClose:hover { background: var(--panel-2); color: var(--fg); }
+#brushPanel { background: none; border: 0; box-shadow: none; overflow: visible; }
+#brushPanel .brushbox { margin: 0; max-height: calc(100vh - var(--bar) - 40px); overflow-y: auto; box-shadow: 0 18px 50px rgba(0,0,0,.5); }
+#brushPanel .bbHead { padding-right: 34px; }
+#palette { width: min(560px, calc(100% - 20px)); padding: 14px; }
+.palHead { display: grid; gap: 4px; padding-right: 36px; }
+.palHead b { font-family: var(--font-display); font-weight: 600; }
+.palHead small { color: var(--muted); font-size: 12px; line-height: 1.4; }
+.palCat { font-size: 11px; font-weight: 600; letter-spacing: .09em; text-transform: uppercase; color: var(--muted); margin: 14px 0 6px; }
+.palGrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(155px, 1fr)); gap: 6px; }
+.palItem { display: grid; grid-template-columns: 24px 1fr 24px; gap: 8px; align-items: center; padding: 7px 6px 7px 8px; border-radius: 9px; border: 1px solid var(--line); background: var(--panel-2); cursor: pointer; font-size: 13px; line-height: 1.2; user-select: none; }
+.palItem:hover, .palItem:focus-visible { border-color: var(--muted); outline: none; }
+.palItem[aria-pressed="true"] { border-color: var(--wax); }
+.palItem svg { width: 22px; height: 22px; }
+.palStar { width: 24px; height: 24px; background: none; border: 0; border-radius: 6px; color: var(--muted); cursor: pointer; font-size: 15px; padding: 0; }
+.palStar[aria-pressed="true"] { color: var(--wax); }
+.tool.all { color: var(--wax); border-color: var(--line); }
+.tool.temp { border-style: dashed; border-color: var(--line); }
+#quick .btn { flex-direction: column; gap: 1px; height: 54px; min-width: 58px; }
+.qlbl { font-size: 10px; color: var(--muted); line-height: 1; }
+
 @media (max-width: 760px) {
   :root { --rail: 54px; }
+  .btn .lbl.keep { display: inline; }
+  #hud > span:not(#hPen) { display: none; }
+  #hint { top: auto; bottom: calc(76px + env(safe-area-inset-bottom, 0px)); }
+  #hud #hPen.nopen { display: none; }
   #drawer { position: fixed; z-index: 20; right: 0; top: calc(var(--bar) + env(safe-area-inset-top, 0px)); bottom: 0; box-shadow: -18px 0 40px rgba(0,0,0,.5); max-width: calc(100% - 54px); }
   .btn .lbl { display: none; }
   .tool { width: 44px; }
-  #hint { top: 8px; }
 }
 @media (prefers-reduced-motion: reduce) { #toast { transition: none; } }
 </style>
@@ -233,8 +264,8 @@ input[type=range] { width: 100%; height: 26px; accent-color: var(--wax); backgro
   <header id="bar">
     <div class="logo"><i></i>Глина</div>
     <button class="btn" id="bNew" aria-haspopup="true" title="Нов модел"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="12" cy="12" r="8"/><path d="M12 8v8M8 12h8"/></svg><span class="lbl">Нов</span></button>
-    <button class="btn" id="bImport" title="Отвори проект .glina, OBJ или STL"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M4 15v4h16v-4M12 4v11M8 11l4 4 4-4"/></svg><span class="lbl">Импорт</span></button>
-    <button class="btn" id="bExport" aria-haspopup="true" title="Експорт"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M4 15v4h16v-4M12 15V4M8 8l4-4 4 4"/></svg><span class="lbl">Експорт</span></button>
+    <button class="btn" id="bImport" hidden title="Отвори проект .glina, OBJ или STL"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M4 15v4h16v-4M12 4v11M8 11l4 4 4-4"/></svg><span class="lbl">Импорт</span></button>
+    <button class="btn" id="bExport" aria-haspopup="true" title="Файл: отвори, запази, изнеси"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"><path d="M3 7a2 2 0 012-2h4l2 2h8a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2z"/></svg><span class="lbl keep">Файл</span></button>
     <div class="sep"></div>
     <button class="btn" id="bUndo" title="Отмени (Ctrl+Z)" disabled><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M9 14L4 9l5-5"/><path d="M4 9h10a6 6 0 010 12h-3"/></svg></button>
     <button class="btn" id="bRedo" title="Върни (Ctrl+Shift+Z)" disabled><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M15 14l5-5-5-5"/><path d="M20 9H10a6 6 0 000 12h3"/></svg></button>
@@ -275,7 +306,7 @@ input[type=range] { width: 100%; height: 26px; accent-color: var(--wax); backgro
       <button class="btn" id="gzStraight" title="Завърта подобекта така, че главните му посоки да са по X, Y и Z">Изправи</button>
     </div>
     <div id="hint">
-      <p><b>Стилус или мишка по модела</b> скулптира. Влачене по празното място или десен бутон върти, среден бутон или два пръста местят, колелцето приближава. <b>Shift</b> изглажда, <b>Alt</b> обръща посоката, <b>Ctrl</b> рисува маска, <b>D</b> включва динамичната топология.</p>
+      <p id="hintText"></p>
       <button id="hintClose" aria-label="Скрий подсказката">×</button>
     </div>
     <div id="hud">
@@ -285,15 +316,12 @@ input[type=range] { width: 100%; height: 26px; accent-color: var(--wax); backgro
       <span id="hPen">натиск <span class="pbar"><i id="hPress"></i></span> <b id="hPressV">—</b></span>
     </div>
     <div id="quick">
-      <button class="btn" id="qUndo" title="Отмени" aria-label="Отмени"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M9 14L4 9l5-5"/><path d="M4 9h10a6 6 0 010 12h-3"/></svg></button>
-      <button class="btn" id="qInv" aria-pressed="false" title="Обърни посоката" aria-label="Обърни посоката"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M7 4v16M4 7l3-3 3 3M17 20V4M14 17l3 3 3-3"/></svg></button>
-      <button class="btn" id="qSmooth" aria-pressed="false" title="Задръж за изглаждане" aria-label="Изглаждане"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 14c3-5 6 3 9-2s6 3 9-2"/></svg></button>
+      <button class="btn" id="qUndo" title="Отмени" aria-label="Отмени"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M9 14L4 9l5-5"/><path d="M4 9h10a6 6 0 010 12h-3"/></svg><span class="qlbl">Отмени</span></button>
+      <button class="btn" id="qInv" aria-pressed="false" title="Обърни посоката" aria-label="Обърни посоката"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M7 4v16M4 7l3-3 3 3M17 20V4M14 17l3 3 3-3"/></svg><span class="qlbl">Обърни</span></button>
+      <button class="btn" id="qSmooth" aria-pressed="false" title="Задръж за изглаждане" aria-label="Изглаждане"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 14c3-5 6 3 9-2s6 3 9-2"/></svg><span class="qlbl">Изглади</span></button>
     </div>
-    <div id="toast" role="status"></div>
-    <div id="busy" hidden>Работя…</div>
-  </main>
-
-  <aside id="drawer">
+    <div id="brushPanel" class="floatpanel" role="dialog" aria-label="Настройки на четката" hidden>
+      <button class="fpClose" id="bpClose" aria-label="Затвори настройките на четката">×</button>
     <section class="sec brushbox" id="brushBox">
       <div class="bbHead"><span class="bbIcon" id="bbIcon" aria-hidden="true"></span><div class="bbTitle"><div class="bbKicker">Четка</div><div class="bbName" id="brushName">Рисуване</div><div class="bbZb" id="bbZb"></div></div></div>
       <p class="note" id="bbAbout"></p>
@@ -361,8 +389,24 @@ input[type=range] { width: 100%; height: 26px; accent-color: var(--wax); backgro
         <div class="two"><button class="btn wide" id="bBrushExport">Изнеси</button><button class="btn wide" id="bBrushImport">Внеси</button></div>
       </details>
     </section>
+    </div>
+    <div id="palette" class="floatpanel" role="dialog" aria-label="Всички четки" hidden>
+      <button class="fpClose" id="palClose" aria-label="Затвори">×</button>
+      <div class="palHead"><b>Всички четки</b><small>Щракване избира. ☆ слага четката в лентата отляво. Десен бутон (или задържане) — нейните настройки.</small></div>
+      <div id="palList"></div>
+    </div>
+    <div id="toast" role="status"></div>
+    <div id="busy" hidden>Работя…</div>
+  </main>
 
-    <section class="sec">
+  <aside id="drawer">
+    <div id="drawerTabs" role="tablist" aria-label="Настройки">
+      <button class="dtab" role="tab" data-tab="model">Модел</button>
+      <button class="dtab" role="tab" data-tab="make">Създаване</button>
+      <button class="dtab" role="tab" data-tab="view">Изглед</button>
+    </div>
+
+    <section class="sec" data-tab="model">
       <h2>Подобекти <em>SubTools</em></h2>
       <div id="toolList"></div>
       <div class="two"><button class="btn wide" id="bToolAdd" aria-haspopup="true">+ Нов</button><button class="btn wide" id="bToolDup">Копие</button></div>
@@ -379,7 +423,7 @@ input[type=range] { width: 100%; height: 26px; accent-color: var(--wax); backgro
       <p class="note">Щракване върху друг подобект на модела го прави активен. „+ − ∩“ до името казва как участва в „Булево“: добавя, изважда или оставя общото. Gizmo (Z) мести, върти и мащабира.</p>
     </section>
 
-    <section class="sec">
+    <section class="sec" data-tab="make">
       <h2>Деформации <em>Deformers</em></h2>
       <p class="note">Върху незамаскираната част на активния подобект, по избраната ос. Плъзгачът показва промяната; като го пуснете, тя остава (Ctrl+Z я връща).</p>
       <div><div class="note lab">Ос</div><div class="chips" id="defAxisChips"></div></div>
@@ -391,7 +435,10 @@ input[type=range] { width: 100%; height: 26px; accent-color: var(--wax); backgro
       <div class="row" title="Flatten: всичко се приближава до средната равнина, напречна на оста"><label for="sFlatten">Сплескване</label><output id="oFlatten"></output><input type="range" id="sFlatten" min="0" max="1" step="0.02"></div>
       <button class="btn wide" id="bPolishF" title="Polish by Features: изглажда равните части, без да заобля ръбовете и ъглите">Полирай, без да заобляш ръбовете</button>
       <div class="two"><button class="btn wide" id="bSliceG" title="MultiSlice: незамаскираното се разделя на ивици по оста, всяка става група">Ивици от групи</button><label class="row" style="margin:0">Брой <input type="number" id="nSlices" min="2" max="40" value="4" style="width:4em"></label></div>
-      <h2 style="margin-top:14px">Косми <em>FiberMesh</em></h2>
+    </section>
+
+    <section class="sec" data-tab="make">
+      <h2>Косми <em>FiberMesh</em></h2>
       <p class="note">Растат от маскираното на активния подобект и стават нов подобект.</p>
       <div class="row"><label for="sFibN">Брой</label><output id="oFibN"></output><input type="range" id="sFibN" min="50" max="6000" step="50"></div>
       <div class="row"><label for="sFibL">Дължина</label><output id="oFibL"></output><input type="range" id="sFibL" min="0.02" max="0.8" step="0.01"></div>
@@ -402,15 +449,24 @@ input[type=range] { width: 100%; height: 26px; accent-color: var(--wax); backgro
       <p class="note">Четката „Сресване на косми“ ги реши по щриха: върховете отиват най-много, корените стоят.</p>
       <div class="row"><label for="sSlimeN">Нишки между две маски</label><output id="oSlimeN"></output><input type="range" id="sSlimeN" min="2" max="60" step="1"></div>
       <button class="btn wide" id="bSlime" title="Slime Bridge: увиснали нишки между двете най-големи маскирани места (дебелина и гравитация като на космите)">Нишки между маските</button>
-      <h2 style="margin-top:14px">Форми по маската <em>NanoMesh</em></h2>
+    </section>
+
+    <section class="sec" data-tab="make">
+      <h2>Форми по маската <em>NanoMesh</em></h2>
       <div class="chips" id="nanoChips"></div>
       <div class="row"><label for="sNanoN">Брой</label><output id="oNanoN"></output><input type="range" id="sNanoN" min="5" max="1000" step="5"></div>
       <div class="row"><label for="sNanoS">Размер</label><output id="oNanoS"></output><input type="range" id="sNanoS" min="0.005" max="0.3" step="0.005"></div>
       <button class="btn wide" id="bNano">Пръсни формите по маската</button>
-      <h2 style="margin-top:14px">Форма във всяка стена <em>MicroPoly</em></h2>
+    </section>
+
+    <section class="sec" data-tab="make">
+      <h2>Форма във всяка стена <em>MicroPoly</em></h2>
       <div class="chips" id="microChips"></div>
       <button class="btn wide" id="bMicro" title="Всяка стена на активния подобект получава малка форма, нагодена по нея (най-добре след ретопология с четириъгълници)">Сложи форма във всяка стена</button>
-      <h2 style="margin-top:14px">Плат <em>Dynamics</em></h2>
+    </section>
+
+    <section class="sec" data-tab="make">
+      <h2>Плат <em>Dynamics</em></h2>
       <p class="note">Активният подобект пада като плат: маскираното стои закачено, останалото се спуска по другите видими подобекти и пода. Гънките му не минават една през друга. Започнете с „Извади от маската“ за дреха, после маскирайте мястото, където да виси.</p>
       <div class="row"><label for="sClothG">Гравитация</label><output id="oClothG"></output><input type="range" id="sClothG" min="0.1" max="3" step="0.05"></div>
       <div class="row"><label for="sClothS">Здравина (не се разтяга)</label><output id="oClothS"></output><input type="range" id="sClothS" min="0.1" max="1" step="0.05"></div>
@@ -419,7 +475,10 @@ input[type=range] { width: 100%; height: 26px; accent-color: var(--wax); backgro
       <label class="toggle">Подът спира плата <input type="checkbox" id="tClothFloor"></label>
       <label class="toggle">Не минава през себе си <input type="checkbox" id="tClothSelf"></label>
       <button class="btn wide" id="bCloth" aria-pressed="false">Пусни симулацията</button>
-      <h2 style="margin-top:14px">Масив <em>Array Mesh</em></h2>
+    </section>
+
+    <section class="sec" data-tab="make">
+      <h2>Масив <em>Array Mesh</em></h2>
       <div class="chips" id="arrModeChips"></div>
       <div><div class="note lab">Ос</div><div class="chips" id="arrAxisChips"></div></div>
       <div class="row"><label for="sArrCount">Брой</label><output id="oArrCount"></output><input type="range" id="sArrCount" min="2" max="36" step="1"></div>
@@ -429,7 +488,7 @@ input[type=range] { width: 100%; height: 26px; accent-color: var(--wax); backgro
       <p class="note">„В кръг“ нарежда копията около оста през центъра на сцената (зъбно колело, венец, колони).</p>
     </section>
 
-    <section class="sec">
+    <section class="sec" data-tab="view">
       <h2>Симетрия</h2>
       <div class="chips" id="symChips"></div>
       <div class="row"><label for="sRadial">Кръгова: копия около оста</label><output id="oRadial"></output><input type="range" id="sRadial" min="1" max="24" step="1"></div>
@@ -437,7 +496,7 @@ input[type=range] { width: 100%; height: 26px; accent-color: var(--wax); backgro
       <p class="note">Огледално по X, Y и Z (и заедно), и кръгово: четката работи и на всички копия. Огледалата са през центъра на модела.</p>
     </section>
 
-    <section class="sec">
+    <section class="sec" data-tab="view">
       <h2>Стилус и таблет</h2>
       <label class="toggle">Натискът променя радиуса <input type="checkbox" id="tPrRadius"></label>
       <label class="toggle">Натискът променя силата <input type="checkbox" id="tPrStrength" checked></label>
@@ -450,7 +509,7 @@ input[type=range] { width: 100%; height: 26px; accent-color: var(--wax); backgro
       <p class="note" id="penInfo">Още не е засечен стилус. Докоснете с писалката, за да видите натиска долу вляво.</p>
     </section>
 
-    <section class="sec">
+    <section class="sec" data-tab="model">
       <h2>Маска</h2>
       <p class="note">Маскираните зони са по-тъмни и не се променят. <b>Ctrl</b> рисува маска, <b>Ctrl+Alt</b> я трие. Ctrl+щракване по модела я размазва, по празното място я обръща. Ctrl+влачене по празното маскира правоъгълник; празен правоъгълник я изчиства.</p>
       <div><div class="note lab">Ctrl+влачене по празното маскира</div><div class="chips" id="selChips"></div></div>
@@ -460,7 +519,7 @@ input[type=range] { width: 100%; height: 26px; accent-color: var(--wax); backgro
       <button class="btn wide" id="bMaskCavity" title="Маскира вдлъбнатините: гънки, пори, бръчки">Маска по вдлъбнатините</button>
     </section>
 
-    <section class="sec">
+    <section class="sec" data-tab="model">
       <h2>Видимост</h2>
       <p class="note"><b>Ctrl+Shift</b>+влачене показва само ограденото (с Alt го скрива); Ctrl+Shift+щракване по група показва само нея (с Alt я скрива), по празното показва всичко. Скритото не се рисува и четките не го пипат.</p>
       <p class="note" id="visInfo">Всичко се вижда</p>
@@ -469,14 +528,14 @@ input[type=range] { width: 100%; height: 26px; accent-color: var(--wax); backgro
       <button class="btn wide" id="bDelHidden" title="Delete Hidden">Изтрий скритото</button>
     </section>
 
-    <section class="sec">
+    <section class="sec" data-tab="model">
       <h2>Слоеве</h2>
       <div id="layerList"></div>
       <div class="two"><button class="btn wide" id="bLayerAdd">+ Нов слой</button><button class="btn wide" id="bLayerBake" title="Слоевете стават част от модела">Приложи всички</button></div>
       <p class="note">Слоят пази промените отделно. <b>●</b> записва в него, отметката го скрива или показва, плъзгачът го засилва (до 200%), отслабва или обръща (под 0). Записва формата и боята.</p>
     </section>
 
-    <section class="sec">
+    <section class="sec" data-tab="model">
       <h2>Групи</h2>
       <label class="toggle">Покажи групите <input type="checkbox" id="tGroups"></label>
       <button class="btn wide" id="bGrpMask">Нова група от маската</button>
@@ -485,7 +544,7 @@ input[type=range] { width: 100%; height: 26px; accent-color: var(--wax); backgro
       <p class="note"><b>Ctrl+Shift+щракване</b> по група маскира всичко останало (по празното изчиства маската). Четка с „Само групата под четката“ не излиза от групата, в която е започнала.</p>
     </section>
 
-    <section class="sec">
+    <section class="sec" data-tab="model">
       <h2>Динамична топология</h2>
       <label class="toggle">Включена <input type="checkbox" id="tDyn"></label>
       <p class="note">Четката сама добавя триъгълници там, където рисувате, и маха излишните. Не е нужно да разделяте целия модел.</p>
@@ -495,7 +554,7 @@ input[type=range] { width: 100%; height: 26px; accent-color: var(--wax); backgro
       <button class="btn wide" id="bFlood">Покрий целия модел с този детайл</button>
     </section>
 
-    <section class="sec">
+    <section class="sec" data-tab="model">
       <h2>Геометрия</h2>
       <dl class="kv"><dt>Върхове</dt><dd id="gVerts">0</dd><dt>Триъгълници</dt><dd id="gTris">0</dd><dt>Ниво на разделяне</dt><dd id="gLevel">0</dd></dl>
       <button class="btn wide" id="bSubdiv" title="Раздели (Ctrl+D)">Раздели ×4 детайл (Ctrl+D)</button>
@@ -528,7 +587,7 @@ input[type=range] { width: 100%; height: 26px; accent-color: var(--wax); backgro
       <div class="row" title="Surface Contrast: надясно изостря детайла, наляво го омекотява; голямата форма остава"><label for="sContrast">Контраст на детайла</label><output id="oContrast"></output><input type="range" id="sContrast" min="-1" max="2" step="0.02"></div>
     </section>
 
-    <section class="sec">
+    <section class="sec" data-tab="view">
       <h2>Референтна картинка <em>Spotlight</em></h2>
       <p class="note">Снимка или рисунка над или зад модела, за да моделирате по нея. С „Нагласи“ влаченето я мести, а колелцето я мащабира. Боята може да взема цвета си от картинката: така снимката се „прожектира“ върху модела.</p>
       <div class="two"><button class="btn wide" id="bRefOpen">Картинка…</button><button class="btn wide" id="bRefClear" disabled>Махни</button></div>
@@ -538,7 +597,7 @@ input[type=range] { width: 100%; height: 26px; accent-color: var(--wax); backgro
       <div class="two"><button class="btn wide" id="bRefAdjust" aria-pressed="false">Нагласи</button><button class="btn wide" id="bRefPaint" aria-pressed="false" title="Боята взема цвета от картинката под всяка точка">Боя от картинката</button></div>
     </section>
 
-    <section class="sec">
+    <section class="sec" data-tab="view">
       <h2>Материал</h2>
       <div class="swatches" id="matcaps"></div>
       <div class="two"><button class="btn wide" id="bMatOwn" title="Снимка на осветена топка (matcap) или каквато и да е картинка: взема се средният квадрат">Свой от снимка…</button><button class="btn wide" id="bMatDrop" hidden>Махни своя</button></div>
@@ -702,6 +761,8 @@ function presetBrush(p) {
 
 const S = {
   tool: 'draw',
+  rail: null,          // the brushes in the rail (null: the usual few); the rest are in „Всички четки“
+  drawerTab: 'model',  // the settings tab last open
   brushes: [],         // every brush: the presets (with the user's changes) and the user's own
   invert: false,
   prRadius: false,
@@ -4058,6 +4119,7 @@ function fingerDraws() {
 function notePen(e) {
   if (e.pointerType === 'pen' && !S.penSeen) {
     S.penSeen = true;
+    $('hPen').classList.remove('nopen');
     $('penInfo').textContent = 'Засечен е стилус. Пръстите вече само въртят и местят изгледа (режим „Авто“), за да не рисува дланта.';
   }
 }
@@ -8476,29 +8538,110 @@ function updateStats() {
 }
 
 const rail = $('rail');
+// the rail holds the usual brushes (and those starred in „Всички четки“, and your own); the chosen brush
+// is there too while it is chosen. A click on the chosen brush, a right click or a long press on any
+// opens its own panel of settings.
+const RAIL_DEFAULT = ['draw', 'clay', 'claybuild', 'dam', 'inflate', 'pinch', 'flatten', 'smooth', 'grab', 'snake', 'mask', 'paint'];
+const PAL_CATS = [
+  ['Скулптиране', ['draw', 'clay', 'claybuild', 'dam', 'inflate', 'pinch', 'crease', 'flatten', 'trim', 'smooth', 'planar', 'layer', 'magnify', 'blob', 'dimple', 'vdm', 'morph']],
+  ['Местене и издърпване', ['grab', 'elastic', 'grabtopo', 'movedeep', 'snake', 'snakecurve', 'pose', 'gizmo']],
+  ['По линия', ['curvedam', 'tube', 'clip', 'cut', 'slice']],
+  ['Плат и косми', ['clothpinch', 'clothslide', 'clothhook', 'clothtwist', 'clothinflate', 'groom']],
+  ['Моделиране', ['zmodel', 'ffd', 'imm', 'topology', 'shadowbox']],
+  ['Маска и боя', ['mask', 'paint']],
+];
+const pinned = () => (S.rail || RAIL_DEFAULT).filter((id) => brushById(id));
+function railIds() {
+  const ids = pinned();
+  for (const b of S.brushes) if (!b.builtin && !ids.includes(b.id)) ids.push(b.id);
+  if (!ids.includes(S.tool)) ids.push(S.tool);
+  return ids;
+}
+const brushIcon = (b, w = 1.6) => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="${w}" stroke-linecap="round" stroke-linejoin="round">${ICON[b.icon] || ICON[b.id] || ICON[b.base] || ICON.draw}</svg>`;
+// a press that is held opens the brush's settings (touch has no right button)
+function onHold(el, fn) {
+  let t = 0, held = false;
+  el.addEventListener('pointerdown', (e) => { if (e.pointerType === 'mouse') return; held = false; clearTimeout(t); t = setTimeout(() => { held = true; fn(); }, 520); });
+  for (const ev of ['pointerup', 'pointercancel', 'pointerleave']) el.addEventListener(ev, () => clearTimeout(t));
+  el.addEventListener('contextmenu', (e) => { e.preventDefault(); if (!held) fn(); held = false; });
+  return () => { const h = held; held = false; return h; };
+}
 function renderRail() {
   rail.textContent = '';
-  for (const b of S.brushes) {
+  const pin = pinned();
+  for (const id of railIds()) {
+    const b = brushById(id);
     const el = document.createElement('button');
-    el.className = 'tool' + (b.base === 'mask' ? ' mask' : '') + (b.builtin ? '' : ' mine');
-    el.dataset.tool = b.id; el.title = `${b.name}${b.zb ? ' · ' + b.zb : ''}${b.key ? ` (${b.key.toUpperCase()})` : ''}`;
-    el.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">${ICON[b.icon] || ICON[b.id] || ICON[b.base]}</svg><span></span>${b.key ? `<kbd>${b.key.toUpperCase()}</kbd>` : ''}`;
+    el.className = 'tool' + (b.base === 'mask' ? ' mask' : '') + (b.builtin ? '' : ' mine') + (b.builtin && !pin.includes(id) ? ' temp' : '');
+    el.dataset.tool = b.id; el.title = `${b.name}${b.key ? ` (${b.key.toUpperCase()})` : ''} — щракване отново, десен бутон или задържане: настройките ѝ`;
+    el.innerHTML = `${brushIcon(b)}<span></span>${b.key ? `<kbd>${b.key.toUpperCase()}</kbd>` : ''}`;
     el.querySelector('span').textContent = b.short;
     el.setAttribute('aria-pressed', b.id === S.tool);
-    el.onclick = () => selectTool(b.id);
+    const wasHeld = onHold(el, () => { selectTool(b.id); openBrushPanel(); });
+    el.onclick = () => { if (wasHeld()) return; if (b.id === S.tool) toggleBrushPanel(); else selectTool(b.id); };
     rail.appendChild(el);
   }
-  const add = document.createElement('button');
-  add.className = 'tool add'; add.title = 'Нова четка от текущата';
-  add.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="M12 6v12M6 12h12"/></svg><span>Нова</span>';
-  add.onclick = newBrush;
-  rail.appendChild(add);
+  const all = document.createElement('button');
+  all.className = 'tool all'; all.id = 'bAllBrushes'; all.title = 'Всички четки';
+  all.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><rect x="4" y="4" width="6" height="6" rx="1.2"/><rect x="14" y="4" width="6" height="6" rx="1.2"/><rect x="4" y="14" width="6" height="6" rx="1.2"/><rect x="14" y="14" width="6" height="6" rx="1.2"/></svg><span>Всички</span>';
+  all.setAttribute('aria-pressed', !$('palette').hidden);
+  all.onclick = () => ($('palette').hidden ? openPalette() : closePalette());
+  rail.appendChild(all);
 }
+function renderPalette() {
+  const box = $('palList'); box.textContent = '';
+  const seen = new Set(), pin = pinned();
+  const mine = S.brushes.filter((b) => !b.builtin).map((b) => b.id);
+  const cats = PAL_CATS.map(([n, ids]) => [n, ids.filter((id) => brushById(id))]);
+  const rest = S.brushes.filter((b) => b.builtin && !PAL_CATS.some(([, ids]) => ids.includes(b.id))).map((b) => b.id);
+  if (rest.length) cats.push(['Други', rest]);
+  cats.push(['Ваши четки', mine]);
+  for (const [name, ids] of cats) {
+    const h = document.createElement('div'); h.className = 'palCat'; h.textContent = name; box.appendChild(h);
+    const grid = document.createElement('div'); grid.className = 'palGrid'; box.appendChild(grid);
+    for (const id of ids) {
+      const b = brushById(id); seen.add(id);
+      const it = document.createElement('div'); it.className = 'palItem'; it.tabIndex = 0; it.setAttribute('role', 'button'); it.dataset.tool = id;
+      it.title = BRUSH_ABOUT[b.builtin ? b.id : ''] || BRUSH_ABOUT[BASE_ABOUT[b.base]] || b.name;
+      it.setAttribute('aria-pressed', id === S.tool);
+      it.innerHTML = `${brushIcon(b, 1.7)}<span></span><button class="palStar" aria-label="В лентата"></button>`;
+      it.querySelector('span').textContent = b.name;
+      const star = it.querySelector('.palStar'), on = pin.includes(id) || !b.builtin;
+      star.textContent = on ? '★' : '☆'; star.setAttribute('aria-pressed', on); star.disabled = !b.builtin;
+      star.title = !b.builtin ? 'Вашите четки са винаги в лентата' : on ? 'Махни от лентата' : 'Сложи в лентата';
+      star.onclick = (e) => { e.stopPropagation(); const list = pinned(); S.rail = on ? list.filter((x) => x !== id) : list.concat([id]); saveSettings(); renderRail(); renderPalette(); };
+      const wasHeld = onHold(it, () => { selectTool(id); closePalette(); openBrushPanel(); });
+      it.onclick = () => { if (wasHeld()) return; selectTool(id); closePalette(); };
+      it.onkeydown = (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); it.click(); } };
+      grid.appendChild(it);
+    }
+    if (name === 'Ваши четки') {
+      const add = document.createElement('button'); add.className = 'btn wide'; add.textContent = '+ Нова четка от избраната';
+      add.onclick = () => { newBrush(); renderPalette(); };
+      grid.appendChild(add);
+    }
+  }
+}
+function openPalette() { renderPalette(); $('palette').hidden = false; $('brushPanel').hidden = true; renderRail(); }
+function closePalette() { if ($('palette').hidden) return; $('palette').hidden = true; renderRail(); }
+function openBrushPanel() { $('palette').hidden = true; $('brushPanel').hidden = false; syncBrushUI(); renderRail(); try { localStorage.setItem('glina.bpSeen', '1'); } catch (e) {} }
+function closeBrushPanel() { $('brushPanel').hidden = true; }
+function toggleBrushPanel() { if ($('brushPanel').hidden) openBrushPanel(); else closeBrushPanel(); }
+// the settings, in three tabs
+function setDrawerTab(t) {
+  if (!['model', 'make', 'view'].includes(t)) t = 'model';
+  S.drawerTab = t;
+  for (const el of document.querySelectorAll('#drawerTabs .dtab')) el.setAttribute('aria-selected', el.dataset.tab === t);
+  for (const sec of document.querySelectorAll('#drawer .sec[data-tab]')) sec.hidden = sec.dataset.tab !== t;
+  $('drawer').scrollTop = 0;
+}
+for (const el of document.querySelectorAll('#drawerTabs .dtab')) el.onclick = () => { setDrawerTab(el.dataset.tab); saveSettings(); };
+
 function selectTool(id) {
   if (!brushById(id)) id = 'draw';
   if (id !== S.tool) dropCurve();
   S.tool = id;
-  for (const el of rail.children) if (el.dataset.tool) el.setAttribute('aria-pressed', el.dataset.tool === id);
+  renderRail();
   const b = brush();
   $('brushName').textContent = b.name;
   syncBrushUI(); saveSettings(); drawOverlay(); requestRender();
@@ -9034,6 +9177,12 @@ $('bMaskSharpen').onclick = () => maskOp('sharpen');
 $('bMaskGrow').onclick = () => maskOp('grow');
 $('bMaskShrink').onclick = () => maskOp('shrink');
 $('bMaskCavity').onclick = () => maskOp('cavity');
+{
+  const touch = window.matchMedia('(pointer: coarse)').matches;
+  $('hintText').innerHTML = touch
+    ? '<b>Рисувайте с пръст или писалка по модела.</b> Пръст по празното място върти изгледа, два пръста го местят и приближават. Задръжте пръст върху четка отляво — нейните настройки. „Всички“ най-долу в лентата показва всички четки.'
+    : '<b>Мишка или писалка по модела скулптира.</b> Влачене по празното място върти изгледа, колелцето приближава. Десен бутон върху четка отляво — нейните настройки; „Всички“ най-долу в лентата показва всички четки. <b>Shift</b> изглажда, <b>Ctrl</b> рисува маска, <b>Ctrl+Z</b> отменя.';
+}
 $('hintClose').onclick = () => { $('hint').hidden = true; try { localStorage.setItem('glina.hint', '1'); } catch (e) {} };
 try { if (localStorage.getItem('glina.hint')) $('hint').hidden = true; } catch (e) {}
 setPressed('qInv', S.invert);
@@ -9115,7 +9264,9 @@ function openMenu(anchor, items) {
 }
 function outside(e) { if (!e.target.closest('#menu')) closeMenu(); }
 function closeMenu() { const m = $('menu'); if (m) m.remove(); window.removeEventListener('pointerdown', outside, { capture: true }); }
-window.addEventListener('keydown', (e) => { if (e.key === 'Escape') { closeMenu(); if (!gesture) dropCurve(); } });
+window.addEventListener('keydown', (e) => { if (e.key === 'Escape') { closeMenu(); closePalette(); closeBrushPanel(); if (!gesture) dropCurve(); } });
+$('bpClose').onclick = closeBrushPanel;
+$('palClose').onclick = closePalette;
 $('bNew').onclick = () => openMenu($('bNew'), [
   { label: 'Сфера', hint: '82 хил.', run: () => newScene(makeSphere(6), 'Сфера') },
   { label: 'Сфера, по-лека', hint: '20 хил.', run: () => newScene(makeSphere(5), 'Сфера') },
@@ -9133,7 +9284,8 @@ function newScene(m, name) {
   frameView();
 }
 $('bExport').onclick = () => openMenu($('bExport'), [
-  { label: 'Проект .glina', hint: 'всичко, за да продължите', run: () => saveProject() },
+  { label: 'Отвори…', hint: 'проект или модел', run: () => { appendFromFile = false; $('fileIn').click(); } },
+  { label: 'Запази проекта (.glina)', hint: 'всичко, за да продължите', run: () => saveProject() },
   { label: 'OBJ с цветовете', hint: 'Blender, ZBrush', run: () => offerFile('glina-model.obj', exportOBJ()) },
   { label: 'STL', hint: '3D печат', run: () => offerFile('glina-model.stl', exportSTL()) },
   { label: 'OBJ с UV и текстури', hint: 'игри, Substance (ZIP)', run: () => exportTextured() },
@@ -9145,6 +9297,8 @@ $('bExport').onclick = () => openMenu($('bExport'), [
    Boot
    ===================================================================== */
 renderRail();
+setDrawerTab(S.drawerTab);
+if (!S.penSeen) $('hPen').classList.add('nopen');   // (on a phone: no pressure bar until a pen is seen)
 selectTool(S.tool);
 setMesh(makeSphere(6), { frame: true });
 TOOLS = [makeTool(mesh, 'Сфера')]; renderTools();
@@ -9178,5 +9332,5 @@ loadAutosave().then((d) => {
     toast('Продължавате последния модел. „Нов“ започва отначало.');
   }
 });
-window.__glina = { microPoly, topoAdd, topoBuild, topoMake, get topoLines() { return topoLines; }, set topoLines(v) { topoLines = v; }, shadowAdd, shadowMake, get shadows() { return shadows; }, set shadows(v) { shadows = v; }, earClip, shadowPrism, viewAxis, bendBuild, vdmCapture, vdmReset, get vdmField() { return vdmField; }, set vdmField(v) { vdmField = v; }, vdmDefault, snakeAlongCurve, quadRemesh, quadRemeshArrays, surfaceStats, get coreSync() { return coreSync; }, set subdivCore(v) { subdivCore = v; }, polyTris, studioPNG, setCustomMatcap, dropCustomMatcap, get customMatcap() { return customMatcap; }, matcapTextures, material, get gmesh() { return gmesh; }, renderer, makeCube, polishFeatures, sliceGroups, makeGear, makeTube, makeRing, revolve, meshToAxis, straighten, transformTools, gizmoTools, eigenSym3, subdivideArrays, slimeBridge, nanoMesh, maskIslands, texturedFiles, zipMany, levelArrays, zmBuild, quadsOf, exportSTL, renderPrintInfo, decimate, decimateArrays, printScale, projectBytes, saveProject, openProject, packValue, unpackValue, panelLoops, balloonTool, shellFrom, refOpen, refState, refColourAt, refLayout, smoothViewUpdate, get smoothViewObj() { return smoothViewObj; }, recallFrom, makeFibers, fiberArrays, projectAll, storeMorph, switchMorph, dropMorph, morphOf, fillColour, cavityColour, zsOpen, zsClose, zsSkin, get zs() { return zs; }, xtract, latticeLive, latticeScreen, get lattice() { return lattice; }, surfaceContrast, snapshotPNG, maskHidden, startCloth, stopCloth, get clothRun() { return clothRun; }, hideSelection, hideGroup, showAll, invertVisibility, hideMasked, deleteHidden, hiddenCount, setHiddenUndoable, deform, makeArray, arrayArrays, setGizmoMode, get gizmoPin() { return gizmoPin; }, set gizmoPin(v) { gizmoPin = v; }, exportOBJ, scheduleAutosave, get TOOLS() { return TOOLS; }, get curTool() { return curTool; }, activateTool, addTool, appendPrimitive, duplicateTool, deleteTool, moveTool, mergeDown, splitGroups, extractTool, extractShell, makeBoolean, newScene, gizmoHandle, gizmoScreen, get solo() { return solo; }, set solo(v) { solo = v; renderOthers(); }, toolArrays, voxelCombine, voxelRemesh, coreStart, get working() { return working; }, sliceByPlane, mirrorWeldArrays, mirrorWeld, mirrorFlip, applyNoise, snapView, setOrtho, historyJump, polyframe, get cam() { return cam; }, trimByPlane, applyCut, tubeArrays, immShape, hasOpenEdges, get curve() { return liveCurve(); }, dropCurve, get immFile() { return immFile; }, set immFile(v) { immFile = v; }, get LAYERS() { return LAYERS; }, get recLayer() { return recLayer; }, addLayer, deleteLayer, toggleLayer, recordLayer, setLayerStrength, bakeLayers, groupOp, maskAllBut, groupNear, get mesh() { return mesh; }, get stroke() { return stroke; }, get gesture() { return gesture; }, get nav() { return nav; }, get MR() { return MR; }, syncSym, get SYM() { return SYM; }, setLevel, divide, deleteLower, deleteHigher, camera, orbit, pick, selectTool, brush, brushById, maskOp, remesh, undo, redo, subdivide, setDyntopo, floodDetail, S, get undoStack() { return undoStack; } };
+window.__glina = { openBrushPanel, closeBrushPanel, openPalette, closePalette, setDrawerTab, railIds, microPoly, topoAdd, topoBuild, topoMake, get topoLines() { return topoLines; }, set topoLines(v) { topoLines = v; }, shadowAdd, shadowMake, get shadows() { return shadows; }, set shadows(v) { shadows = v; }, earClip, shadowPrism, viewAxis, bendBuild, vdmCapture, vdmReset, get vdmField() { return vdmField; }, set vdmField(v) { vdmField = v; }, vdmDefault, snakeAlongCurve, quadRemesh, quadRemeshArrays, surfaceStats, get coreSync() { return coreSync; }, set subdivCore(v) { subdivCore = v; }, polyTris, studioPNG, setCustomMatcap, dropCustomMatcap, get customMatcap() { return customMatcap; }, matcapTextures, material, get gmesh() { return gmesh; }, renderer, makeCube, polishFeatures, sliceGroups, makeGear, makeTube, makeRing, revolve, meshToAxis, straighten, transformTools, gizmoTools, eigenSym3, subdivideArrays, slimeBridge, nanoMesh, maskIslands, texturedFiles, zipMany, levelArrays, zmBuild, quadsOf, exportSTL, renderPrintInfo, decimate, decimateArrays, printScale, projectBytes, saveProject, openProject, packValue, unpackValue, panelLoops, balloonTool, shellFrom, refOpen, refState, refColourAt, refLayout, smoothViewUpdate, get smoothViewObj() { return smoothViewObj; }, recallFrom, makeFibers, fiberArrays, projectAll, storeMorph, switchMorph, dropMorph, morphOf, fillColour, cavityColour, zsOpen, zsClose, zsSkin, get zs() { return zs; }, xtract, latticeLive, latticeScreen, get lattice() { return lattice; }, surfaceContrast, snapshotPNG, maskHidden, startCloth, stopCloth, get clothRun() { return clothRun; }, hideSelection, hideGroup, showAll, invertVisibility, hideMasked, deleteHidden, hiddenCount, setHiddenUndoable, deform, makeArray, arrayArrays, setGizmoMode, get gizmoPin() { return gizmoPin; }, set gizmoPin(v) { gizmoPin = v; }, exportOBJ, scheduleAutosave, get TOOLS() { return TOOLS; }, get curTool() { return curTool; }, activateTool, addTool, appendPrimitive, duplicateTool, deleteTool, moveTool, mergeDown, splitGroups, extractTool, extractShell, makeBoolean, newScene, gizmoHandle, gizmoScreen, get solo() { return solo; }, set solo(v) { solo = v; renderOthers(); }, toolArrays, voxelCombine, voxelRemesh, coreStart, get working() { return working; }, sliceByPlane, mirrorWeldArrays, mirrorWeld, mirrorFlip, applyNoise, snapView, setOrtho, historyJump, polyframe, get cam() { return cam; }, trimByPlane, applyCut, tubeArrays, immShape, hasOpenEdges, get curve() { return liveCurve(); }, dropCurve, get immFile() { return immFile; }, set immFile(v) { immFile = v; }, get LAYERS() { return LAYERS; }, get recLayer() { return recLayer; }, addLayer, deleteLayer, toggleLayer, recordLayer, setLayerStrength, bakeLayers, groupOp, maskAllBut, groupNear, get mesh() { return mesh; }, get stroke() { return stroke; }, get gesture() { return gesture; }, get nav() { return nav; }, get MR() { return MR; }, syncSym, get SYM() { return SYM; }, setLevel, divide, deleteLower, deleteHigher, camera, orbit, pick, selectTool, brush, brushById, maskOp, remesh, undo, redo, subdivide, setDyntopo, floodDetail, S, get undoStack() { return undoStack; } };
 </script>
