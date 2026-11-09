@@ -13,6 +13,7 @@
 //! `voxel_csg` to run, and `out_ptr` / `out_len` / `out_res` / `out_clear` to read the result.
 //! Cloth (cloth.rs) keeps its state between calls: `cloth_init`, `cloth_step`, `cloth_pos`, `cloth_free`.
 
+pub mod brush;
 pub mod cloth;
 pub mod decimate;
 pub mod quadmesh;
@@ -578,6 +579,17 @@ pub unsafe extern "C" fn uv_bake_normals_raw(pos: *const f32, nv: usize, idx: *c
 pub extern "C" fn uv_ptr(kind: u32) -> *const u8 { UV.with(|c| { let c = c.borrow(); match kind { 0 => c.0.as_ptr() as *const u8, 1 => c.1.as_ptr() as *const u8, _ => c.2.as_ptr() } }) }
 #[no_mangle]
 pub extern "C" fn uv_len(kind: u32) -> usize { UV.with(|c| { let c = c.borrow(); match kind { 0 => c.0.len(), 1 => c.1.len(), _ => c.2.len() } }) }
+
+/// One dab of a sculpting brush on the points under it (brush.rs). `aux` may be null when the kind
+/// needs none. Returns how many points changed, or −1 for bad input.
+/// # Safety
+/// Every non-null pointer must point to as many values as its count says.
+#[no_mangle]
+pub unsafe extern "C" fn brush_dab_raw(kind: u32, n: usize, pos: *mut f32, nrm: *const f32, mask: *const f32, fall: *const f32, par: *const f64, aux: *mut f32, aux_len: usize, changed: *mut u8) -> i32 {
+    if pos.is_null() || nrm.is_null() || mask.is_null() || fall.is_null() || par.is_null() || changed.is_null() { return -1; }
+    let aux: &mut [f32] = if aux.is_null() { &mut [] } else { std::slice::from_raw_parts_mut(aux, aux_len) };
+    brush::dab(kind, std::slice::from_raw_parts_mut(pos, n * 3), std::slice::from_raw_parts(nrm, n * 3), std::slice::from_raw_parts(mask, n), std::slice::from_raw_parts(fall, n), std::slice::from_raw_parts(par, 28), aux, std::slice::from_raw_parts_mut(changed, n)) as i32
+}
 
 thread_local! { static SUB: RefCell<Option<subdiv::Sub>> = const { RefCell::new(None) }; }
 /// Loop subdivision (subdiv.rs). `col`, `mask`, `grp` may be null. `flags`: 1 smooth, 2 crease.
