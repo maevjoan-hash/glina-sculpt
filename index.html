@@ -955,6 +955,7 @@ const S = {
   pcShape: 'sphere', pcCount: 12, pcSize: 0.04,   // shapes along a curve
   pattern: 'line',     // the last pattern chosen in „Шарки“
   bprSSS: 0.35, bprCavity: 0.35, bprRim: 0.25,   // the studio picture: light under the skin, pores, rim light (0: off)
+  heal: true,          // folds and spikes are smoothed away as they form (healVerts)
   thick: 0.05,         // Thick Skin: how far above or below the base, as a share of the model's radius
   wheel: true,         // the navigation wheel (AutoCAD: SteeringWheels) is shown
   wheelPos: null,      // where it was dragged: { x, y } from the view's top left, or null for the corner
@@ -4379,6 +4380,65 @@ function endStroke(commit = true) {
   requestRender();
 }
 
+/* ---------- the surface kept sound while it is sculpted ----------
+   Full strength, many passes over one place and long pulls can fold the surface over itself or leave
+   single points sticking out; with dynamic topology the folds then breed more triangles. After every
+   frame of a stroke each moved point is looked at: if a face around it has turned over (more than ~100°
+   from the point's own normal), or the point stands far out of the ring of its neighbours (more than 2.2
+   times the ring's size), it is drawn most of the way to the middle of its neighbours — up to three
+   rounds. Sound parts are not touched, so the shape and its detail stay as sculpted. */
+function healVerts(list, count) {
+  if (!S.heal || !stroke || !count) return 0;
+  const m = mesh, P = m.pos, N = m.nrm, FN = m.fn, I = m.idx, MK = m.mask, H = m.hid, dyn = m.dyn;
+  const bad = [], to = [];
+  let fixed = 0;
+  for (let pass = 0; pass < 3; pass++) {
+    bad.length = 0; to.length = 0;
+    for (let k = 0; k < count; k++) {
+      const v = list[k], o = v * 3;
+      if (MK[v] >= 1 || H[v]) continue;
+      const nx = N[o], ny = N[o + 1], nz = N[o + 2];
+      let folded = false, cx = 0, cy = 0, cz = 0, c = 0;
+      if (dyn) {
+        const L = m.vfA[v]; if (L.length < 3 || m.isBoundary(v)) continue;
+        for (let j = 0; j < L.length; j++) {
+          const t = L[j] * 3, fx = FN[t], fy = FN[t + 1], fz = FN[t + 2], d = fx * nx + fy * ny + fz * nz;
+          if (d < 0 && d * d > 0.04 * (fx * fx + fy * fy + fz * fz)) folded = true;
+          // (every neighbour is the „next“ corner of exactly one of the faces around an inner point)
+          const q = I[t] === v ? I[t + 1] : I[t + 1] === v ? I[t + 2] : I[t];
+          cx += P[q * 3]; cy += P[q * 3 + 1]; cz += P[q * 3 + 2]; c++;
+        }
+      } else {
+        if (m.boundary[v] || m.vvOff[v + 1] === m.vvOff[v]) continue;
+        for (let j = m.vfOff[v]; j < m.vfOff[v + 1]; j++) {
+          const t = m.vf[j] * 3, fx = FN[t], fy = FN[t + 1], fz = FN[t + 2], d = fx * nx + fy * ny + fz * nz;
+          if (d < 0 && d * d > 0.04 * (fx * fx + fy * fy + fz * fz)) folded = true;
+        }
+        for (let j = m.vvOff[v]; j < m.vvOff[v + 1]; j++) { const q = m.vv[j] * 3; cx += P[q]; cy += P[q + 1]; cz += P[q + 2]; c++; }
+      }
+      if (!c) continue;
+      cx /= c; cy /= c; cz /= c;
+      if (!folded) {
+        // the ring's size: how far the neighbours are from their own middle
+        let rs = 0;
+        if (dyn) { const L = m.vfA[v]; for (let j = 0; j < L.length; j++) { const t = L[j] * 3, q = (I[t] === v ? I[t + 1] : I[t + 1] === v ? I[t + 2] : I[t]) * 3; rs += Math.hypot(P[q] - cx, P[q + 1] - cy, P[q + 2] - cz); } }
+        else for (let j = m.vvOff[v]; j < m.vvOff[v + 1]; j++) { const q = m.vv[j] * 3; rs += Math.hypot(P[q] - cx, P[q + 1] - cy, P[q + 2] - cz); }
+        rs /= c;
+        if (!(Math.hypot(P[o] - cx, P[o + 1] - cy, P[o + 2] - cz) > rs * 2.2)) continue;
+      }
+      bad.push(v); to.push(cx, cy, cz);
+    }
+    if (!bad.length) break;
+    for (let k = 0; k < bad.length; k++) {
+      const v = bad[k], o = v * 3, w = 0.7 * (1 - MK[v]);
+      touchVert(v);
+      P[o] += (to[k * 3] - P[o]) * w; P[o + 1] += (to[k * 3 + 1] - P[o + 1]) * w; P[o + 2] += (to[k * 3 + 2] - P[o + 2]) * w;
+    }
+    fixed += bad.length;
+    m.updateNormals(bad, bad.length);
+  }
+  return fixed;
+}
 function resetFrame() {
   frame_.count = 0; frame_.minV = Infinity; frame_.maxV = -1;
   frame_.positions = frame_.colors = frame_.masks = frame_.bvhKept = false;
@@ -4391,6 +4451,7 @@ function flushFrame() {
   if (frame_.positions && thickOf(m)) thickClamp(m.frList, frame_.count);
   if (frame_.positions) {
     m.updateNormals(m.frList, frame_.count);          // neighbours' normals change as well
+    if (healVerts(m.frList, frame_.count)) m.updateNormals(m.frList, frame_.count);
     uploadVerts(['position', 'normal'], m.nTouched, m.nTouched.length);
     if (!frame_.bvhKept) bvhDirty = true;              // grab / snake: refit the whole tree next frame
   }
@@ -4403,7 +4464,11 @@ function flushDyn() {
   if (!frame_.count && !m.topoDirty && !m.geomDirty) return;
   const topo = m.topoDirty;
   const touched = [];
-  if (frame_.count && frame_.positions) { m.updateNormals(m.frList, frame_.count); for (const v of m.nTouched) touched.push(v); }
+  if (frame_.count && frame_.positions) {
+    m.updateNormals(m.frList, frame_.count);
+    if (healVerts(m.frList, frame_.count)) m.updateNormals(m.frList, frame_.count);
+    for (const v of m.nTouched) touched.push(v);
+  }
   for (let k = 0; k < frame_.count; k++) touched.push(m.frList[k]);
   if (m.geomDirty) buildGeometry();                      // arrays were re-allocated: everything is uploaded
   else {
