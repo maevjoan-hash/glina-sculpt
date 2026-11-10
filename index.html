@@ -108,6 +108,27 @@ button, input, select { font: inherit; color: inherit; }
 .hstep.recall { background: #7ec8a6; opacity: 1; }
 .hstep:hover { opacity: .9; }
 #cursor2d { position: absolute; left: 0; top: 0; border-radius: 50%; border: 1.5px solid rgba(255,255,255,.55); pointer-events: none; transform: translate(-50%,-50%); box-shadow: 0 0 0 1px rgba(0,0,0,.35); }
+#navWheel { position: absolute; right: calc(14px + env(safe-area-inset-right, 0px)); top: 14px; width: 140px; z-index: 4; touch-action: none; user-select: none; -webkit-user-select: none; }
+#navWheel[hidden] { display: none; }
+#nwSvg { display: block; width: 140px; height: 140px; filter: drop-shadow(0 6px 16px rgba(0,0,0,.45)); }
+#nwSvg .nwW { fill: rgba(30,35,42,.82); stroke: rgba(255,255,255,.14); stroke-width: 1; cursor: pointer; transition: fill .12s; }
+#nwSvg .nwW.in { fill: rgba(44,50,59,.86); }
+#nwSvg .nwW:hover, #nwSvg .nwW.on { fill: var(--wax); }
+#nwSvg .nwL { fill: var(--fg); font: 600 8.6px var(--font-mono, monospace); letter-spacing: .04em; pointer-events: none; text-anchor: middle; dominant-baseline: central; }
+#nwSvg .nwL.in { font-size: 7.8px; fill: var(--muted); }
+#nwSvg .nwG:hover .nwL, #nwSvg .nwG.on .nwL { fill: var(--wax-ink, #1a1a1a); }
+#nwSvg .nwHub { fill: rgba(20,24,29,.92); stroke: rgba(255,255,255,.2); cursor: pointer; }
+#nwSvg .nwHub:hover { fill: var(--wax); }
+#nwSvg .nwHome { fill: none; stroke: var(--fg); stroke-width: 1.6; stroke-linejoin: round; pointer-events: none; }
+.nwBtn { position: absolute; width: 26px; height: 26px; border-radius: 50%; border: 1px solid var(--line); background: rgba(20,24,29,.9); color: var(--muted); display: grid; place-items: center; cursor: pointer; font-size: 16px; line-height: 1; padding: 0; }
+.nwBtn svg { width: 14px; height: 14px; }
+.nwBtn:hover { color: var(--fg); }
+#nwMove { left: -4px; bottom: -4px; cursor: move; touch-action: none; }
+#nwClose { right: -4px; top: -4px; }
+#nwTip { position: absolute; right: 0; top: 146px; width: 220px; text-align: right; font-size: 11.5px; line-height: 1.4; color: var(--fg); text-shadow: 0 1px 3px rgba(0,0,0,.8); pointer-events: none; min-height: 1em; }
+#centerMark { position: absolute; width: 22px; height: 22px; margin: -11px 0 0 -11px; border: 2px solid var(--wax); border-radius: 50%; pointer-events: none; z-index: 5; box-shadow: 0 0 0 1px rgba(0,0,0,.5); }
+#centerMark::after { content: ''; position: absolute; left: 50%; top: 50%; width: 4px; height: 4px; margin: -2px; border-radius: 50%; background: var(--wax); }
+@media (max-width: 720px) { #navWheel { transform: scale(.8); transform-origin: top right; } }
 #hud {
   position: absolute; left: 12px; bottom: calc(12px + env(safe-area-inset-bottom, 0px)); display: flex; gap: 14px; align-items: center; flex-wrap: wrap;
   font-family: var(--font-mono); font-size: 11px; color: var(--muted); pointer-events: none;
@@ -298,6 +319,7 @@ input[type=range] { width: 100%; height: 26px; accent-color: var(--wax); backgro
     <button class="btn" id="bWire" aria-pressed="false" title="Мрежа (W)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M4 4h16v16H4zM4 12h16M12 4v16M4 4l16 16"/></svg><span class="lbl">Мрежа</span></button>
     <button class="btn" id="bDyn" aria-pressed="false" title="Динамична топология (D)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"><path d="M12 3L3 20h18z"/><path d="M7.5 11.5h9M12 20l-4.5-8.5M12 20l4.5-8.5"/></svg><span class="lbl">Дин. топология</span></button>
     <button class="btn" id="bPersp" aria-pressed="true" title="Перспектива (Shift+P)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"><path d="M4 6l16-3v18L4 18z"/><path d="M4 12h16" opacity=".5"/></svg><span class="lbl">Перспектива</span></button>
+    <button class="btn" id="bWheel" aria-pressed="false" title="Колело за навигация (Shift+W), като в AutoCAD" aria-label="Колело за навигация"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="5"/><circle cx="12" cy="12" r="1.6"/><path d="M5.6 5.6l3 3M18.4 5.6l-3 3M5.6 18.4l3-3M18.4 18.4l-3-3"/></svg><span class="lbl">Колело</span></button>
     <button class="btn" id="bFrame" title="Центрирай изгледа (F)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M4 9V4h5M15 4h5v5M20 15v5h-5M9 20H4v-5"/><circle cx="12" cy="12" r="3"/></svg><span class="lbl">Центрирай</span></button>
     <div class="spacer"></div>
     <button class="btn" id="bPanel" aria-pressed="true" title="Настройки"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M4 7h10M18 7h2M4 17h4M12 17h8"/><circle cx="16" cy="7" r="2"/><circle cx="10" cy="17" r="2"/></svg><span class="lbl">Настройки</span></button>
@@ -332,6 +354,12 @@ input[type=range] { width: 100%; height: 26px; accent-color: var(--wax); backgro
     <div id="hint">
       <p id="hintText"></p>
       <button id="hintClose" aria-label="Скрий подсказката">×</button>
+    </div>
+    <div id="navWheel" role="group" aria-label="Колело за навигация" hidden>
+      <svg id="nwSvg" viewBox="0 0 140 140" aria-hidden="true"></svg>
+      <button class="nwBtn" id="nwMove" title="Влачете, за да преместите колелото (двойно щракване го връща в ъгъла)" aria-label="Премести колелото"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 3v18M3 12h18M12 3l-3 3M12 3l3 3M12 21l-3-3M12 21l3-3M3 12l3-3M3 12l3 3M21 12l-3-3M21 12l-3 3"/></svg></button>
+      <button class="nwBtn" id="nwClose" title="Скрий колелото (Shift+W)" aria-label="Скрий колелото">×</button>
+      <div id="nwTip"></div>
     </div>
     <div id="hud">
       <span><b id="hVerts">0</b> върха</span>
@@ -671,6 +699,7 @@ input[type=range] { width: 100%; height: 26px; accent-color: var(--wax); backgro
     <section class="sec" data-tab="view">
       <h2>Панели <em>Trays</em></h2>
       <p class="note">Наредете ги както ви е удобно, като в ZBrush. Плаващите панели (четката, „Всички“, „Шарки“) се местят, като ги влачите за заглавието; с 📌 остават отворени, докато отваряте други. Разделите тук: щракване върху заглавието ги свива, влачене го мести нагоре или надолу, а пуснат върху раздел горе („Модел“, „Създай“, „Изглед“) отива там.</p>
+      <label class="toggle" title="Като SteeringWheels в AutoCAD: мащаб, орбита, местене, назад, горе/долу, огледай се, център, наклон">Колело за навигация (Shift+W) <input type="checkbox" id="tWheel"></label>
       <button class="btn wide" id="bPanelsReset">Подреди панелите наново</button>
     </section>
   </aside>
@@ -881,6 +910,8 @@ const S = {
   arrOffX: 0, arrOffY: 0, arrOffZ: 0, arrRotX: 0, arrRotY: 0, arrRotZ: 0, arrSclX: 1, arrSclY: 1, arrSclZ: 1, arrLive: true,
   pcShape: 'sphere', pcCount: 12, pcSize: 0.04,   // shapes along a curve
   pattern: 'line',     // the last pattern chosen in „Шарки“
+  wheel: true,         // the navigation wheel (AutoCAD: SteeringWheels) is shown
+  wheelPos: null,      // where it was dragged: { x, y } from the view's top left, or null for the corner
   panels: {},          // the floating panels: { id: { x, y, pin } } where they were dragged, and pinned open
   secLayout: {},       // the drawer's sections: { order: [titles], tab: { title: tab }, shut: [titles] }
 };
@@ -2663,6 +2694,8 @@ function uploadVerts(names, list, count) {
    Camera (Blender-like turntable + free tilt)
    ===================================================================== */
 const cam = { target: new THREE.Vector3(), dist: 4, q: new THREE.Quaternion() };
+// the views you had, for „Назад“ on the navigation wheel (a view counts once it has stayed 0.4 s)
+const camHist = { list: [], at: -1, timer: 0, quiet: false };
 const WORLD_UP = new THREE.Vector3(0, 1, 0);
 // cam.dist is the distance a 38° camera would have; with P (no perspective) the camera has a 1.2° field
 // of view and stands as much farther away, so the framing stays and every other formula works unchanged
@@ -2689,6 +2722,20 @@ function applyCamera() {
   camera.near = cam.dist * camK() * 0.01; camera.far = cam.dist * camK() * 50; camera.updateProjectionMatrix();
   camera.updateMatrixWorld();
   requestRender();
+  if (!camHist.quiet) { clearTimeout(camHist.timer); camHist.timer = setTimeout(camHistMark, 400); }
+}
+function camHistMark() {
+  const v = { t: cam.target.toArray(), d: cam.dist, q: cam.q.toArray() }, L = camHist.list, last = L[camHist.at];
+  if (last && Math.abs(last.d - v.d) < 1e-6 && last.t.every((x, k) => Math.abs(x - v.t[k]) < 1e-6) && last.q.every((x, k) => Math.abs(x - v.q[k]) < 1e-6)) return;
+  L.length = camHist.at + 1; L.push(v);
+  if (L.length > 60) L.shift();
+  camHist.at = L.length - 1;
+}
+function camHistGo(i) {
+  const L = camHist.list; if (!L.length) return;
+  camHist.at = Math.max(0, Math.min(L.length - 1, i));
+  const v = L[camHist.at];
+  camHist.quiet = true; cam.target.fromArray(v.t); cam.dist = v.d; cam.q.fromArray(v.q); applyCamera(); camHist.quiet = false;
 }
 function orbit(dx, dy) {
   const qy = new THREE.Quaternion().setFromAxisAngle(WORLD_UP, -dx * 0.006);
@@ -4704,6 +4751,7 @@ window.addEventListener('keydown', (e) => {
   if (e.shiftKey && !e.ctrlKey && !e.metaKey && !e.altKey && k === 'd') { if (MR) setLevel(MR.cur - 1); return; }
   if (e.ctrlKey || e.metaKey || e.altKey) return;
   if (k === '[' || k === ']') { const b = brush(); b.radius = Math.max(4, Math.min(320, Math.round(b.radius * (k === ']' ? 1.15 : 0.87)))); syncBrushUI(); requestRender(); return; }
+  if (k === 'w' && e.shiftKey) { setWheel(!S.wheel); return; }
   if (k === 'w') { toggleWire(); return; }
   // (G alone is the Move brush)
   if (k === 'g' && e.shiftKey && hoverXY && !$('alphaGrp').hidden) { const h = pick(hoverXY.x, hoverXY.y); if (h) xtract(h); return; }
@@ -9271,7 +9319,7 @@ for (const sec of drawerSecs()) {
   });
 }
 function resetPanels() {
-  S.panels = {}; S.secLayout = {};
+  S.panels = {}; S.secLayout = {}; S.wheelPos = null; placeWheel();
   for (const [id] of FLOATS) { placePanel(id); $(id).style.zIndex = ''; }
   for (const el of document.querySelectorAll('.fpPin')) el.setAttribute('aria-pressed', 'false');
   applySecLayout(); saveSettings();
@@ -9279,6 +9327,145 @@ function resetPanels() {
 }
 $('bPanelsReset').onclick = resetPanels;
 applySecLayout();
+
+/* ---------- the navigation wheel (AutoCAD: SteeringWheels, Full Navigation Wheel) ----------
+   Press a part of the wheel and drag: the outer ring zooms, orbits, pans and goes back through the views
+   you had; the inner ring moves up and down, looks around from where the camera stands, centres on a
+   point of the model and tilts the view; the middle goes home (the whole model, from the front-right). */
+const WHEEL = [
+  { id: 'zoom', ring: 0, a: -90, label: 'МАЩАБ', tip: 'Мащаб: влачете нагоре — по-близо, надолу — по-далеч. Щракване приближава.' },
+  { id: 'orbit', ring: 0, a: 0, label: 'ОРБИТА', tip: 'Орбита: влачете, за да обиколите модела.' },
+  { id: 'rewind', ring: 0, a: 90, label: 'НАЗАД', tip: 'Назад: щракване връща предишния изглед; влачете наляво и надясно по изгледите, които сте имали.' },
+  { id: 'pan', ring: 0, a: 180, label: 'МЕСТИ', tip: 'Местене: влачете, за да преместите изгледа.' },
+  { id: 'updown', ring: 1, a: -90, label: 'ГОРЕ/ДОЛУ', tip: 'Горе/долу: влачете, за да вдигнете или свалите изгледа право нагоре.' },
+  { id: 'look', ring: 1, a: 0, label: 'ОГЛЕДАЙ', tip: 'Огледай се: камерата стои и се обръща накъдето влачите.' },
+  { id: 'center', ring: 1, a: 90, label: 'ЦЕНТЪР', tip: 'Център: влачете до точка от модела и пуснете — изгледът се центрира там и върти около нея.' },
+  { id: 'roll', ring: 1, a: 180, label: 'НАКЛОН', tip: 'Наклон: влачете наляво или надясно, за да наклоните изгледа.' },
+];
+function wheelSvg() {
+  const C = 70, R = [[46, 68], [24, 45]], P = (r, a) => [C + r * Math.cos(a * Math.PI / 180), C + r * Math.sin(a * Math.PI / 180)];
+  let h = '';
+  for (const w of WHEEL) {
+    const [ri, ro] = R[w.ring], a0 = w.a - 45, a1 = w.a + 45;
+    const [x0, y0] = P(ro, a0), [x1, y1] = P(ro, a1), [x2, y2] = P(ri, a1), [x3, y3] = P(ri, a0);
+    const [lx, ly] = P((ri + ro) / 2, w.a);
+    const rot = w.a === 0 ? 90 : w.a === 180 ? -90 : 0;
+    h += `<g class="nwG" data-w="${w.id}"><path class="nwW${w.ring ? ' in' : ''}" data-w="${w.id}" d="M${x0.toFixed(2)} ${y0.toFixed(2)}A${ro} ${ro} 0 0 1 ${x1.toFixed(2)} ${y1.toFixed(2)}L${x2.toFixed(2)} ${y2.toFixed(2)}A${ri} ${ri} 0 0 0 ${x3.toFixed(2)} ${y3.toFixed(2)}Z"/>`
+      + `<text class="nwL${w.ring ? ' in' : ''}" x="${lx.toFixed(2)}" y="${ly.toFixed(2)}"${rot ? ` transform="rotate(${rot} ${lx.toFixed(2)} ${ly.toFixed(2)})"` : ''}>${w.label}</text></g>`;
+  }
+  h += `<circle class="nwHub" data-w="home" cx="${C}" cy="${C}" r="22"/><path class="nwHome" d="M61 71l9-8 9 8M64 69v8h12v-8"/>`;
+  $('nwSvg').innerHTML = h;
+}
+function setWheel(on) {
+  S.wheel = !!on; saveSettings();
+  $('navWheel').hidden = !S.wheel; setPressed('bWheel', S.wheel); $('tWheel').checked = S.wheel;
+  if (S.wheel) placeWheel();
+}
+function placeWheel() {
+  const el = $('navWheel'), p = S.wheelPos, par = el.parentElement;
+  if (!p || !Number.isFinite(p.x) || !Number.isFinite(p.y)) { el.style.left = el.style.top = el.style.right = ''; return; }
+  el.style.right = 'auto';
+  el.style.left = Math.round(Math.max(0, Math.min(par.clientWidth - 140, p.x))) + 'px';
+  el.style.top = Math.round(Math.max(0, Math.min(par.clientHeight - 140, p.y))) + 'px';
+}
+const wheelTip = (t) => { $('nwTip').textContent = t || ''; };
+let wheelOp = null;
+function wheelStart(e, id) {
+  if (e.button !== 0 && e.pointerType === 'mouse') return;
+  e.preventDefault(); e.stopPropagation();
+  if (stroke || gesture) return;
+  const svg = $('nwSvg');
+  try { svg.setPointerCapture(e.pointerId); } catch (err) { /* synthetic events */ }
+  wheelOp = { id, x0: e.clientX, y0: e.clientY, x: e.clientX, y: e.clientY, moved: false, at: camHist.at };
+  if (id === 'rewind') camHistMark();
+  if (id === 'rewind') wheelOp.at = camHist.at;
+  svg.querySelector(`.nwG[data-w="${id}"]`)?.classList.add('on');
+  const w = WHEEL.find((x) => x.id === id); wheelTip(w ? w.tip : 'Начало: целият модел, отпред и отдясно.');
+}
+function wheelMove(e) {
+  const o = wheelOp; if (!o) return;
+  const dx = e.clientX - o.x, dy = e.clientY - o.y;
+  o.x = e.clientX; o.y = e.clientY;
+  if (!o.moved && Math.hypot(e.clientX - o.x0, e.clientY - o.y0) < 3) return;
+  o.moved = true;
+  const h = viewport.h || 1, s = (2 * Math.tan(THREE.MathUtils.degToRad(camera.fov / 2)) * cam.dist * camK()) / h;
+  switch (o.id) {
+    case 'zoom': zoom(Math.exp((dy - dx * 0.5) * 0.008)); break;
+    case 'orbit': orbit(dx, dy); break;
+    case 'pan': pan(dx, dy); break;
+    case 'updown': cam.target.addScaledVector(WORLD_UP, -dy * s); applyCamera(); break;
+    case 'roll': { const back = new THREE.Vector3(0, 0, 1).applyQuaternion(cam.q); cam.q.premultiply(new THREE.Quaternion().setFromAxisAngle(back, dx * 0.006)).normalize(); applyCamera(); break; }
+    case 'look': {
+      // the camera stays where it is and turns: the point it turns about moves instead
+      const eye = camera.position.clone();
+      const right = new THREE.Vector3(1, 0, 0).applyQuaternion(cam.q);
+      cam.q.premultiply(new THREE.Quaternion().setFromAxisAngle(WORLD_UP, -dx * 0.004)).premultiply(new THREE.Quaternion().setFromAxisAngle(right, -dy * 0.004)).normalize();
+      const back = new THREE.Vector3(0, 0, 1).applyQuaternion(cam.q);
+      cam.target.copy(eye).addScaledVector(back, -cam.dist * camK()); applyCamera(); break;
+    }
+    case 'rewind': {
+      const n = camHist.list.length, i = Math.round(o.at + (e.clientX - o.x0) / 14);
+      camHistGo(i); wheelTip(`Изглед ${camHist.at + 1} от ${n}: влачете наляво — по-стари, надясно — по-нови.`); break;
+    }
+    case 'center': {
+      const r = canvas.getBoundingClientRect(), x = e.clientX - r.left, y = e.clientY - r.top;
+      const inView = x >= 0 && y >= 0 && x <= r.width && y <= r.height, hit = inView ? pick(x, y) : null;
+      let mk = $('centerMark');
+      if (!mk) { mk = document.createElement('div'); mk.id = 'centerMark'; $('view').appendChild(mk); }
+      mk.hidden = !hit; mk.style.left = x + 'px'; mk.style.top = y + 'px';
+      o.hit = hit ? hit.point : null;
+      wheelTip(hit ? 'Пуснете: изгледът се центрира тук.' : 'Влачете до точка от модела.'); break;
+    }
+  }
+}
+function wheelEnd() {
+  const o = wheelOp; if (!o) return;
+  wheelOp = null;
+  for (const g of $('nwSvg').querySelectorAll('.nwG.on')) g.classList.remove('on');
+  const mk = $('centerMark'); if (mk) mk.hidden = true;
+  if (o.id === 'home') { frameView.first = true; frameView(); wheelTip(''); return; }
+  if (!o.moved) {
+    if (o.id === 'zoom') zoom(0.8);
+    else if (o.id === 'rewind') { camHistGo(camHist.at - 1); wheelTip(`Изглед ${camHist.at + 1} от ${camHist.list.length}.`); return; }
+    else if (o.id === 'center') { wheelTip('Влачете от „Център“ до точка от модела.'); return; }
+  }
+  if (o.id === 'center' && o.hit) {
+    // the view slides sideways until the point is in the middle (as far from the camera as before), and
+    // the turning is about it from then on
+    const eye = camera.position.clone(), fwd = new THREE.Vector3(0, 0, -1).applyQuaternion(cam.q);
+    const d = Math.max(0.05, o.hit.clone().sub(eye).dot(fwd)) / camK();
+    cam.target.copy(o.hit); cam.dist = d; applyCamera();
+  }
+  wheelTip('');
+}
+wheelSvg();
+$('nwSvg').addEventListener('pointerdown', (e) => { const t = e.target.closest('[data-w]'); if (t) wheelStart(e, t.dataset.w); });
+$('nwSvg').addEventListener('pointermove', (e) => {
+  if (wheelOp) { wheelMove(e); return; }
+  const t = e.target.closest('[data-w]'), w = t && WHEEL.find((x) => x.id === t.dataset.w);
+  wheelTip(t ? (w ? w.tip : 'Начало: целият модел, отпред и отдясно.') : '');
+});
+$('nwSvg').addEventListener('pointerup', wheelEnd);
+$('nwSvg').addEventListener('pointercancel', wheelEnd);
+$('nwSvg').addEventListener('pointerleave', () => { if (!wheelOp) wheelTip(''); });
+$('nwSvg').addEventListener('wheel', (e) => { e.preventDefault(); zoom(Math.exp(e.deltaY * 0.001)); }, { passive: false });
+$('nwSvg').addEventListener('contextmenu', (e) => e.preventDefault());
+$('nwClose').onclick = () => { setWheel(false); toast('Колелото е скрито. Бутонът горе или Shift+W го връща.'); };
+$('bWheel').onclick = () => setWheel(!S.wheel);
+$('tWheel').onchange = () => setWheel($('tWheel').checked);
+// the wheel itself goes where its handle is dragged
+$('nwMove').addEventListener('pointerdown', (e) => {
+  e.preventDefault();
+  const el = $('navWheel'), par = el.parentElement, r = el.getBoundingClientRect(), pr = par.getBoundingClientRect();
+  const dx = e.clientX - r.left, dy = e.clientY - r.top, btn = $('nwMove');
+  try { btn.setPointerCapture(e.pointerId); } catch (err) { /* synthetic events */ }
+  const mv = (ev) => { S.wheelPos = { x: ev.clientX - pr.left - dx, y: ev.clientY - pr.top - dy }; placeWheel(); };
+  const up = () => { btn.removeEventListener('pointermove', mv); btn.removeEventListener('pointerup', up); btn.removeEventListener('pointercancel', up); saveSettings(); };
+  btn.addEventListener('pointermove', mv); btn.addEventListener('pointerup', up); btn.addEventListener('pointercancel', up);
+});
+$('nwMove').addEventListener('dblclick', () => { S.wheelPos = null; placeWheel(); saveSettings(); });
+window.addEventListener('resize', () => { if (S.wheel) placeWheel(); });
+setWheel(S.wheel);
 
 function selectTool(id) {
   if (!brushById(id)) id = 'draw';
@@ -10004,5 +10191,5 @@ loadAutosave().then((d) => {
     toast('Продължавате последния модел. „Нов“ започва отначало.');
   }
 });
-window.__glina = { arrayMatrices, arrayPreview, get arrPrev() { return arrPrev; }, resetPanels, applySecLayout, get rustDyn() { return rustDyn; }, set rustDyn(v) { rustDyn = v; }, get mrPending() { return mrPending; }, openPatterns, closePatterns, selectPattern, patternAlongCurve, armPatternCurve, beginStroke, processStroke, endStroke, get rustBrushes() { return rustBrushes; }, set rustBrushes(v) { rustBrushes = v; }, openBrushPanel, closeBrushPanel, openPalette, closePalette, setDrawerTab, railIds, microPoly, topoAdd, topoBuild, topoMake, get topoLines() { return topoLines; }, set topoLines(v) { topoLines = v; }, shadowAdd, shadowMake, get shadows() { return shadows; }, set shadows(v) { shadows = v; }, earClip, shadowPrism, viewAxis, bendBuild, vdmCapture, vdmReset, get vdmField() { return vdmField; }, set vdmField(v) { vdmField = v; }, vdmDefault, snakeAlongCurve, quadRemesh, quadRemeshArrays, surfaceStats, get coreSync() { return coreSync; }, set subdivCore(v) { subdivCore = v; }, polyTris, studioPNG, setCustomMatcap, dropCustomMatcap, get customMatcap() { return customMatcap; }, matcapTextures, material, get gmesh() { return gmesh; }, renderer, makeCube, polishFeatures, sliceGroups, makeGear, makeTube, makeRing, revolve, meshToAxis, straighten, transformTools, gizmoTools, eigenSym3, subdivideArrays, slimeBridge, nanoMesh, maskIslands, texturedFiles, zipMany, levelArrays, zmBuild, quadsOf, exportSTL, renderPrintInfo, decimate, decimateArrays, printScale, projectBytes, saveProject, openProject, packValue, unpackValue, panelLoops, balloonTool, shellFrom, refOpen, refState, refColourAt, refLayout, smoothViewUpdate, get smoothViewObj() { return smoothViewObj; }, recallFrom, makeFibers, fiberArrays, projectAll, storeMorph, switchMorph, dropMorph, morphOf, fillColour, cavityColour, zsOpen, zsClose, zsSkin, get zs() { return zs; }, xtract, latticeLive, latticeScreen, get lattice() { return lattice; }, surfaceContrast, snapshotPNG, maskHidden, startCloth, stopCloth, get clothRun() { return clothRun; }, hideSelection, hideGroup, showAll, invertVisibility, hideMasked, deleteHidden, hiddenCount, setHiddenUndoable, deform, makeArray, arrayArrays, setGizmoMode, get gizmoPin() { return gizmoPin; }, set gizmoPin(v) { gizmoPin = v; }, exportOBJ, scheduleAutosave, get TOOLS() { return TOOLS; }, get curTool() { return curTool; }, activateTool, addTool, appendPrimitive, duplicateTool, deleteTool, moveTool, mergeDown, splitGroups, extractTool, extractShell, makeBoolean, newScene, gizmoHandle, gizmoScreen, get solo() { return solo; }, set solo(v) { solo = v; renderOthers(); }, toolArrays, voxelCombine, voxelRemesh, coreStart, get working() { return working; }, sliceByPlane, mirrorWeldArrays, mirrorWeld, mirrorFlip, applyNoise, snapView, setOrtho, historyJump, polyframe, get cam() { return cam; }, trimByPlane, applyCut, tubeArrays, immShape, hasOpenEdges, get curve() { return liveCurve(); }, dropCurve, get immFile() { return immFile; }, set immFile(v) { immFile = v; }, get LAYERS() { return LAYERS; }, get recLayer() { return recLayer; }, addLayer, deleteLayer, toggleLayer, recordLayer, setLayerStrength, bakeLayers, groupOp, maskAllBut, groupNear, get mesh() { return mesh; }, get stroke() { return stroke; }, get gesture() { return gesture; }, get nav() { return nav; }, get MR() { return MR; }, syncSym, get SYM() { return SYM; }, setLevel, divide, deleteLower, deleteHigher, camera, orbit, pick, selectTool, brush, brushById, maskOp, remesh, undo, redo, subdivide, setDyntopo, floodDetail, S, get undoStack() { return undoStack; } };
+window.__glina = { setWheel, camHist, camHistGo, get wheelOp() { return wheelOp; }, frameView, arrayMatrices, arrayPreview, get arrPrev() { return arrPrev; }, resetPanels, applySecLayout, get rustDyn() { return rustDyn; }, set rustDyn(v) { rustDyn = v; }, get mrPending() { return mrPending; }, openPatterns, closePatterns, selectPattern, patternAlongCurve, armPatternCurve, beginStroke, processStroke, endStroke, get rustBrushes() { return rustBrushes; }, set rustBrushes(v) { rustBrushes = v; }, openBrushPanel, closeBrushPanel, openPalette, closePalette, setDrawerTab, railIds, microPoly, topoAdd, topoBuild, topoMake, get topoLines() { return topoLines; }, set topoLines(v) { topoLines = v; }, shadowAdd, shadowMake, get shadows() { return shadows; }, set shadows(v) { shadows = v; }, earClip, shadowPrism, viewAxis, bendBuild, vdmCapture, vdmReset, get vdmField() { return vdmField; }, set vdmField(v) { vdmField = v; }, vdmDefault, snakeAlongCurve, quadRemesh, quadRemeshArrays, surfaceStats, get coreSync() { return coreSync; }, set subdivCore(v) { subdivCore = v; }, polyTris, studioPNG, setCustomMatcap, dropCustomMatcap, get customMatcap() { return customMatcap; }, matcapTextures, material, get gmesh() { return gmesh; }, renderer, makeCube, polishFeatures, sliceGroups, makeGear, makeTube, makeRing, revolve, meshToAxis, straighten, transformTools, gizmoTools, eigenSym3, subdivideArrays, slimeBridge, nanoMesh, maskIslands, texturedFiles, zipMany, levelArrays, zmBuild, quadsOf, exportSTL, renderPrintInfo, decimate, decimateArrays, printScale, projectBytes, saveProject, openProject, packValue, unpackValue, panelLoops, balloonTool, shellFrom, refOpen, refState, refColourAt, refLayout, smoothViewUpdate, get smoothViewObj() { return smoothViewObj; }, recallFrom, makeFibers, fiberArrays, projectAll, storeMorph, switchMorph, dropMorph, morphOf, fillColour, cavityColour, zsOpen, zsClose, zsSkin, get zs() { return zs; }, xtract, latticeLive, latticeScreen, get lattice() { return lattice; }, surfaceContrast, snapshotPNG, maskHidden, startCloth, stopCloth, get clothRun() { return clothRun; }, hideSelection, hideGroup, showAll, invertVisibility, hideMasked, deleteHidden, hiddenCount, setHiddenUndoable, deform, makeArray, arrayArrays, setGizmoMode, get gizmoPin() { return gizmoPin; }, set gizmoPin(v) { gizmoPin = v; }, exportOBJ, scheduleAutosave, get TOOLS() { return TOOLS; }, get curTool() { return curTool; }, activateTool, addTool, appendPrimitive, duplicateTool, deleteTool, moveTool, mergeDown, splitGroups, extractTool, extractShell, makeBoolean, newScene, gizmoHandle, gizmoScreen, get solo() { return solo; }, set solo(v) { solo = v; renderOthers(); }, toolArrays, voxelCombine, voxelRemesh, coreStart, get working() { return working; }, sliceByPlane, mirrorWeldArrays, mirrorWeld, mirrorFlip, applyNoise, snapView, setOrtho, historyJump, polyframe, get cam() { return cam; }, trimByPlane, applyCut, tubeArrays, immShape, hasOpenEdges, get curve() { return liveCurve(); }, dropCurve, get immFile() { return immFile; }, set immFile(v) { immFile = v; }, get LAYERS() { return LAYERS; }, get recLayer() { return recLayer; }, addLayer, deleteLayer, toggleLayer, recordLayer, setLayerStrength, bakeLayers, groupOp, maskAllBut, groupNear, get mesh() { return mesh; }, get stroke() { return stroke; }, get gesture() { return gesture; }, get nav() { return nav; }, get MR() { return MR; }, syncSym, get SYM() { return SYM; }, setLevel, divide, deleteLower, deleteHigher, camera, orbit, pick, selectTool, brush, brushById, maskOp, remesh, undo, redo, subdivide, setDyntopo, floodDetail, S, get undoStack() { return undoStack; } };
 </script>
