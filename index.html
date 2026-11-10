@@ -230,7 +230,17 @@ input[type=range] { width: 100%; height: 26px; accent-color: var(--wax); backgro
 #brushPanel { background: none; border: 0; box-shadow: none; overflow: visible; }
 #brushPanel .brushbox { margin: 0; max-height: calc(100vh - var(--bar) - 40px); overflow-y: auto; box-shadow: 0 18px 50px rgba(0,0,0,.5); }
 #brushPanel .bbHead { padding-right: 34px; }
-#palette { width: min(560px, calc(100% - 20px)); padding: 14px; }
+#palette, #patterns { width: min(560px, calc(100% - 20px)); padding: 14px; }
+.palSearch { width: 100%; height: 38px; margin: 10px 0 2px; padding: 0 12px; border-radius: 9px; border: 1px solid var(--line); background: var(--bg); color: var(--fg); font: inherit; }
+.palSearch:focus { outline: none; border-color: var(--wax); }
+#patList { margin-top: 10px; }
+#patBox { margin: 12px 0 0; padding: 12px 14px; display: grid; gap: 10px; }
+.palItem[hidden], .palCat[hidden], .palGrid[hidden] { display: none; }
+.found { display: grid; gap: 4px; }
+.foundRow { display: flex; justify-content: space-between; gap: 10px; text-align: left; padding: 8px 10px; border-radius: 8px; border: 1px solid var(--line); background: var(--panel-2); color: var(--fg); cursor: pointer; font: inherit; font-size: 13px; }
+.foundRow small { color: var(--muted); }
+.flash { animation: flash 1.4s ease-out; }
+@keyframes flash { 0%, 40% { box-shadow: 0 0 0 3px var(--wax); } 100% { box-shadow: 0 0 0 0 transparent; } }
 .palHead { display: grid; gap: 4px; padding-right: 36px; }
 .palHead b { font-family: var(--font-display); font-weight: 600; }
 .palHead small { color: var(--muted); font-size: 12px; line-height: 1.4; }
@@ -393,7 +403,51 @@ input[type=range] { width: 100%; height: 26px; accent-color: var(--wax); backgro
     <div id="palette" class="floatpanel" role="dialog" aria-label="Всички четки" hidden>
       <button class="fpClose" id="palClose" aria-label="Затвори">×</button>
       <div class="palHead"><b>Всички четки</b><small>Щракване избира. ☆ слага четката в лентата отляво. Десен бутон (или задържане) — нейните настройки.</small></div>
+      <input type="search" class="palSearch" id="palSearch" placeholder="Търси четка, шарка или настройка… (Ctrl+K)" aria-label="Търси">
+      <div id="palFound"></div>
       <div id="palList"></div>
+    </div>
+    <div id="patterns" class="floatpanel" role="dialog" aria-label="Шарки" hidden>
+      <button class="fpClose" id="patClose" aria-label="Затвори">×</button>
+      <div class="palHead"><b>Шарки</b><small>Много еднакви тела наведнъж. Изберете вид — под него са настройките му.</small></div>
+      <input type="search" class="palSearch" id="patSearch" placeholder="Търси шарка…" aria-label="Търси шарка">
+      <div class="palGrid" id="patList"></div>
+      <div id="patBox" class="brushbox">
+        <div class="bbHead"><span class="bbIcon" id="patIcon" aria-hidden="true"></span><div class="bbTitle"><div class="bbKicker">Шарка</div><div class="bbName" id="patName"></div><div class="bbZb" id="patZb"></div></div></div>
+        <p class="note" id="patAbout"></p>
+        <div class="grp patDetail" data-pat="array">
+      <div class="chips" id="arrModeChips" hidden></div>
+        <div><div class="note lab">Ос</div><div class="chips" id="arrAxisChips"></div></div>
+        <div id="arrRowsGrp"><div class="note lab">Редове по ос</div><div class="chips" id="arrAxis2Chips"></div><div class="row"><label for="sArrRows">Редове</label><output id="oArrRows"></output><input type="range" id="sArrRows" min="2" max="20" step="1"></div></div>
+        <div class="row"><label for="sArrCount" id="lArrCount">Брой</label><output id="oArrCount"></output><input type="range" id="sArrCount" min="2" max="36" step="1"></div>
+        <div class="row" id="arrGapRow"><label for="sArrGap">Разстояние</label><output id="oArrGap"></output><input type="range" id="sArrGap" min="-0.9" max="3" step="0.05"></div>
+        <div class="row" id="arrScaleRow"><label for="sArrScale">Мащаб на всяко следващо</label><output id="oArrScale"></output><input type="range" id="sArrScale" min="0.5" max="1.5" step="0.01"></div>
+        <button class="btn wide" id="bArray">Направи масив</button>
+        <p class="note" id="arrNote"></p>
+        </div>
+        <div class="grp patDetail" data-pat="curve">
+          <div class="note lab">Форма</div><div class="chips" id="pcChips"></div>
+          <div class="row"><label for="sPcN">Брой</label><output id="oPcN"></output><input type="range" id="sPcN" min="2" max="200" step="1"></div>
+          <div class="row"><label for="sPcS">Размер</label><output id="oPcS"></output><input type="range" id="sPcS" min="0.005" max="0.3" step="0.005"></div>
+          <button class="btn wide" id="bPcDraw" aria-pressed="false">Начертай кривата по модела</button>
+          <p class="note">След бутона начертайте линия по модела: формите застават по нея на равни разстояния, легнали по повърхността. Стават нов подобект.</p>
+        </div>
+        <div class="grp patDetail" data-pat="nano">
+      <div class="chips" id="nanoChips"></div>
+        <div class="row"><label for="sNanoN">Брой</label><output id="oNanoN"></output><input type="range" id="sNanoN" min="5" max="1000" step="5"></div>
+        <div class="row"><label for="sNanoS">Размер</label><output id="oNanoS"></output><input type="range" id="sNanoS" min="0.005" max="0.3" step="0.005"></div>
+        <button class="btn wide" id="bNano">Пръсни формите по маската</button>
+        </div>
+        <div class="grp patDetail" data-pat="micro">
+      <div class="chips" id="microChips"></div>
+        <button class="btn wide" id="bMicro" title="Всяка стена на активния подобект получава малка форма, нагодена по нея (най-добре след ретопология с четириъгълници)">Сложи форма във всяка стена</button>
+        </div>
+        <div class="grp patDetail" data-pat="radial">
+      <div class="row"><label for="sRadial">Кръгова: копия около оста</label><output id="oRadial"></output><input type="range" id="sRadial" min="1" max="24" step="1"></div>
+        <div><div class="note lab">Ос на кръговата симетрия</div><div class="chips" id="radialAxisChips"></div></div>
+          <p class="note">Каквото извайвате, се повтаря около оста в толкова копия (1 — изключено).</p>
+        </div>
+      </div>
     </div>
     <div id="toast" role="status"></div>
     <div id="busy" hidden>Работя…</div>
@@ -451,19 +505,7 @@ input[type=range] { width: 100%; height: 26px; accent-color: var(--wax); backgro
       <button class="btn wide" id="bSlime" title="Slime Bridge: увиснали нишки между двете най-големи маскирани места (дебелина и гравитация като на космите)">Нишки между маските</button>
     </section>
 
-    <section class="sec" data-tab="make">
-      <h2>Форми по маската <em>NanoMesh</em></h2>
-      <div class="chips" id="nanoChips"></div>
-      <div class="row"><label for="sNanoN">Брой</label><output id="oNanoN"></output><input type="range" id="sNanoN" min="5" max="1000" step="5"></div>
-      <div class="row"><label for="sNanoS">Размер</label><output id="oNanoS"></output><input type="range" id="sNanoS" min="0.005" max="0.3" step="0.005"></div>
-      <button class="btn wide" id="bNano">Пръсни формите по маската</button>
-    </section>
 
-    <section class="sec" data-tab="make">
-      <h2>Форма във всяка стена <em>MicroPoly</em></h2>
-      <div class="chips" id="microChips"></div>
-      <button class="btn wide" id="bMicro" title="Всяка стена на активния подобект получава малка форма, нагодена по нея (най-добре след ретопология с четириъгълници)">Сложи форма във всяка стена</button>
-    </section>
 
     <section class="sec" data-tab="make">
       <h2>Плат <em>Dynamics</em></h2>
@@ -477,22 +519,11 @@ input[type=range] { width: 100%; height: 26px; accent-color: var(--wax); backgro
       <button class="btn wide" id="bCloth" aria-pressed="false">Пусни симулацията</button>
     </section>
 
-    <section class="sec" data-tab="make">
-      <h2>Масив <em>Array Mesh</em></h2>
-      <div class="chips" id="arrModeChips"></div>
-      <div><div class="note lab">Ос</div><div class="chips" id="arrAxisChips"></div></div>
-      <div class="row"><label for="sArrCount">Брой</label><output id="oArrCount"></output><input type="range" id="sArrCount" min="2" max="36" step="1"></div>
-      <div class="row" id="arrGapRow"><label for="sArrGap">Разстояние</label><output id="oArrGap"></output><input type="range" id="sArrGap" min="-0.9" max="3" step="0.05"></div>
-      <div class="row"><label for="sArrScale">Мащаб на всяко следващо</label><output id="oArrScale"></output><input type="range" id="sArrScale" min="0.5" max="1.5" step="0.01"></div>
-      <button class="btn wide" id="bArray">Направи масив</button>
-      <p class="note">„В кръг“ нарежда копията около оста през центъра на сцената (зъбно колело, венец, колони).</p>
-    </section>
 
     <section class="sec" data-tab="view">
       <h2>Симетрия</h2>
       <div class="chips" id="symChips"></div>
-      <div class="row"><label for="sRadial">Кръгова: копия около оста</label><output id="oRadial"></output><input type="range" id="sRadial" min="1" max="24" step="1"></div>
-      <div><div class="note lab">Ос на кръговата симетрия</div><div class="chips" id="radialAxisChips"></div></div>
+      <button class="btn wide" id="bRadialOpen">Кръгова симетрия (в „Шарки“)…</button>
       <p class="note">Огледално по X, Y и Z (и заедно), и кръгово: четката работи и на всички копия. Огледалата са през центъра на модела.</p>
     </section>
 
@@ -806,6 +837,9 @@ const S = {
   clothGravity: 1, clothStretch: 0.9, clothBend: 0.15, clothFloor: true, clothTime: 5, clothSelf: true,
   defAxis: 1, defTo: 0,  // deformers: along which axis, and (bend) toward which of the other two
   arrCount: 6, arrMode: 'line', arrAxis: 0, arrGap: 0.2, arrScale: 1,
+  arrRows: 3, arrAxis2: 2,   // a grid: rows along the second axis
+  pcShape: 'sphere', pcCount: 12, pcSize: 0.04,   // shapes along a curve
+  pattern: 'line',     // the last pattern chosen in „Шарки“
 };
 let savedSettings = null;
 try { savedSettings = JSON.parse(localStorage.getItem('glina.settings') || 'null'); } catch (e) { /* storage unavailable */ }
@@ -4327,6 +4361,7 @@ canvas.addEventListener('pointerdown', (e) => {
     if (og && (!hit || og.distance < camera.position.distanceTo(hit.point))) { gesture = { kind: 'picktool', tool: og.tool, x0: x, y0: y, x, y, id: e.pointerId }; hideRing(); return; }
     nav = { mode: e.altKey ? 'pan' : 'orbit', x, y, id: e.pointerId }; hideRing(); return;
   }
+  if (pcArmed && hit && !e.shiftKey) { gesture = { kind: 'pcdraw', pts: [[x, y]], x0: x, y0: y, x, y, id: e.pointerId }; hideRing(); drawOverlay(); return; }
   if (cb.base === 'topology' && !e.shiftKey && hit) { gesture = { kind: 'topodraw', pts: [[x, y]], x0: x, y0: y, x, y, id: e.pointerId }; hideRing(); drawOverlay(); return; }
   if (cb.base === 'shadowbox' && !e.shiftKey) { gesture = { kind: 'shadowdraw', pts: [[x, y]], x0: x, y0: y, x, y, id: e.pointerId }; hideRing(); drawOverlay(); return; }
   // another subtool in front: a click selects it, a drag turns the view (combing fibres aims through it)
@@ -4371,6 +4406,7 @@ canvas.addEventListener('pointermove', (e) => {
     if (gesture.kind === 'zsadd' || gesture.kind === 'zsmove' || gesture.kind === 'zsscale') { zsMove(gesture); return; }
     if (gesture.kind === 'picktool') { if (gesture.moved) { nav = { mode: 'orbit', x, y, id: gesture.id }; gesture = null; } return; }
     if (gesture.kind === 'curveedit') { drawOverlay(); return; }
+    if (gesture.kind === 'pcdraw') { const lp = gesture.pts[gesture.pts.length - 1]; if (Math.hypot(x - lp[0], y - lp[1]) > 3) { gesture.pts.push([x, y]); drawOverlay(); } return; }
     if (gesture.kind === 'topodraw') { const lp = gesture.pts[gesture.pts.length - 1]; if (Math.hypot(x - lp[0], y - lp[1]) > 3) { gesture.pts.push([x, y]); drawOverlay(); } return; }
     if (gesture.kind === 'shadowdraw') { const lp = gesture.pts[gesture.pts.length - 1]; if (Math.hypot(x - lp[0], y - lp[1]) > 3) { gesture.pts.push([x, y]); drawOverlay(); } return; }
     if (gesture.kind === 'curvedraw') { const lp = gesture.pts[gesture.pts.length - 1]; if (Math.hypot(x - lp[0], y - lp[1]) > 2) { gesture.pts.push([x, y]); drawOverlay(); } return; }
@@ -4428,6 +4464,7 @@ function endPointer(e) {
     else if (g.kind === 'curvedraw') { if (moved) finishCurve(g); }
     else if (g.kind === 'shadowdraw') { if (moved) shadowAdd(g.pts); }
     else if (g.kind === 'topodraw') { if (moved) topoAdd(g.pts); }
+    else if (g.kind === 'pcdraw') { if (moved) { const pts = curveFromScreen(g.pts, true); if (pts) patternAlongCurve(pts); else toast('Линията трябва да е върху модела.'); armPatternCurve(false); } }
     else if (g.kind === 'curveedit') finishCurveEdit(g, false);
     else if (g.kind === 'hidesel') {
       if (moved) hideSelection(g);
@@ -6919,19 +6956,27 @@ function dropCustomMatcap() {
 }
 
 /* ---------- Array Mesh: copies of the active subtool in a row or around a circle ---------- */
+// grid: `count` along the axis times `rows` along the second axis (each step the part's own size and
+// the gap), every copy the same size
 function arrayArrays(a, opt) {
-  const n = a.pos.length / 3, f = a.idx.length / 3, N = opt.count;
-  const A = AXES[opt.axis];
-  let lo = Infinity, hi = -Infinity, cx = 0, cy = 0, cz = 0;
-  for (let i = 0; i < n; i++) { const v = a.pos[i * 3] * A.x + a.pos[i * 3 + 1] * A.y + a.pos[i * 3 + 2] * A.z; lo = Math.min(lo, v); hi = Math.max(hi, v); cx += a.pos[i * 3]; cy += a.pos[i * 3 + 1]; cz += a.pos[i * 3 + 2]; }
-  const c = [cx / n, cy / n, cz / n], step = (hi - lo) * (1 + opt.gap);
+  const grid = opt.mode === 'grid', rows = grid ? Math.max(1, opt.rows | 0) : 1;
+  const n = a.pos.length / 3, f = a.idx.length / 3, N = opt.count * rows;
+  const A = AXES[opt.axis], B = AXES[grid ? (opt.axis2 === opt.axis ? (opt.axis + 1) % 3 : opt.axis2) : opt.axis];
+  let lo = Infinity, hi = -Infinity, lo2 = Infinity, hi2 = -Infinity, cx = 0, cy = 0, cz = 0;
+  for (let i = 0; i < n; i++) {
+    const v = a.pos[i * 3] * A.x + a.pos[i * 3 + 1] * A.y + a.pos[i * 3 + 2] * A.z; lo = Math.min(lo, v); hi = Math.max(hi, v);
+    const w = a.pos[i * 3] * B.x + a.pos[i * 3 + 1] * B.y + a.pos[i * 3 + 2] * B.z; lo2 = Math.min(lo2, w); hi2 = Math.max(hi2, w);
+    cx += a.pos[i * 3]; cy += a.pos[i * 3 + 1]; cz += a.pos[i * 3 + 2];
+  }
+  const c = [cx / n, cy / n, cz / n], step = (hi - lo) * (1 + opt.gap), step2 = (hi2 - lo2) * (1 + opt.gap);
   const pos = new Float32Array(n * 3 * N), idx = new Uint32Array(f * 3 * N), col = new Float32Array(n * 3 * N), mask = new Float32Array(n * N), grp = new Float32Array(n * N);
   for (let k = 0; k < N; k++) {
-    const sc = Math.pow(opt.scale, k), q = new THREE.Quaternion().setFromAxisAngle(A, opt.mode === 'circle' ? (2 * Math.PI * k) / N : 0), v = new THREE.Vector3();
+    const sc = grid ? 1 : Math.pow(opt.scale, k), q = new THREE.Quaternion().setFromAxisAngle(A, opt.mode === 'circle' ? (2 * Math.PI * k) / N : 0), v = new THREE.Vector3();
+    const ka = grid ? k % opt.count : k, kb = grid ? Math.floor(k / opt.count) : 0;
     for (let i = 0; i < n; i++) {
       v.set(a.pos[i * 3] - c[0], a.pos[i * 3 + 1] - c[1], a.pos[i * 3 + 2] - c[2]).multiplyScalar(sc);
       if (opt.mode === 'circle') { v.add(new THREE.Vector3(c[0], c[1], c[2])).applyQuaternion(q); }   // around the axis through the world centre
-      else v.add(new THREE.Vector3(c[0] + A.x * step * k, c[1] + A.y * step * k, c[2] + A.z * step * k));
+      else v.add(new THREE.Vector3(c[0] + A.x * step * ka + B.x * step2 * kb, c[1] + A.y * step * ka + B.y * step2 * kb, c[2] + A.z * step * ka + B.z * step2 * kb));
       pos[(k * n + i) * 3] = v.x; pos[(k * n + i) * 3 + 1] = v.y; pos[(k * n + i) * 3 + 2] = v.z;
     }
     col.set(a.col.subarray(0, n * 3), k * n * 3); mask.set(a.mask.subarray(0, n), k * n); grp.set(a.grp.subarray(0, n), k * n);
@@ -6943,11 +6988,12 @@ function makeArray() {
   if (stroke || working) return;
   if (!askDropLevels('Масивът')) return;
   const a = toolArrays(TOOLS[curTool]);
-  if ((a.idx.length / 3) * S.arrCount > MAX_TRIS) { toast('Масивът би бил твърде голям: намалете броя.'); return; }
-  const r = arrayArrays(a, { count: S.arrCount, mode: S.arrMode, axis: S.arrAxis, gap: S.arrGap, scale: S.arrScale });
+  const copies = S.arrCount * (S.arrMode === 'grid' ? S.arrRows : 1);
+  if ((a.idx.length / 3) * copies > MAX_TRIS) { toast('Масивът би бил твърде голям: намалете броя.'); return; }
+  const r = arrayArrays(a, { count: S.arrCount, rows: S.arrRows, mode: S.arrMode, axis: S.arrAxis, axis2: S.arrAxis2, gap: S.arrGap, scale: S.arrScale });
   const paused = replaceMesh(new SculptMesh(r.pos, r.idx, r.col, r.mask, 0, r.grp));
   frameView();
-  toast(`Масив от ${S.arrCount} копия (Ctrl+Z го връща). „Раздели по групи“ не ги разделя: те са с еднакви групи; за отделни части ползвайте „Копие“.` + (paused ? ' ' + DYN_PAUSED_MSG : ''));
+  toast(`Масив от ${copies} копия (Ctrl+Z го връща). „Раздели по групи“ не ги разделя: те са с еднакви групи; за отделни части ползвайте „Копие“.` + (paused ? ' ' + DYN_PAUSED_MSG : ''));
 }
 
 /* ---------- Cloth (ZBrush: Dynamics > Run Simulation), in the Rust core ----------
@@ -7293,7 +7339,7 @@ function drawOverlay() {
   const el = (tag, attrs) => { const e = document.createElementNS(SVGNS, tag); for (const k in attrs) e.setAttribute(k, attrs[k]); svg.appendChild(e); return e; };
   // a curve: being drawn, being bent, or waiting to be bent
   let line = null;
-  if (g && (g.kind === 'curvedraw' || g.kind === 'shadowdraw' || g.kind === 'topodraw')) line = g.pts;
+  if (g && (g.kind === 'curvedraw' || g.kind === 'shadowdraw' || g.kind === 'topodraw' || g.kind === 'pcdraw')) line = g.pts;
   else if (g && g.kind === 'curveedit') line = bentCurve(g);
   else if (!g && liveCurve()) { camera.updateMatrixWorld(); line = curve.pts.map((q) => toScreen(q.p)).filter((q) => q[2] < 1); }
   // (the lines, silhouettes, gizmo and cage belong to their own brushes: with any other they are gone)
@@ -8725,9 +8771,50 @@ function renderRail() {
   all.setAttribute('aria-pressed', !$('palette').hidden);
   all.onclick = () => ($('palette').hidden ? openPalette() : closePalette());
   rail.appendChild(all);
+  const pat = document.createElement('button');
+  pat.className = 'tool all'; pat.id = 'bPatterns'; pat.title = 'Шарки: много еднакви тела наведнъж';
+  pat.innerHTML = `${patIcon('grid')}<span>Шарки</span>`;
+  pat.setAttribute('aria-pressed', !$('patterns').hidden);
+  pat.onclick = () => ($('patterns').hidden ? openPatterns() : closePatterns());
+  rail.appendChild(pat);
+}
+// the search: brushes by name and what they do, then patterns, then any setting (a button, a switch, a
+// slider) — a click on a setting opens its tab and shows it
+function settingsIndex() {
+  const out = [];
+  for (const sec of document.querySelectorAll('#drawer .sec[data-tab]')) {
+    const title = sec.querySelector('h2').textContent.replace(/\s+/g, ' ').trim();
+    for (const el of sec.querySelectorAll('button.btn, label.toggle, .row > label, .field > label')) {
+      const t = el.textContent.replace(/\s+/g, ' ').trim(); if (!t) continue;
+      out.push({ text: t, hint: (el.title || '').trim(), sec: title, tab: sec.dataset.tab, el: el.closest('.row, .toggle, .two, .field') || el });
+    }
+  }
+  return out;
+}
+function showSetting(it) {
+  closePalette(); setPanel(true); setDrawerTab(it.tab);
+  it.el.scrollIntoView({ block: 'center' });
+  it.el.classList.remove('flash'); void it.el.offsetWidth; it.el.classList.add('flash');
+}
+function renderFound(q) {
+  const box = $('palFound'); box.textContent = '';
+  if (!q) return;
+  const has = (t) => t.toLowerCase().includes(q);
+  const pats = PATTERNS.filter((P) => has(P.name + ' ' + P.about + ' ' + P.zb + ' ' + P.kw));
+  const sets = settingsIndex().filter((it) => has(it.text + ' ' + it.hint + ' ' + it.sec)).slice(0, 12);
+  const group = (name, list, label, run) => {
+    if (!list.length) return;
+    const h = document.createElement('div'); h.className = 'palCat'; h.textContent = name; box.appendChild(h);
+    const g = document.createElement('div'); g.className = 'found'; box.appendChild(g);
+    for (const it of list) { const b = document.createElement('button'); b.className = 'foundRow'; const [a, c] = label(it); b.innerHTML = '<span></span><small></small>'; b.firstChild.textContent = a; b.lastChild.textContent = c; b.onclick = () => run(it); g.appendChild(b); }
+  };
+  group('Шарки', pats, (P) => [P.name, P.zb], (P) => { closePalette(); openPatterns(P.id); });
+  group('Настройки', sets, (it) => [it.text, it.sec], showSetting);
 }
 function renderPalette() {
   const box = $('palList'); box.textContent = '';
+  const q = $('palSearch').value.trim().toLowerCase();
+  renderFound(q);
   const seen = new Set(), pin = pinned();
   const mine = S.brushes.filter((b) => !b.builtin).map((b) => b.id);
   const cats = PAL_CATS.map(([n, ids]) => [n, ids.filter((id) => brushById(id))]);
@@ -8744,6 +8831,7 @@ function renderPalette() {
       it.setAttribute('aria-pressed', id === S.tool);
       it.innerHTML = `${brushIcon(b, 1.7)}<span></span><button class="palStar" aria-label="В лентата"></button>`;
       it.querySelector('span').textContent = b.name;
+      it.hidden = !!q && !(b.name + ' ' + (b.zb || '') + ' ' + it.title).toLowerCase().includes(q);
       const star = it.querySelector('.palStar'), on = pin.includes(id) || !b.builtin;
       star.textContent = on ? '★' : '☆'; star.setAttribute('aria-pressed', on); star.disabled = !b.builtin;
       star.title = !b.builtin ? 'Вашите четки са винаги в лентата' : on ? 'Махни от лентата' : 'Сложи в лентата';
@@ -8753,6 +8841,7 @@ function renderPalette() {
       it.onkeydown = (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); it.click(); } };
       grid.appendChild(it);
     }
+    if (q && ![...grid.children].some((x) => !x.hidden)) { h.hidden = true; grid.hidden = true; continue; }
     if (name === 'Ваши четки') {
       const add = document.createElement('button'); add.className = 'btn wide'; add.textContent = '+ Нова четка от избраната';
       add.onclick = () => { newBrush(); renderPalette(); };
@@ -8760,9 +8849,93 @@ function renderPalette() {
     }
   }
 }
-function openPalette() { renderPalette(); $('palette').hidden = false; $('brushPanel').hidden = true; renderRail(); }
+/* ---------- „Шарки“: many of the same at once, as buttons like the brushes ----------
+   Each pattern has its tile and, under the tiles, its own settings and „Направи“. */
+const PAT_ICON = {
+  line: '<rect x="3" y="9" width="4" height="6" rx="1"/><rect x="10" y="9" width="4" height="6" rx="1"/><rect x="17" y="9" width="4" height="6" rx="1"/>',
+  circle: '<circle cx="12" cy="4.5" r="2"/><circle cx="19.5" cy="12" r="2"/><circle cx="12" cy="19.5" r="2"/><circle cx="4.5" cy="12" r="2"/><circle cx="12" cy="12" r="7.5" opacity=".35"/>',
+  grid: '<rect x="4" y="4" width="4" height="4" rx=".8"/><rect x="10" y="4" width="4" height="4" rx=".8"/><rect x="16" y="4" width="4" height="4" rx=".8"/><rect x="4" y="10" width="4" height="4" rx=".8"/><rect x="10" y="10" width="4" height="4" rx=".8"/><rect x="16" y="10" width="4" height="4" rx=".8"/><rect x="4" y="16" width="4" height="4" rx=".8"/><rect x="10" y="16" width="4" height="4" rx=".8"/><rect x="16" y="16" width="4" height="4" rx=".8"/>',
+  curve: '<path d="M3 18c4-9 8 1 12-6 1.5-2.5 3.5-4 6-4" opacity=".4"/><circle cx="4" cy="16" r="1.8"/><circle cx="9" cy="12.5" r="1.8"/><circle cx="14" cy="13" r="1.8"/><circle cx="19" cy="8.5" r="1.8"/>',
+  nano: '<path d="M3 19h18" opacity=".45"/><circle cx="6" cy="15" r="2"/><circle cx="12" cy="13" r="2.5"/><circle cx="18" cy="15.5" r="1.7"/><circle cx="9" cy="9" r="1.5"/><circle cx="16" cy="8" r="1.8"/>',
+  micro: '<rect x="3" y="3" width="18" height="18" rx="2" opacity=".4"/><circle cx="8" cy="8" r="2.6"/><circle cx="16" cy="8" r="2.6"/><circle cx="8" cy="16" r="2.6"/><circle cx="16" cy="16" r="2.6"/>',
+  radial: '<circle cx="12" cy="12" r="2"/><path d="M12 3v4M12 17v4M3 12h4M17 12h4M5.6 5.6l2.8 2.8M15.6 15.6l2.8 2.8M18.4 5.6l-2.8 2.8M8.4 15.6l-2.8 2.8"/>',
+};
+const PATTERNS = [
+  { id: 'line', kw: 'масив копия редица ред', name: 'В редица', zb: 'Array Mesh', detail: 'array', mode: 'line', about: 'Копия на активния подобект една след друга по оста; всяко следващо може да е по-малко или по-голямо.' },
+  { id: 'circle', kw: 'масив копия кръг венец колело', name: 'В кръг', zb: 'Array Mesh (radial)', detail: 'array', mode: 'circle', about: 'Копия на активния подобект около оста през центъра: зъбно колело, венец, колони.' },
+  { id: 'grid', kw: 'масив копия решетка плочки редове колони', name: 'Решетка', zb: 'Array Mesh (2D)', detail: 'array', mode: 'grid', about: 'Копия в редове и колони: плочки, нитове, бутони, тухли.' },
+  { id: 'curve', kw: 'крива линия верига шев', name: 'По крива', zb: 'Curve + InsertMesh', detail: 'curve', about: 'Начертайте линия по модела: формите застават по нея — верига, шевове, гръбнак, ограда.' },
+  { id: 'nano', kw: 'маска пръсни нитове', name: 'Форми по маската', zb: 'NanoMesh', detail: 'nano', about: 'Еднакви форми, пръснати по маскираното място: брадавици, люспи, нитове.' },
+  { id: 'micro', kw: 'стена ризница плетка плочки мъниста', name: 'Във всяка стена', zb: 'MicroPoly', detail: 'micro', about: 'Във всяка стена на модела по една форма: плетена ризница, плочки, мъниста.' },
+  { id: 'radial', kw: 'симетрия кръгова оста копия', name: 'Кръгова симетрия', zb: 'Radial Symmetry', detail: 'radial', about: 'Каквото извайвате, се повтаря около оста: цветя, колела, орнаменти.' },
+];
+const patIcon = (id) => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">${PAT_ICON[id]}</svg>`;
+function renderPatterns() {
+  const box = $('patList'); box.textContent = '';
+  const q = $('patSearch').value.trim().toLowerCase();
+  for (const P of PATTERNS) {
+    const it = document.createElement('div'); it.className = 'palItem'; it.tabIndex = 0; it.setAttribute('role', 'button'); it.dataset.pat = P.id; it.title = P.about;
+    it.innerHTML = `${patIcon(P.id)}<span></span>`; it.style.gridTemplateColumns = '24px 1fr';
+    it.querySelector('span').textContent = P.name;
+    it.setAttribute('aria-pressed', P.id === S.pattern);
+    it.hidden = !!q && !(P.name + ' ' + P.about + ' ' + P.zb + ' ' + P.kw).toLowerCase().includes(q);
+    it.onclick = () => selectPattern(P.id);
+    it.onkeydown = (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); it.click(); } };
+    box.appendChild(it);
+  }
+}
+function selectPattern(id) {
+  const P = PATTERNS.find((x) => x.id === id) || PATTERNS[0];
+  S.pattern = P.id; saveSettings();
+  $('patIcon').innerHTML = patIcon(P.id); $('patName').textContent = P.name; $('patZb').textContent = 'ZBrush: ' + P.zb; $('patAbout').textContent = P.about;
+  for (const el of document.querySelectorAll('#patBox .patDetail')) el.hidden = el.dataset.pat !== P.detail;
+  if (P.mode) { S.arrMode = P.mode; syncArrayUI(); }
+  renderPatterns();
+}
+function syncArrayUI() {
+  const m = S.arrMode;
+  $('arrGapRow').hidden = m === 'circle';
+  $('arrRowsGrp').hidden = m !== 'grid';
+  $('arrScaleRow').hidden = m === 'grid';
+  $('lArrCount').textContent = m === 'grid' ? 'Колони' : 'Брой';
+  $('arrNote').textContent = m === 'circle' ? 'Копията застават около оста през центъра на сцената.' : m === 'grid' ? 'Колоните са по първата ос, редовете по втората; разстоянието е по размера на частта.' : 'Копията застават едно след друго, на разстояние по размера на частта.';
+  for (const el of $('arrAxis2Chips').children) { el.disabled = +el.dataset.id === S.arrAxis; el.setAttribute('aria-pressed', +el.dataset.id === S.arrAxis2); }
+}
+function openPatterns(id) { $('palette').hidden = true; $('brushPanel').hidden = true; $('patterns').hidden = false; selectPattern(id || S.pattern); renderRail(); }
+function closePatterns() { if ($('patterns').hidden) return; $('patterns').hidden = true; renderRail(); }
+// shapes along a curve drawn on the model
+let pcArmed = false;
+function armPatternCurve(on) {
+  pcArmed = on; setPressed('bPcDraw', on);
+  if (on) { closePatterns(); toast('Начертайте линия по модела: формите ще застанат по нея.'); }
+}
+function patternAlongCurve(pts) {
+  // the drawn line at even steps along it
+  const seg = [0]; for (let i = 1; i < pts.length; i++) seg.push(seg[i - 1] + pts[i].p.distanceTo(pts[i - 1].p));
+  const total = seg[seg.length - 1]; if (total <= 0) return 0;
+  const N = Math.max(2, S.pcCount | 0), { r } = mesh.bounds(), size = S.pcSize * r;
+  const shape = immShape(S.pcShape, 0.12), info = IMM.find((x) => x.id === S.pcShape) || IMM[0], parts = [];
+  let j = 0;
+  for (let q = 0; q < N; q++) {
+    const want = (total * q) / (N - 1);
+    while (j + 1 < pts.length - 1 && seg[j + 1] < want) j++;
+    const L = seg[j + 1] - seg[j] || 1, t = Math.min(1, Math.max(0, (want - seg[j]) / L));
+    const p = pts[j].p.clone().lerp(pts[j + 1].p, t), n = pts[j].n.clone().lerp(pts[j + 1].n, t).normalize();
+    const tg = pts[j + 1].p.clone().sub(pts[j].p); tg.addScaledVector(n, -tg.dot(n));
+    if (tg.lengthSq() < 1e-20) tg.set(Math.abs(n.x) < 0.9 ? 1 : 0, Math.abs(n.x) < 0.9 ? 0 : 1, 0).addScaledVector(n, -(Math.abs(n.x) < 0.9 ? n.x : n.y));
+    tg.normalize();
+    const z = new THREE.Vector3().crossVectors(tg, n), c = p.clone().addScaledVector(n, info.lift * size);
+    parts.push(placePart(shape, [tg.x * size, n.x * size, z.x * size, tg.y * size, n.y * size, z.y * size, tg.z * size, n.z * size, z.z * size], [c.x, c.y, c.z]));
+  }
+  const jn = joinParts(parts);
+  stashActive();
+  addTool(new SculptMesh(jn.pos, jn.idx, new Float32Array(jn.n * 3).fill(1), new Float32Array(jn.n), 0, new Float32Array(jn.n)), 'По крива');
+  toast(`${N} форми по кривата, като нов подобект.`);
+  return N;
+}
+function openPalette() { renderPalette(); $('palette').hidden = false; $('brushPanel').hidden = true; $('patterns').hidden = true; renderRail(); }
 function closePalette() { if ($('palette').hidden) return; $('palette').hidden = true; renderRail(); }
-function openBrushPanel() { $('palette').hidden = true; $('brushPanel').hidden = false; syncBrushUI(); renderRail(); try { localStorage.setItem('glina.bpSeen', '1'); } catch (e) {} }
+function openBrushPanel() { $('palette').hidden = true; $('patterns').hidden = true; $('brushPanel').hidden = false; syncBrushUI(); renderRail(); try { localStorage.setItem('glina.bpSeen', '1'); } catch (e) {} }
 function closeBrushPanel() { $('brushPanel').hidden = true; }
 function toggleBrushPanel() { if ($('brushPanel').hidden) openBrushPanel(); else closeBrushPanel(); }
 // the settings, in three tabs
@@ -9247,9 +9420,25 @@ const renderFfdAxis = chips('ffdAxisChips', [0, 1, 2].map((k) => ({ id: String(k
 });
 syncAxisChips = () => { renderDefAxis(); renderFfdAxis(); };
 [...$('defToChips').children].forEach((el, k) => (el.textContent = 'XYZ'[(S.defAxis + 1 + k) % 3]));
+$('patClose').onclick = closePatterns;
+$('patSearch').oninput = renderPatterns;
+$('palSearch').oninput = renderPalette;
+$('palSearch').onkeydown = (e) => {
+  // Enter: the first thing found
+  if (e.key !== 'Enter') return;
+  const first = document.querySelector('#palList .palItem:not([hidden])') || document.querySelector('#palFound .foundRow');
+  if (first) first.click();
+};
+$('bRadialOpen').onclick = () => openPatterns('radial');
+$('bPcDraw').onclick = () => armPatternCurve(!pcArmed);
+chips('pcChips', IMM.filter((x) => x.id !== 'file').map((x) => ({ id: x.id, name: x.name })), () => S.pcShape, (v) => (S.pcShape = v));
+bindRange('sPcN', 'oPcN', () => S.pcCount, (v) => (S.pcCount = v), (v) => String(v));
+bindRange('sPcS', 'oPcS', () => S.pcSize, (v) => (S.pcSize = v), (v) => Math.round(v * 1000) / 10 + '%');
+bindRange('sArrRows', 'oArrRows', () => S.arrRows, (v) => (S.arrRows = v), (v) => String(v));
+chips('arrAxis2Chips', [0, 1, 2].map((k) => ({ id: String(k), name: 'XYZ'[k] })), () => String(S.arrAxis2), (v) => { S.arrAxis2 = +v; syncArrayUI(); });
 chips('arrModeChips', [{ id: 'line', name: 'В редица' }, { id: 'circle', name: 'В кръг' }], () => S.arrMode, (v) => { S.arrMode = v; $('arrGapRow').hidden = v === 'circle'; });
 $('arrGapRow').hidden = S.arrMode === 'circle';
-chips('arrAxisChips', [0, 1, 2].map((k) => ({ id: String(k), name: 'XYZ'[k] })), () => String(S.arrAxis), (v) => (S.arrAxis = +v));
+chips('arrAxisChips', [0, 1, 2].map((k) => ({ id: String(k), name: 'XYZ'[k] })), () => String(S.arrAxis), (v) => { S.arrAxis = +v; if (S.arrAxis2 === S.arrAxis) S.arrAxis2 = (S.arrAxis + 2) % 3; syncArrayUI(); });
 bindRange('sArrCount', 'oArrCount', () => S.arrCount, (v) => (S.arrCount = v), (v) => String(v));
 bindRange('sArrGap', 'oArrGap', () => S.arrGap, (v) => (S.arrGap = v), pct);
 bindRange('sArrScale', 'oArrScale', () => S.arrScale, (v) => (S.arrScale = v), (v) => '×' + v.toFixed(2));
@@ -9402,7 +9591,11 @@ function openMenu(anchor, items) {
 }
 function outside(e) { if (!e.target.closest('#menu')) closeMenu(); }
 function closeMenu() { const m = $('menu'); if (m) m.remove(); window.removeEventListener('pointerdown', outside, { capture: true }); }
-window.addEventListener('keydown', (e) => { if (e.key === 'Escape') { closeMenu(); closePalette(); closeBrushPanel(); if (!gesture) dropCurve(); } });
+window.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape') { closeMenu(); closePalette(); closePatterns(); closeBrushPanel(); if (pcArmed) armPatternCurve(false); if (!gesture) dropCurve(); }
+  // Ctrl+K: the search
+  if ((e.ctrlKey || e.metaKey) && (e.key === 'k' || e.key === 'K')) { e.preventDefault(); openPalette(); $('palSearch').focus(); $('palSearch').select(); }
+});
 $('bpClose').onclick = closeBrushPanel;
 $('palClose').onclick = closePalette;
 $('bNew').onclick = () => openMenu($('bNew'), [
@@ -9470,5 +9663,5 @@ loadAutosave().then((d) => {
     toast('Продължавате последния модел. „Нов“ започва отначало.');
   }
 });
-window.__glina = { beginStroke, processStroke, endStroke, get rustBrushes() { return rustBrushes; }, set rustBrushes(v) { rustBrushes = v; }, openBrushPanel, closeBrushPanel, openPalette, closePalette, setDrawerTab, railIds, microPoly, topoAdd, topoBuild, topoMake, get topoLines() { return topoLines; }, set topoLines(v) { topoLines = v; }, shadowAdd, shadowMake, get shadows() { return shadows; }, set shadows(v) { shadows = v; }, earClip, shadowPrism, viewAxis, bendBuild, vdmCapture, vdmReset, get vdmField() { return vdmField; }, set vdmField(v) { vdmField = v; }, vdmDefault, snakeAlongCurve, quadRemesh, quadRemeshArrays, surfaceStats, get coreSync() { return coreSync; }, set subdivCore(v) { subdivCore = v; }, polyTris, studioPNG, setCustomMatcap, dropCustomMatcap, get customMatcap() { return customMatcap; }, matcapTextures, material, get gmesh() { return gmesh; }, renderer, makeCube, polishFeatures, sliceGroups, makeGear, makeTube, makeRing, revolve, meshToAxis, straighten, transformTools, gizmoTools, eigenSym3, subdivideArrays, slimeBridge, nanoMesh, maskIslands, texturedFiles, zipMany, levelArrays, zmBuild, quadsOf, exportSTL, renderPrintInfo, decimate, decimateArrays, printScale, projectBytes, saveProject, openProject, packValue, unpackValue, panelLoops, balloonTool, shellFrom, refOpen, refState, refColourAt, refLayout, smoothViewUpdate, get smoothViewObj() { return smoothViewObj; }, recallFrom, makeFibers, fiberArrays, projectAll, storeMorph, switchMorph, dropMorph, morphOf, fillColour, cavityColour, zsOpen, zsClose, zsSkin, get zs() { return zs; }, xtract, latticeLive, latticeScreen, get lattice() { return lattice; }, surfaceContrast, snapshotPNG, maskHidden, startCloth, stopCloth, get clothRun() { return clothRun; }, hideSelection, hideGroup, showAll, invertVisibility, hideMasked, deleteHidden, hiddenCount, setHiddenUndoable, deform, makeArray, arrayArrays, setGizmoMode, get gizmoPin() { return gizmoPin; }, set gizmoPin(v) { gizmoPin = v; }, exportOBJ, scheduleAutosave, get TOOLS() { return TOOLS; }, get curTool() { return curTool; }, activateTool, addTool, appendPrimitive, duplicateTool, deleteTool, moveTool, mergeDown, splitGroups, extractTool, extractShell, makeBoolean, newScene, gizmoHandle, gizmoScreen, get solo() { return solo; }, set solo(v) { solo = v; renderOthers(); }, toolArrays, voxelCombine, voxelRemesh, coreStart, get working() { return working; }, sliceByPlane, mirrorWeldArrays, mirrorWeld, mirrorFlip, applyNoise, snapView, setOrtho, historyJump, polyframe, get cam() { return cam; }, trimByPlane, applyCut, tubeArrays, immShape, hasOpenEdges, get curve() { return liveCurve(); }, dropCurve, get immFile() { return immFile; }, set immFile(v) { immFile = v; }, get LAYERS() { return LAYERS; }, get recLayer() { return recLayer; }, addLayer, deleteLayer, toggleLayer, recordLayer, setLayerStrength, bakeLayers, groupOp, maskAllBut, groupNear, get mesh() { return mesh; }, get stroke() { return stroke; }, get gesture() { return gesture; }, get nav() { return nav; }, get MR() { return MR; }, syncSym, get SYM() { return SYM; }, setLevel, divide, deleteLower, deleteHigher, camera, orbit, pick, selectTool, brush, brushById, maskOp, remesh, undo, redo, subdivide, setDyntopo, floodDetail, S, get undoStack() { return undoStack; } };
+window.__glina = { get mrPending() { return mrPending; }, openPatterns, closePatterns, selectPattern, patternAlongCurve, armPatternCurve, beginStroke, processStroke, endStroke, get rustBrushes() { return rustBrushes; }, set rustBrushes(v) { rustBrushes = v; }, openBrushPanel, closeBrushPanel, openPalette, closePalette, setDrawerTab, railIds, microPoly, topoAdd, topoBuild, topoMake, get topoLines() { return topoLines; }, set topoLines(v) { topoLines = v; }, shadowAdd, shadowMake, get shadows() { return shadows; }, set shadows(v) { shadows = v; }, earClip, shadowPrism, viewAxis, bendBuild, vdmCapture, vdmReset, get vdmField() { return vdmField; }, set vdmField(v) { vdmField = v; }, vdmDefault, snakeAlongCurve, quadRemesh, quadRemeshArrays, surfaceStats, get coreSync() { return coreSync; }, set subdivCore(v) { subdivCore = v; }, polyTris, studioPNG, setCustomMatcap, dropCustomMatcap, get customMatcap() { return customMatcap; }, matcapTextures, material, get gmesh() { return gmesh; }, renderer, makeCube, polishFeatures, sliceGroups, makeGear, makeTube, makeRing, revolve, meshToAxis, straighten, transformTools, gizmoTools, eigenSym3, subdivideArrays, slimeBridge, nanoMesh, maskIslands, texturedFiles, zipMany, levelArrays, zmBuild, quadsOf, exportSTL, renderPrintInfo, decimate, decimateArrays, printScale, projectBytes, saveProject, openProject, packValue, unpackValue, panelLoops, balloonTool, shellFrom, refOpen, refState, refColourAt, refLayout, smoothViewUpdate, get smoothViewObj() { return smoothViewObj; }, recallFrom, makeFibers, fiberArrays, projectAll, storeMorph, switchMorph, dropMorph, morphOf, fillColour, cavityColour, zsOpen, zsClose, zsSkin, get zs() { return zs; }, xtract, latticeLive, latticeScreen, get lattice() { return lattice; }, surfaceContrast, snapshotPNG, maskHidden, startCloth, stopCloth, get clothRun() { return clothRun; }, hideSelection, hideGroup, showAll, invertVisibility, hideMasked, deleteHidden, hiddenCount, setHiddenUndoable, deform, makeArray, arrayArrays, setGizmoMode, get gizmoPin() { return gizmoPin; }, set gizmoPin(v) { gizmoPin = v; }, exportOBJ, scheduleAutosave, get TOOLS() { return TOOLS; }, get curTool() { return curTool; }, activateTool, addTool, appendPrimitive, duplicateTool, deleteTool, moveTool, mergeDown, splitGroups, extractTool, extractShell, makeBoolean, newScene, gizmoHandle, gizmoScreen, get solo() { return solo; }, set solo(v) { solo = v; renderOthers(); }, toolArrays, voxelCombine, voxelRemesh, coreStart, get working() { return working; }, sliceByPlane, mirrorWeldArrays, mirrorWeld, mirrorFlip, applyNoise, snapView, setOrtho, historyJump, polyframe, get cam() { return cam; }, trimByPlane, applyCut, tubeArrays, immShape, hasOpenEdges, get curve() { return liveCurve(); }, dropCurve, get immFile() { return immFile; }, set immFile(v) { immFile = v; }, get LAYERS() { return LAYERS; }, get recLayer() { return recLayer; }, addLayer, deleteLayer, toggleLayer, recordLayer, setLayerStrength, bakeLayers, groupOp, maskAllBut, groupNear, get mesh() { return mesh; }, get stroke() { return stroke; }, get gesture() { return gesture; }, get nav() { return nav; }, get MR() { return MR; }, syncSym, get SYM() { return SYM; }, setLevel, divide, deleteLower, deleteHigher, camera, orbit, pick, selectTool, brush, brushById, maskOp, remesh, undo, redo, subdivide, setDyntopo, floodDetail, S, get undoStack() { return undoStack; } };
 </script>

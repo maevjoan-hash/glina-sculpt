@@ -12,7 +12,7 @@ const url = pathToFileURL(path.join(ROOT, 'dist', 'glina.html')).href;
 await page.goto(url);
 await page.waitForFunction(() => window.__glina && window.__glina.mesh);
 const frames = (n) => page.evaluate(async (k) => { for (let i = 0; i < k; i++) await new Promise((r) => requestAnimationFrame(r)); }, n);
-const idle = () => page.waitForFunction(() => document.getElementById('busy').hidden);
+const idle = () => page.waitForFunction(() => document.getElementById('busy').hidden && !window.__glina.working && !window.__glina.mrPending, null, { timeout: 120000 });
 const box = await page.evaluate(() => { const r = document.getElementById('gl').getBoundingClientRect(); return { x: r.left, y: r.top, w: r.width, h: r.height }; });
 const cx = box.x + box.w / 2, cy = box.y + box.h / 2;
 async function drag(tool, x0, y0, x1, y1, steps = 20) {
@@ -102,13 +102,13 @@ check('remesh: the levels are dropped only when it happens, and undo brings them
 await page.evaluate(() => window.__glina.undo()); await frames(3);
 d = await snap();
 check('…undo after the remesh: levels back', d.top === 2 && d.level === 1, { top: d.top, level: d.level });
-await page.click('#bNew'); await page.click('#menu button:nth-child(5)'); await frames(3);   // plane (open)
+await page.click('#bNew'); await page.click('#menu button:has-text("Равнина")'); await frames(3);   // plane (open)
 await page.keyboard.press('Control+d');
 // (wait for the level itself: on a busy machine the key's work can start after a first idle check)
 await page.waitForFunction(() => window.__glina.MR && window.__glina.MR.levels.length === 2 && window.__glina.MR.cur === 1, null, { timeout: 120000 }); await idle();
 await page.evaluate(() => window.__glina.remesh()); await frames(2);
 d = await snap();
-check('remesh refused on the open plane: the levels stay', d.top === 1);
+check('remesh refused on the open plane: the levels stay', d.top === 1, { top: d.top, level: d.level, n: d.n, f: d.f });
 check('no page errors', errors.length === 0, errors.slice(0, 3));
 console.log(`\n${results.filter(Boolean).length}/${results.length} passed`);
 await browser.close();
