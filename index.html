@@ -4088,12 +4088,19 @@ function processStroke() {
     const g = stroke.grab;
     const hitPlane = screenToPlane(s.x, s.y, g.last, g.camN);
     if (!hitPlane) return;
-    const delta = hitPlane.clone().sub(g.last);
-    if (stroke.tool === 'snake' && mesh.dyn) {
-      const L = S.detail * worldPerPx(g.last);
-      if (dynRemesh(g.last.x, g.last.y, g.last.z, g.r, L, g.normal.x, g.normal.y, g.normal.z, false, false)) stroke.changed = true;
-      for (const { m } of SYM) { const p = symV(m, g.last), n = symV(m, g.normal); if (dynRemesh(p.x, p.y, p.z, g.r, L, n.x, n.y, n.z, false, false)) stroke.changed = true; }
+    if (stroke.tool === 'grab') {
+      // a pull has an end: past about six radii from where it began it slows and stops (smoothly), so
+      // no slip of the hand drags the clay across the whole model into a torn sheet
+      const v = hitPlane.clone().sub(g.point), len = v.length(), L = g.r * 6;
+      if (len > 1e-9) hitPlane.copy(g.point).addScaledVector(v, L * Math.tanh(len / L) / len);
     }
+    const delta = hitPlane.clone().sub(g.last);
+    const snakeRefine = (at) => {
+      const L = S.detail * worldPerPx(at);
+      if (dynRemesh(at.x, at.y, at.z, g.r, L, g.normal.x, g.normal.y, g.normal.z, false, false)) stroke.changed = true;
+      for (const { m } of SYM) { const p = symV(m, at), n = symV(m, g.normal); if (dynRemesh(p.x, p.y, p.z, g.r, L, n.x, n.y, n.z, false, false)) stroke.changed = true; }
+    };
+    if (stroke.tool === 'snake' && mesh.dyn) snakeRefine(g.last);
     if (stroke.tool === 'snake') {
       // snake hook: re-gathers under the moving point, so the pulled tip keeps growing; the middle of
       // the brush goes all the way with the pen (a weaker pull would fall behind it and stop)
@@ -4108,13 +4115,20 @@ function processStroke() {
           P[i * 3] += d.x * w; P[i * 3 + 1] += d.y * w; P[i * 3 + 2] += d.z * w;
         }
       };
-      doSet(g.last, delta, g.normal, 0);
-      SYM.forEach(({ m }, k) => doSet(symV(m, g.last), symV(m, delta), symV(m, g.normal), k + 1));
-      // light relax keeps the pulled strand from collapsing into spikes
-      curGroup = g.groups ? g.groups[0] : -1;
-      const cnt = gather(hitPlane.x, hitPlane.y, hitPlane.z, g.r * 1.2, 0, 0, 0, false);
-      curGroup = -1;
-      smoothVerts(mesh.gIdx, mesh.gFall, cnt, 0.06);
+      // in steps of at most a third of the radius: a fast hand would otherwise carry the tip a whole
+      // radius or more in one go and leave a flat torn sheet behind it instead of a strand
+      const nSub = Math.min(24, Math.max(1, Math.ceil(delta.length() / (g.r * 0.33)))), d = delta.clone().multiplyScalar(1 / nSub), at = g.last.clone();
+      for (let sub = 0; sub < nSub; sub++) {
+        if (sub && mesh.dyn) { gridFollowBrush(); snakeRefine(at); }
+        doSet(at, d, g.normal, 0);
+        SYM.forEach(({ m }, k) => doSet(symV(m, at), symV(m, d), symV(m, g.normal), k + 1));
+        at.add(d);
+        // light relax keeps the pulled strand from collapsing into spikes
+        curGroup = g.groups ? g.groups[0] : -1;
+        const cnt = gather(at.x, at.y, at.z, g.r * 1.2, 0, 0, 0, false);
+        curGroup = -1;
+        smoothVerts(mesh.gIdx, mesh.gFall, cnt, 0.06);
+      }
     } else if (g.elastic) {
       // elastic: the pull is applied in small steps to the current shape, each step a Kelvinlet around
       // where the grabbed point is now. One big linear step from the start folds the sides when the pull
