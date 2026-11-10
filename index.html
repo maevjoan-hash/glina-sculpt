@@ -7232,14 +7232,12 @@ const BPR_SHADER = {
         }
       }
       if (last > 0.5) {
-        vec3 n = normalize(nrm(vUv));
         if (cavity > 0.0) {
           vec2 ex = vec2(texel.x, 0.0), ey = vec2(0.0, texel.y);
           float spread = (nrm(vUv + ex).x - nrm(vUv - ex).x) + (nrm(vUv + ey).y - nrm(vUv - ey).y);
           float guard = exp(-length(vec2(viewZ(vUv + ex) - viewZ(vUv - ex), viewZ(vUv + ey) - viewZ(vUv - ey))) / zUnit);
           rgb *= 1.0 + clamp(spread * cavity * 3.0 * guard, -0.6, 0.6);
         }
-        if (rim > 0.0) rgb += vec3(1.0, 0.96, 0.9) * rim * pow(1.0 - max(n.z, 0.0), rimPower) * max(n.y * 0.5 + 0.5, 0.0);
       }
       gl_FragColor = vec4(rgb, c.a);
     }`,
@@ -7257,7 +7255,10 @@ async function studioPNG(scale = 2) {
     mt.onBeforeCompile = (sh) => {
       sh.vertexShader = 'attribute float aHide;\nvarying float vHide;\n' + sh.vertexShader.replace('#include <begin_vertex>', '#include <begin_vertex>\nvHide = aHide;');
       sh.fragmentShader = 'varying float vHide;\n' + sh.fragmentShader.replace('void main() {', 'void main() {\nif (vHide > 0.001) discard;');
+      // rim light (Fresnel): the model's edges turned away from the eye glow a little, more on top
+      if (S.bprRim > 0) sh.fragmentShader = sh.fragmentShader.replace('#include <emissivemap_fragment>', `#include <emissivemap_fragment>\ntotalEmissiveRadiance += vec3(1.0, 0.96, 0.9) * ${(S.bprRim * 0.8).toFixed(3)} * pow(1.0 - clamp(dot(normal, normalize(vViewPosition)), 0.0, 1.0), 3.0) * (normal.y * 0.5 + 0.5);`);
     };
+    mt.customProgramCacheKey = () => 'studio-rim-' + S.bprRim;
     return mt;
   };
   const live = make(1), dim = make(1 / 0.72), swapped = [];
@@ -7307,12 +7308,12 @@ async function studioPNG(scale = 2) {
     ao.blendIntensity = 0.8;
     composer.addPass(ao);
     const nrt = ao.normalRenderTarget, fx = [];
-    if (nrt && nrt.depthTexture && (S.bprSSS > 0 || S.bprCavity > 0 || S.bprRim > 0)) {
+    if (nrt && nrt.depthTexture && (S.bprSSS > 0 || S.bprCavity > 0)) {
       for (const [dx, dy, last] of [[1, 0, 0], [0, 1, 1]]) {
         const p = new ShaderPass(BPR_SHADER), u = p.uniforms;
         u.tNormal.value = nrt.texture; u.tDepth.value = nrt.depthTexture; u.dir.value.set(dx, dy); u.texel.value.set(1 / w, 1 / h);
         u.near.value = camera.near; u.far.value = camera.far; u.projScale.value = h / (2 * Math.tan(THREE.MathUtils.degToRad(camera.fov / 2)));
-        u.sssWidth.value = r * 0.06 * S.bprSSS; u.cavity.value = S.bprCavity; u.rim.value = S.bprRim * 0.9; u.zUnit.value = r * 0.01; u.last.value = last;
+        u.sssWidth.value = r * 0.06 * S.bprSSS; u.cavity.value = S.bprCavity; u.zUnit.value = r * 0.01; u.last.value = last;
         composer.addPass(p); fx.push(p);
       }
     }

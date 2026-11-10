@@ -135,6 +135,38 @@ check('undo brings the pose mesh back', await G(() => window.__glina.TOOLS.lengt
 await G(() => window.__glina.undo()); await frames(2);
 const tp2 = await G(() => { const W = window.__glina; return W.TOOLS.map((t, k) => { const m = k === W.curTool ? W.mesh : t.mesh; let cx = 0; for (let i = 0; i < m.n; i++) cx += m.pos[i * 3]; return { cx: cx / m.n, vis: t.visible }; }); });
 check('and once more the subtools as they were', tp2.length === 2 && tp2.every((t, k) => t.vis && Math.abs(t.cx - tp0[k].cx) < 1e-6), tp2);
+// ---------- the studio picture's skin: light under it, pores, rim ----------
+await fresh(false);
+await G(() => { const W = window.__glina, m = W.mesh; for (let i = 0; i < m.n; i++) { const k = 1 + 0.04 * Math.sin(m.pos[i * 3] * 30) * Math.sin(m.pos[i * 3 + 1] * 30); m.pos[i * 3] *= k; m.pos[i * 3 + 1] *= k; m.pos[i * 3 + 2] *= k; } W.setLevel; });
+const fxDiff = await G(async () => {
+  const W = window.__glina, S = W.S;
+  const px = async (url) => { const im = new Image(); im.src = url; await im.decode(); const c = document.createElement('canvas'); c.width = im.width; c.height = im.height; const g = c.getContext('2d'); g.drawImage(im, 0, 0); return g.getImageData(0, 0, c.width, c.height).data; };
+  const shot = async (sss, cav, rim) => { S.bprSSS = sss; S.bprCavity = cav; S.bprRim = rim; return px(await W.studioPNG(0.5)); };
+  const none = await shot(0, 0, 0), diff = (a) => { let d = 0, mx = 0; for (let k = 0; k < a.length; k += 4) { const e = Math.abs(a[k] - none[k]) + Math.abs(a[k + 1] - none[k + 1]) + Math.abs(a[k + 2] - none[k + 2]); d += e; mx = Math.max(mx, e); } return { mean: d / (a.length / 4), max: mx }; };
+  const out = { sss: diff(await shot(0.8, 0, 0)), cav: diff(await shot(0, 0.8, 0)), rim: diff(await shot(0, 0, 0.8)), same: diff(await shot(0, 0, 0)) };
+  S.bprSSS = 0.35; S.bprCavity = 0.35; S.bprRim = 0.25;
+  return out;
+});
+check('each of the three effects changes the studio picture (more than two plain pictures differ)', fxDiff.sss.mean > fxDiff.same.mean * 1.8 && fxDiff.cav.mean > fxDiff.same.mean * 1.8 && fxDiff.rim.mean > fxDiff.same.mean * 1.8 && fxDiff.rim.mean < 40, fxDiff);
+check('their sliders are in „Изглед“', await G(() => ['sBprSSS', 'sBprCav', 'sBprRim', 'bStudioNow'].every((id) => document.getElementById(id))));
+// ---------- more baked maps ----------
+await fresh(false);
+await G(() => window.__glina.divide()); await page.waitForFunction(() => !window.__glina.mrPending);
+await G(() => { const W = window.__glina, m = W.mesh; for (let i = 0; i < m.n; i++) { const k = 1 + 0.01 * Math.sin(m.pos[i * 3] * 60) * Math.sin(m.pos[i * 3 + 1] * 60); m.pos[i * 3] *= k; m.pos[i * 3 + 1] *= k; m.pos[i * 3 + 2] *= k; } });
+const maps = await G(async () => {
+  const W = window.__glina, r = await W.texturedFiles(256), out = { names: r.files.map((f) => f.name) };
+  for (const name of ['glina-normal-object.png', 'glina-height.png', 'glina-cavity.png']) {
+    const f = r.files.find((q) => q.name === name); if (!f) continue;
+    const im = new Image(); im.src = URL.createObjectURL(new Blob([f.data], { type: 'image/png' })); await im.decode();
+    const c = document.createElement('canvas'); c.width = c.height = 256; const g = c.getContext('2d'); g.drawImage(im, 0, 0); const d = g.getImageData(0, 0, 256, 256).data;
+    let lo = 255, hi = 0, grey = true; for (let k = 0; k < d.length; k += 4) { lo = Math.min(lo, d[k]); hi = Math.max(hi, d[k]); if (d[k] !== d[k + 1] || d[k] !== d[k + 2]) grey = false; }
+    out[name] = { lo, hi, grey };
+  }
+  out.txt = new TextDecoder().decode(r.files.find((q) => q.name === 'glina-maps.txt').data).split('\n').length;
+  return out;
+});
+check('with levels the ZIP also has object-space normals, height and cavity maps (and a note on their scale)', ['glina-normal-object.png', 'glina-height.png', 'glina-cavity.png', 'glina-maps.txt'].every((n) => maps.names.includes(n)) && maps.txt >= 4, maps.names);
+check('height and cavity are grey maps around the middle, with the bumps in them; object normals are coloured', maps['glina-height.png'].grey && maps['glina-height.png'].hi - maps['glina-height.png'].lo > 8 && maps['glina-height.png'].lo < 128 && maps['glina-height.png'].hi > 128 && maps['glina-cavity.png'].grey && maps['glina-cavity.png'].hi - maps['glina-cavity.png'].lo > 10 && !maps['glina-normal-object.png'].grey, maps);
 check('no page errors', errors.length === 0, errors.slice(0, 5));
 await browser.close();
 const ok = results.filter(Boolean).length;
