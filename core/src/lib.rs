@@ -17,6 +17,7 @@ pub mod brush;
 pub mod cloth;
 pub mod decimate;
 pub mod dyntopo;
+pub mod kelvin;
 pub mod multires;
 pub mod quadmesh;
 pub mod subdiv;
@@ -666,6 +667,17 @@ pub extern "C" fn dyn_info(kind: u32) -> f64 {
 }
 #[no_mangle]
 pub extern "C" fn dyn_free() { DYN.with(|c| *c.borrow_mut() = None); }
+
+/// The elastic twist, scale and pinch brushes (kelvin.rs). `orig`: 3 per vertex; `free`: 1 − mask;
+/// `copies`: kelvin::PAR values for the brush and each symmetric copy; `out`: the new positions.
+/// # Safety
+/// `orig` and `out` hold `n` × 3 values, `free` `n`, `copies` `ncopies` × PAR.
+#[no_mangle]
+pub unsafe extern "C" fn kelvin_raw(kind: u32, n: usize, orig: *const f32, free: *const f32, ncopies: usize, copies: *const f64, out: *mut f32) -> i32 {
+    if kind > kelvin::PINCH { return -1; }
+    kelvin::apply(kind, std::slice::from_raw_parts(orig, n * 3), std::slice::from_raw_parts(free, n), std::slice::from_raw_parts(copies, ncopies * kelvin::PAR), std::slice::from_raw_parts_mut(out, n * 3));
+    0
+}
 
 /// Subdivision levels (multires.rs): the detail of `pos` over the subdivided surface `sub`, written to
 /// `out` (3 per vertex). Returns 0, or −1 when a face names a vertex that is not there.

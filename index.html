@@ -319,7 +319,7 @@ input[type=range] { width: 100%; height: 26px; accent-color: var(--wax); backgro
     <button class="btn" id="bWire" aria-pressed="false" title="Мрежа (W)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M4 4h16v16H4zM4 12h16M12 4v16M4 4l16 16"/></svg><span class="lbl">Мрежа</span></button>
     <button class="btn" id="bDyn" aria-pressed="false" title="Динамична топология (D)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"><path d="M12 3L3 20h18z"/><path d="M7.5 11.5h9M12 20l-4.5-8.5M12 20l4.5-8.5"/></svg><span class="lbl">Дин. топология</span></button>
     <button class="btn" id="bPersp" aria-pressed="true" title="Перспектива (Shift+P)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"><path d="M4 6l16-3v18L4 18z"/><path d="M4 12h16" opacity=".5"/></svg><span class="lbl">Перспектива</span></button>
-    <button class="btn" id="bWheel" aria-pressed="false" title="Колело за навигация (Shift+W), като в AutoCAD" aria-label="Колело за навигация"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="5"/><circle cx="12" cy="12" r="1.6"/><path d="M5.6 5.6l3 3M18.4 5.6l-3 3M5.6 18.4l3-3M18.4 18.4l-3-3"/></svg><span class="lbl">Колело</span></button>
+    <button class="btn" id="bWheel" aria-pressed="false" title="Колело за навигация (Shift+W), като в AutoCAD" aria-label="Колело за навигация"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="5"/><circle cx="12" cy="12" r="1.6"/><path d="M5.6 5.6l3 3M18.4 5.6l-3 3M5.6 18.4l3-3M18.4 18.4l-3-3"/></svg></button>
     <button class="btn" id="bFrame" title="Центрирай изгледа (F)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M4 9V4h5M15 4h5v5M20 15v5h-5M9 20H4v-5"/><circle cx="12" cy="12" r="3"/></svg><span class="lbl">Центрирай</span></button>
     <div class="spacer"></div>
     <button class="btn" id="bPanel" aria-pressed="true" title="Настройки"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M4 7h10M18 7h2M4 17h4M12 17h8"/><circle cx="16" cy="7" r="2"/><circle cx="10" cy="17" r="2"/></svg><span class="lbl">Настройки</span></button>
@@ -399,6 +399,7 @@ input[type=range] { width: 100%; height: 26px; accent-color: var(--wax); backgro
       <div class="row" id="volRow"><label for="sVolume">Запазване на обема</label><output id="oVolume"></output><input type="range" id="sVolume" min="0" max="0.49" step="0.01"></div>
       <label class="toggle" id="topoRow">Само свързаната повърхност <input type="checkbox" id="tTopo"></label>
       <label class="toggle" id="deepRow" title="Move Infinite Depth: хваща и задната страна">Във всяка дълбочина <input type="checkbox" id="tDeep"></label>
+      <div class="grp" id="kelGrp"><div class="note lab">Еластично</div><div class="chips" id="kelChips"></div></div>
       <div class="grp" id="clothGrp"><div class="note lab">Плат</div><div class="chips" id="clothChips"></div></div>
       <div class="grp" id="zmGrp"><div class="note lab">Действие</div><div class="chips" id="zmChips"></div>
         <p class="note">Натиснете група и влачете нагоре (навън) или надолу (навътре). „Изтегли“ я изважда със стени (Extrude), „Вдлъбни“ прави ръб около нея навътре (Inset), „Скос“ я изважда със скосен ръб (Bevel); двете заедно правят бутони, ребра, прозорци. Работи върху цялата група под пръста.</p></div>
@@ -524,6 +525,7 @@ input[type=range] { width: 100%; height: 26px; accent-color: var(--wax); backgro
       <h2>Подобекти <em>SubTools</em></h2>
       <div id="toolList"></div>
       <div class="two"><button class="btn wide" id="bToolAdd" aria-haspopup="true">+ Нов</button><button class="btn wide" id="bToolDup">Копие</button></div>
+      <div class="two"><button class="btn wide" id="bTpose" title="Transpose Master: всички видими подобекти стават една лека мрежа (най-ниските им нива), за да позирате целия модел наведнъж">Поза на всички</button><button class="btn wide" id="bTposeApply" disabled title="TPose → SubT: позата се пренася върху всеки подобект и нагоре по нивата му">Приложи позата</button></div>
       <button class="btn wide" id="bToolMirror" title="Огледално копие по X: второ око, ухо, ръка">Огледано копие</button>
       <button class="btn wide" id="bZs" title="ZSpheres: скелет от сфери, от който става модел (Adaptive Skin)">Арматура (ZSpheres)</button>
       <div class="two"><button class="btn wide" id="bToolUp" title="Нагоре в списъка">▲ Нагоре</button><button class="btn wide" id="bToolDown" title="Надолу в списъка">▼ Надолу</button></div>
@@ -624,6 +626,14 @@ input[type=range] { width: 100%; height: 26px; accent-color: var(--wax); backgro
       <div id="layerList"></div>
       <div class="two"><button class="btn wide" id="bLayerAdd">+ Нов слой</button><button class="btn wide" id="bLayerBake" title="Слоевете стават част от модела">Приложи всички</button></div>
       <p class="note">Слоят пази промените отделно. <b>●</b> записва в него, отметката го скрива или показва, плъзгачът го засилва (до 200%), отслабва или обръща (под 0). Записва формата и боята.</p>
+    </section>
+
+    <section class="sec" data-tab="model">
+      <h2>Дебела кожа <em>Thick Skin</em></h2>
+      <label class="toggle" title="Thick Skin: четките трупат или дълбаят най-много до зададената дебелина над и под формата, каквато е в момента на включването">Ограничи дебелината <input type="checkbox" id="tThick"></label>
+      <div class="row"><label for="sThick">Дебелина</label><output id="oThick"></output><input type="range" id="sThick" min="0.005" max="0.3" step="0.005"></div>
+      <button class="btn wide" id="bThickBase" title="Сегашната форма става новата основа, от която се мери дебелината">Нова основа от сегашната форма</button>
+      <p class="note">Като слой глина с точна дебелина: колкото и да минавате с която и да е четка, повърхността не се вдига или вдлъбва повече от нея спрямо основата. Ръбът на платото е заоблен. Работи без динамична топология.</p>
     </section>
 
     <section class="sec" data-tab="model">
@@ -766,6 +776,9 @@ const ICON = {
   zmodel: '<path d="M4 15l8 4 8-4-8-4z"/><path d="M8 9l4-6 4 6" opacity=".6"/><path d="M12 3v8" opacity=".6"/>',
   ffd: '<rect x="4" y="4" width="16" height="16" rx="1" stroke-dasharray="2 2"/><path d="M12 4v16M4 12h16" opacity=".45"/><circle cx="4" cy="4" r="1.6"/><circle cx="20" cy="4" r="1.6"/><circle cx="12" cy="12" r="1.8"/><circle cx="4" cy="20" r="1.6"/><circle cx="20" cy="20" r="1.6"/>',
   groom: '<path d="M5 20c1-6 3-10 8-14M9 20c1-5 3-9 8-12M13 20c1-4 3-7 7-9"/>',
+  ktwist: '<circle cx="12" cy="12" r="2"/><path d="M12 4a8 8 0 017.5 5.2"/><path d="M12 20a8 8 0 01-7.5-5.2"/><path d="M20 5v4.5h-4.5"/><path d="M4 19v-4.5h4.5"/>',
+  kscale: '<circle cx="12" cy="12" r="3"/><path d="M12 3v3M12 18v3M3 12h3M18 12h3"/><path d="M12 3l-2 2M12 3l2 2M12 21l-2-2M12 21l2-2M3 12l2-2M3 12l2 2M21 12l-2-2M21 12l-2 2"/>',
+  kpinch: '<path d="M3 12h18"/><path d="M12 5v4M12 19v-4"/><path d="M10 7l2 2 2-2M10 17l2-2 2 2"/><path d="M5 10l-2 2 2 2M19 10l2 2-2 2"/>',
   cloth: '<path d="M4 6c3 2 5-2 8 0s5-2 8 0v12c-3-2-5 2-8 0s-5 2-8 0z"/><path d="M8 9v6M12 8v7M16 9v6" opacity=".5"/>',
   gizmo: '<path d="M12 12h8M12 12V4M12 12l-6 6"/><circle cx="12" cy="12" r="2.2"/><path d="M18 10l2 2-2 2M10 6l2-2 2 2" opacity=".6"/>',
   pose: '<path d="M4 20l7-7"/><path d="M11 13l6-8"/><circle cx="11" cy="13" r="2"/><path d="M14 4h4v4" opacity=".6"/>',
@@ -788,7 +801,7 @@ const BASES = [
   { id: 'draw', name: 'Рисуване (Standard)' }, { id: 'clay', name: 'Глина (Clay)' }, { id: 'claystrips', name: 'Глина на ивици (ClayBuildup)' },
   { id: 'inflate', name: 'Надуване (Inflate)' }, { id: 'flatten', name: 'Изравняване (hPolish)' }, { id: 'scrape', name: 'Подрязване (TrimDynamic)' },
   { id: 'pinch', name: 'Притискане (Pinch)' }, { id: 'crease', name: 'Гънка' }, { id: 'smooth', name: 'Изглаждане (Smooth)' },
-  { id: 'grab', name: 'Хващане (Move)' }, { id: 'snake', name: 'Издърпване (SnakeHook)' }, { id: 'vdm', name: 'Векторна форма (VDM)' }, { id: 'shadowbox', name: 'Силуети (ShadowBox)' }, { id: 'topology', name: 'Топология (Topology)' }, { id: 'pose', name: 'Поза (Pose)' }, { id: 'insert', name: 'Вмъкване на форма (InsertMesh)' }, { id: 'gizmo', name: 'Местене, завъртане, мащаб (Gizmo 3D)' }, { id: 'cloth', name: 'Плат (Cloth brushes)' }, { id: 'groom', name: 'Сресване на косми (Groom)' }, { id: 'ffd', name: 'Клетка (FFD)' }, { id: 'zmodel', name: 'Полигони (ZModeler)' }, { id: 'planar', name: 'Равнина (Planar)' }, { id: 'morph', name: 'Връщане към запомнената форма (Morph)' }, { id: 'layer', name: 'Слой (Layer)' }, { id: 'slice', name: 'Разделяне на групи (SliceCurve)' }, { id: 'tube', name: 'Тръба по крива (CurveTube)' }, { id: 'clip', name: 'Отсичане (ClipCurve)' }, { id: 'cut', name: 'Отрязване (TrimCurve)' }, { id: 'mask', name: 'Маска' }, { id: 'paint', name: 'Боя' },
+  { id: 'grab', name: 'Хващане (Move)' }, { id: 'kelvin', name: 'Еластично усукване, раздуване, прищипване (Kelvinlets)' }, { id: 'snake', name: 'Издърпване (SnakeHook)' }, { id: 'vdm', name: 'Векторна форма (VDM)' }, { id: 'shadowbox', name: 'Силуети (ShadowBox)' }, { id: 'topology', name: 'Топология (Topology)' }, { id: 'pose', name: 'Поза (Pose)' }, { id: 'insert', name: 'Вмъкване на форма (InsertMesh)' }, { id: 'gizmo', name: 'Местене, завъртане, мащаб (Gizmo 3D)' }, { id: 'cloth', name: 'Плат (Cloth brushes)' }, { id: 'groom', name: 'Сресване на косми (Groom)' }, { id: 'ffd', name: 'Клетка (FFD)' }, { id: 'zmodel', name: 'Полигони (ZModeler)' }, { id: 'planar', name: 'Равнина (Planar)' }, { id: 'morph', name: 'Връщане към запомнената форма (Morph)' }, { id: 'layer', name: 'Слой (Layer)' }, { id: 'slice', name: 'Разделяне на групи (SliceCurve)' }, { id: 'tube', name: 'Тръба по крива (CurveTube)' }, { id: 'clip', name: 'Отсичане (ClipCurve)' }, { id: 'cut', name: 'Отрязване (TrimCurve)' }, { id: 'mask', name: 'Маска' }, { id: 'paint', name: 'Боя' },
 ];
 // a complete brush; presets only list what differs
 const BRUSH_DEFAULTS = {
@@ -798,6 +811,7 @@ const BRUSH_DEFAULTS = {
   group: false,        // only the polygroup under the brush (ZBrush: Auto Masking > Mask By Polygroups)
   gz: 'move',          // Gizmo: move | rotate | scale
   cloth: 'pinch',      // cloth brushes: pinch | slide | inflate
+  kel: 'twist',        // elastic brushes (kelvin.rs): twist | scale | pinch
   ffdN: 3,             // FFD: control points along each side
   ffdMode: 'cage',     // FFD: cage (N×N×N) | curve (ZBrush: Bend Curve, N points along the deform axis)
   zm: 'extrude',       // ZModeler: extrude | inset (the group under the press)
@@ -819,6 +833,9 @@ const PRESETS = [
   { id: 'grab', name: 'Хващане', short: 'Хвани', key: 'g', base: 'grab', radius: 90, strength: 1, curve: 'move', front: false, zb: 'Move' },
   { id: 'elastic', name: 'Еластично хващане', short: 'Еласт.', key: 'e', base: 'grab', icon: 'elastic', grab: 'elastic', radius: 90, strength: 1, front: false, zb: 'Move Elastic' },
   { id: 'grabtopo', name: 'Хващане на част', short: 'Част', key: 'o', base: 'grab', icon: 'grabtopo', topo: true, radius: 90, strength: 1, curve: 'move', front: false, zb: 'Move Topological' },
+  { id: 'ktwist', name: 'Еластично усукване', short: 'Усучи', base: 'kelvin', icon: 'ktwist', kel: 'twist', radius: 80, strength: 1, front: false, zb: 'Elastic Twist (Kelvinlet)' },
+  { id: 'kscale', name: 'Еластично раздуване', short: 'Раздуй', base: 'kelvin', icon: 'kscale', kel: 'scale', radius: 80, strength: 1, front: false, zb: 'Elastic Scale (Kelvinlet)' },
+  { id: 'kpinch', name: 'Еластично прищипване', short: 'Щипни', base: 'kelvin', icon: 'kpinch', kel: 'pinch', radius: 80, strength: 1, front: false, zb: 'Elastic Pinch (Kelvinlet)' },
   { id: 'snake', name: 'Издърпване', short: 'Дърпай', key: 'h', base: 'snake', radius: 45, strength: 0.8, front: false, zb: 'SnakeHook' },
   { id: 'snakecurve', name: 'Издърпване по крива', short: 'Змия', base: 'snake', icon: 'snakecurve', stroke: 'curve', radius: 40, strength: 0.9, front: false, zb: 'Snake Curve (CurveSnakeHook)' },
   { id: 'vdm', name: 'Векторна форма (VDM)', short: 'VDM', base: 'vdm', radius: 40, strength: 1, front: false, zb: 'VDM brush (Vector Displacement Mesh)' },
@@ -910,6 +927,7 @@ const S = {
   arrOffX: 0, arrOffY: 0, arrOffZ: 0, arrRotX: 0, arrRotY: 0, arrRotZ: 0, arrSclX: 1, arrSclY: 1, arrSclZ: 1, arrLive: true,
   pcShape: 'sphere', pcCount: 12, pcSize: 0.04,   // shapes along a curve
   pattern: 'line',     // the last pattern chosen in „Шарки“
+  thick: 0.05,         // Thick Skin: how far above or below the base, as a share of the model's radius
   wheel: true,         // the navigation wheel (AutoCAD: SteeringWheels) is shown
   wheelPos: null,      // where it was dragged: { x, y } from the view's top left, or null for the corner
   panels: {},          // the floating panels: { id: { x, y, pin } } where they were dragged, and pinned open
@@ -920,7 +938,7 @@ try { savedSettings = JSON.parse(localStorage.getItem('glina.settings') || 'null
 if (savedSettings) for (const k of Object.keys(savedSettings)) if (k in S && k !== 'penSeen' && k !== 'brushes') S[k] = savedSettings[k];
 // one brush field from settings or a file: right type and range, or undefined
 const ENUMS = { tip: ['round', 'square'], alphaRot: ['fixed', 'stroke', 'random'], stroke: ['dots', 'dragrect', 'dragdot', 'spray', 'line', 'curve'], grab: ['soft', 'elastic'],
-  imm: ['sphere', 'cube', 'cylinder', 'cone', 'torus', 'file'], gz: ['move', 'rotate', 'scale'], cloth: ['pinch', 'slide', 'inflate', 'hook', 'twist'], zm: ['extrude', 'inset', 'bevel'], ffdMode: ['cage', 'curve'] };
+  imm: ['sphere', 'cube', 'cylinder', 'cone', 'torus', 'file'], gz: ['move', 'rotate', 'scale'], cloth: ['pinch', 'slide', 'inflate', 'hook', 'twist'], kel: ['twist', 'scale', 'pinch'], zm: ['extrude', 'inset', 'bevel'], ffdMode: ['cage', 'curve'] };
 const RANGES = { radius: [4, 320], strength: [0.01, 1], focal: [-1, 1], alphaMid: [0, 1], alphaAngle: [0, 360], spacing: [0.03, 0.6], mod: [-1, 1], volume: [0, 0.49], taper: [0, 1], ffdN: [2, 5] };
 function brushField(k, v) {
   if (k === 'curve') return Array.isArray(v) && v.length >= 2 && v.length <= 32 && v.every((p) => Array.isArray(p) && p.length === 2 && p.every((x) => Number.isFinite(x) && x >= 0 && x <= 1)) ? v.map((p) => p.slice()) : undefined;
@@ -3869,6 +3887,24 @@ function beginStroke(e, x, y, b, sign) {
     if (!hit) { stroke = null; return false; }
     stroke.anchor = { x, y, p: readPressure(e), hit: { point: hit.point.clone(), normal: hit.normal.clone() } };
   }
+  if (tool === 'kelvin') {
+    // elastic twist / scale / pinch (kelvin.rs): everything within reach keeps where it started, and
+    // every move sets it anew from the whole drag
+    const hit = pick(x, y);
+    if (!hit || !coreSync || !coreSync.kelvin_raw) { if (hit) toast('Тази четка работи с Rust ядрото, а то не е достъпно тук.'); stroke = null; return false; }
+    const r = radiusPxFor(1, b) * worldPerPx(hit.point), eps = r * KEL_EPS, reach = eps * KEL_REACH;
+    const seen = new Set(), all = [];
+    for (const m of [IDENT, ...SYM.map((t) => t.m)]) {
+      const c = symV(m, hit.point), set = inGroup(b, c, reach, () => { const cnt = gather(c.x, c.y, c.z, reach, 0, 0, 0, false); return { idx: mesh.gIdx.slice(0, cnt), fall: mesh.gFall.slice(0, cnt) }; });
+      for (const v of set.idx) if (!seen.has(v)) { seen.add(v); all.push(v); }
+    }
+    const P = mesh.pos, MK = mesh.mask, orig = new Float32Array(all.length * 3), free = new Float32Array(all.length);
+    all.forEach((v, j) => { orig[j * 3] = P[v * 3]; orig[j * 3 + 1] = P[v * 3 + 1]; orig[j * 3 + 2] = P[v * 3 + 2]; free[j] = 1 - MK[v]; });
+    stroke.kel = { kind: b.kel || 'twist', c: hit.point.clone(), n: hit.normal.clone(), r, eps, reach, idx: Uint32Array.from(all), orig, free, x0: x, y0: y, t: null, strength: b.strength, nu: b.volume };
+    stroke.queue.length = 0;
+    placeRing(hit.point, hit.normal, r);
+    return true;
+  }
   if (tool === 'pose') {
     const hit = pick(x, y);
     if (!hit) { stroke = null; return false; }
@@ -3954,6 +3990,33 @@ function revertStroke() {
 function processStroke() {
   if (!stroke) return;
   const q = stroke.queue; if (!q.length) return;
+  if (stroke.tool === 'kelvin') {
+    const s = q[q.length - 1]; q.length = 0;
+    const g = stroke.kel, dx = s.x - g.x0, dy = s.y - g.y0, st = g.strength, X = coreSync;
+    // the stroke's direction in the surface: the drag, laid on the plane across the normal
+    const right = new THREE.Vector3(1, 0, 0).applyQuaternion(cam.q), up = new THREE.Vector3(0, 1, 0).applyQuaternion(cam.q);
+    const lay = (v) => v.addScaledVector(g.n, -v.dot(g.n));
+    if (!g.t || Math.hypot(dx, dy) > 8) {
+      const d = Math.hypot(dx, dy) > 8 ? right.clone().multiplyScalar(dx).addScaledVector(up, -dy) : right.clone();
+      lay(d); if (d.lengthSq() < 1e-12) lay(d.copy(up)); g.t = d.normalize();
+    }
+    const amount = g.kind === 'twist' ? -dx * 0.012 * st : g.kind === 'scale' ? (dx - dy) * 0.01 * st : Math.hypot(dx, dy) * 0.008 * st;
+    const Ms = [IDENT, ...SYM.map((t) => t.m)], cp = new Float64Array(Ms.length * 13);
+    Ms.forEach((m, k) => {
+      const n = symV(m, g.n), t = symV(m, g.t);
+      // (the swelling starts under the skin, so the surface rises as over a growing ball instead of
+      // only sliding sideways in its own plane)
+      const c = symV(m, g.kind === 'scale' ? g.c.clone().addScaledVector(g.n, -g.eps * 0.75) : g.c);
+      const det = m[0] * (m[4] * m[8] - m[5] * m[7]) - m[1] * (m[3] * m[8] - m[5] * m[6]) + m[2] * (m[3] * m[7] - m[4] * m[6]);
+      cp.set([c.x, c.y, c.z, n.x, n.y, n.z, t.x, t.y, t.z, g.eps, g.nu, g.kind === 'twist' && det < 0 ? -amount : amount, g.reach], k * 13);   // a mirror turns the other way
+    });
+    const N = g.idx.length, at = coreBlock(X, [['orig', g.orig], ['free', g.free], ['cp', cp], ['out', new Float32Array(N * 3)]]);
+    if (X.kelvin_raw(g.kind === 'twist' ? 0 : g.kind === 'scale' ? 1 : 2, N, at.orig, at.free, Ms.length, at.cp, at.out) !== 0) return;
+    const out = new Float32Array(X.memory.buffer, at.out, N * 3), P = mesh.pos;
+    for (let j = 0; j < N; j++) { const i = g.idx[j]; touchVert(i); P[i * 3] = out[j * 3]; P[i * 3 + 1] = out[j * 3 + 1]; P[i * 3 + 2] = out[j * 3 + 2]; }
+    frame_.positions = true;
+    return;
+  }
   if (stroke.tool === 'pose') {
     // turn each part about its joint so that the grabbed point points at the pen
     const s = q[q.length - 1]; q.length = 0;
@@ -4297,6 +4360,7 @@ function flushFrame() {
   if (mesh.dyn) { flushDyn(); return; }
   if (!frame_.count) return;
   const m = mesh;
+  if (frame_.positions && thickOf(m)) thickClamp(m.frList, frame_.count);
   if (frame_.positions) {
     m.updateNormals(m.frList, frame_.count);          // neighbours' normals change as well
     uploadVerts(['position', 'normal'], m.nTouched, m.nTouched.length);
@@ -4857,6 +4921,7 @@ function pickOther(x, y) {
 }
 function renderTools() {
   const box = $('toolList'); if (!box) return;
+  syncTposeUI();
   box.textContent = '';
   TOOLS.forEach((t, k) => {
     const row = document.createElement('div'); row.className = 'subtool' + (k === curTool ? ' on' : '');
@@ -4930,6 +4995,84 @@ function mergeDown() {
   for (let i = 0; i < b.grp.length; i++) r.grp[a.pos.length / 3 + i] = b.grp[i] + off;
   toolsStep(() => { TOOLS.splice(curTool, 2, makeTool(new SculptMesh(r.pos, r.idx, r.col, r.mask, 0, r.grp), A.name)); });
   toast('Двата подобекта са един (без да се сливат повърхностите; за това е „Булево“ или „Преизгради мрежата“).');
+}
+/* ---------- Transpose Master (ZBrush: TPoseMesh, TPose → SubT) ----------
+   „Поза на всички“ joins the lowest level of every visible subtool into one light mesh (a group for each
+   subtool) and hides the originals. Pose it with any brush or the Gizmo; „Приложи позата“ gives every
+   subtool its part of the new shape as its lowest level and rebuilds its higher levels on top (their
+   detail is kept in local frames, so it turns with the pose). Each of the two is one undo step. */
+var TP = null;   // { proxy, items: [{ tool, n, idx, state, cur, live }] }  (var: renderTools asks before this line has run)
+function tposeOn() { return TP && TOOLS.includes(TP.proxy) ? TP : (TP = null); }
+function syncTposeUI() {
+  const on = !!tposeOn();
+  $('bTpose').textContent = on ? 'Откажи позата' : 'Поза на всички';
+  $('bTposeApply').disabled = !on;
+}
+function tposeStart() {
+  if (tposeOn()) { const T = TP; TP = null; toolsStep(() => { TOOLS = TOOLS.filter((t) => t !== T.proxy); for (const it of T.items) it.tool.visible = true; curTool = Math.max(0, TOOLS.indexOf(T.items[0].tool)); }); syncTposeUI(); toast('Позата е отказана: подобектите са каквито бяха.'); return; }
+  if (stroke || working || mrPending) return;
+  stashActive();
+  const src = TOOLS.filter((t) => t.visible && !t.zsOpen);
+  if (src.length < 2) { toast('Трябват поне два видими подобекта. С един ползвайте направо четката „Поза“ или Gizmo.'); return; }
+  busy(true);
+  setTimeout(() => {
+    try {
+      const items = [];
+      let nv = 0, nf = 0;
+      for (const t of src) {
+        const a = toolArrays(t);
+        let state = t.MR, live = { pos: a.pos, col: a.col, mask: a.mask, grp: a.grp, idx: null };
+        const cur = state ? state.cur : 0;
+        while (state && state.cur > 0) ({ state, live } = mrDownOnce(state, live));
+        const idx = Uint32Array.from(state ? state.levels[0].idx : a.idx), n = state ? state.levels[0].n : a.pos.length / 3;
+        const keep = { pos: Float32Array.from(live.pos.subarray(0, n * 3)), col: Float32Array.from(live.col.subarray(0, n * 3)), mask: Float32Array.from(live.mask.subarray(0, n)), grp: live.grp ? Float32Array.from(live.grp.subarray(0, n)) : new Float32Array(n) };
+        items.push({ tool: t, n, idx, state, cur, live: keep });
+        nv += n; nf += idx.length / 3;
+      }
+      const pos = new Float32Array(nv * 3), idx = new Uint32Array(nf * 3), col = new Float32Array(nv * 3), mask = new Float32Array(nv), grp = new Float32Array(nv);
+      let v0 = 0, f0 = 0;
+      items.forEach((it, k) => {
+        pos.set(it.live.pos, v0 * 3); col.set(it.live.col, v0 * 3); mask.set(it.live.mask, v0); grp.fill(k + 1, v0, v0 + it.n);
+        for (let q = 0; q < it.idx.length; q++) idx[f0 * 3 + q] = it.idx[q] + v0;
+        v0 += it.n; f0 += it.idx.length / 3;
+      });
+      const proxy = makeTool(new SculptMesh(pos, idx, col, mask, 0, grp), 'Поза на всички');
+      TP = { proxy, items };
+      toolsStep(() => { for (const t of src) t.visible = false; TOOLS.push(proxy); curTool = TOOLS.length - 1; });
+      syncTposeUI();
+      toast(`Всички ${src.length} подобекта са една лека мрежа (${fmt(nf)} триъгълника), всеки е група. Позирайте с „Поза“, „Хващане“ или Gizmo, после „Приложи позата“.`);
+    } catch (e) { TP = null; toast('Не успях: ' + e.message); }
+    busy(false);
+  }, 30);
+}
+function tposeApply() {
+  const T = tposeOn(); if (!T) { syncTposeUI(); return; }
+  if (stroke || working || mrPending) return;
+  stashActive();
+  const a = toolArrays(T.proxy), total = T.items.reduce((q, it) => q + it.n, 0);
+  if (a.pos.length / 3 !== total) { toast('Мрежата на позата е с друг брой точки (динамична топология, преизграждане или разделяне я променят): позата не може да се пренесе. Върнете с Ctrl+Z или „Откажи позата“.'); return; }
+  busy(true);
+  setTimeout(() => {
+    try {
+      const repl = new Map();
+      let v0 = 0;
+      for (const it of T.items) {
+        const pos0 = Float32Array.from(a.pos.subarray(v0 * 3, (v0 + it.n) * 3)); v0 += it.n;
+        let m, state = it.state;
+        if (state) {
+          let live = { pos: pos0, idx: null, col: it.live.col, mask: it.live.mask, grp: it.live.grp };
+          while (state.cur < it.cur) ({ state, live } = mrUpOnce(state, live));
+          m = new SculptMesh(Float32Array.from(live.pos), Uint32Array.from(state.levels[state.cur].idx), Float32Array.from(live.col), Float32Array.from(live.mask), state.cur, live.grp ? Float32Array.from(live.grp) : new Float32Array(live.pos.length / 3));
+        } else m = new SculptMesh(pos0, Uint32Array.from(it.idx), Float32Array.from(it.live.col), Float32Array.from(it.live.mask), 0, Float32Array.from(it.live.grp));
+        repl.set(it.tool, { ...it.tool, id: ++toolSeq, mesh: m, MR: state || null, LAYERS: [], recLayer: -1, visible: true });
+      }
+      TP = null;
+      toolsStep(() => { TOOLS = TOOLS.filter((t) => t !== T.proxy).map((t) => repl.get(t) || t); curTool = Math.max(0, TOOLS.indexOf(repl.get(T.items[0].tool))); });
+      syncTposeUI(); frameView();
+      toast(`Позата е пренесена върху ${T.items.length} подобекта, с нивата им (Ctrl+Z я връща).`);
+    } catch (e) { toast('Не успях: ' + e.message); }
+    busy(false);
+  }, 30);
 }
 // every polygroup becomes its own subtool (ZBrush: Split > Groups Split)
 function splitGroups() {
@@ -6881,7 +7024,38 @@ function switchMorph() {
   toast('Формите са разменени.');
 }
 function dropMorph() { mesh.morph = null; recallStep = -1; syncMorphUI(); renderHistory(); toast('Запомнената форма е забравена.'); }
+/* ---------- Thick Skin (ZBrush 2021.5): clay of a set thickness ----------
+   When it is switched on the shape and its normals are kept as the base. After every brush the height
+   of each moved point over the base (along the base's normal) is held within ± the thickness, with a
+   rounded shoulder (the last tenth saturates as tanh) so the plateau has no stair at its edge; the
+   sideways part of the move stays as the brush made it. */
+function thickOf(m) { return m && m.thick && !m.dyn && m.thick.n === m.n ? m.thick : null; }
+function thickClamp(list, count) {
+  const m = mesh, T = thickOf(m); if (!T) return;
+  const P = m.pos, B = T.pos, N = T.nrm, lim = T.t, k = 0.1, flat = (1 - k) * lim, soft = k * lim;
+  for (let q = 0; q < count; q++) {
+    const i = list[q], o = i * 3;
+    const dx = P[o] - B[o], dy = P[o + 1] - B[o + 1], dz = P[o + 2] - B[o + 2];
+    const h = dx * N[o] + dy * N[o + 1] + dz * N[o + 2], a = Math.abs(h);
+    if (a <= flat) continue;
+    const h2 = Math.sign(h) * (flat + soft * Math.tanh((a - flat) / soft)), d = h2 - h;
+    P[o] += d * N[o]; P[o + 1] += d * N[o + 1]; P[o + 2] += d * N[o + 2];
+  }
+}
+function setThick(on) {
+  const m = mesh;
+  if (on && m.dyn) { toast('Дебелата кожа работи без динамична топология: изключете я (D).'); on = false; }
+  if (on) { const { r } = m.bounds(); m.thick = { pos: m.pos.slice(0, m.n * 3), nrm: m.nrm.slice(0, m.n * 3), n: m.n, t: S.thick * r, r }; toast(`Дебела кожа: четките трупат и дълбаят най-много ${Math.round(S.thick * 100)}% от размера на модела спрямо сегашната форма.`); }
+  else m.thick = null;
+  syncThickUI();
+}
+function syncThickUI() {
+  const T = thickOf(mesh);
+  if (mesh && mesh.thick && !T) mesh.thick = null;   // the mesh changed under it
+  $('tThick').checked = !!T; $('bThickBase').disabled = !T;
+}
 function syncMorphUI() {
+  syncThickUI();
   const on = !!morphOf(mesh);
   if ($('bMorphSwitch')) { $('bMorphSwitch').disabled = !on; $('bMorphDrop').disabled = !on; setPressed('bRecall', recallPick); }
   if (!on) recallStep = -1;
@@ -8993,7 +9167,7 @@ const rail = $('rail');
 const RAIL_DEFAULT = ['draw', 'clay', 'claybuild', 'dam', 'inflate', 'pinch', 'flatten', 'smooth', 'grab', 'snake', 'mask', 'paint'];
 const PAL_CATS = [
   ['Скулптиране', ['draw', 'clay', 'claybuild', 'dam', 'inflate', 'pinch', 'crease', 'flatten', 'trim', 'smooth', 'planar', 'layer', 'magnify', 'blob', 'dimple', 'vdm', 'morph']],
-  ['Местене и издърпване', ['grab', 'elastic', 'grabtopo', 'movedeep', 'snake', 'snakecurve', 'pose', 'gizmo']],
+  ['Местене и издърпване', ['grab', 'elastic', 'grabtopo', 'movedeep', 'ktwist', 'kscale', 'kpinch', 'snake', 'snakecurve', 'pose', 'gizmo']],
   ['По линия', ['curvedam', 'tube', 'clip', 'cut', 'slice']],
   ['Плат и косми', ['clothpinch', 'clothslide', 'clothhook', 'clothtwist', 'clothinflate', 'groom']],
   ['Моделиране', ['zmodel', 'ffd', 'imm', 'topology', 'shadowbox']],
@@ -9549,6 +9723,7 @@ brushSyncs.push(
   brushChips('zmChips', [{ id: 'extrude', name: 'Изтегли (Extrude)' }, { id: 'inset', name: 'Вдлъбни ръба (Inset)' }, { id: 'bevel', name: 'Скос (Bevel)' }], 'zm'),
   brushChips('ffdChips', [2, 3, 4, 5].map((k) => ({ id: k, name: k + '×' + k + '×' + k })), 'ffdN', () => { lattice = null; drawOverlay(); }),
   brushChips('ffdModeChips', [{ id: 'cage', name: 'Клетка (FFD)' }, { id: 'curve', name: 'Крива (Bend Curve)' }], 'ffdMode', () => { lattice = null; drawOverlay(); }),
+  brushChips('kelChips', [{ id: 'twist', name: 'Усукване (Twist)' }, { id: 'scale', name: 'Раздуване ↔ свиване (Scale)' }, { id: 'pinch', name: 'Прищипване (Pinch)' }], 'kel'),
   brushChips('clothChips', [{ id: 'pinch', name: 'Събира (ClothPinch)' }, { id: 'slide', name: 'Бута по щриха (ClothSlide)' }, { id: 'inflate', name: 'Надува (ClothInflate)' }, { id: 'hook', name: 'Кука: тегли след писалката (ClothHook)' }, { id: 'twist', name: 'Усуква (ClothTwister)' }], 'cloth'),
   brushChips('gzChips', [{ id: 'move', name: 'Местене' }, { id: 'rotate', name: 'Завъртане' }, { id: 'scale', name: 'Мащаб' }], 'gz', () => { gizmoCache = null; syncGizmoBar(); drawOverlay(); }),
   brushChips('immChips', IMM.map((x) => ({ id: x.id, name: x.name, title: x.id === 'file' ? 'Своя форма от файл .obj или .stl (за тази сесия)' : '' })), 'imm', () => { if (brush().imm === 'file') $('immIn').click(); }),
@@ -9575,6 +9750,7 @@ const BRUSH_ABOUT = {
   inflate: 'Надува навън по нормалите (Alt — свива).', pinch: 'Събира повърхността към щриха: изостря ръбове.', crease: 'Гънка с притискане.',
   flatten: 'Изравнява с квадратен връх.', trim: 'Реже изпъкналото до равнината под четката: равни площи и ръбове.', smooth: 'Изглажда (и Shift с всяка четка).',
   grab: 'Хваща и мести зоната под четката.', elastic: 'Мести като истинска глина: страните се прибират, обемът се пази.', grabtopo: 'Мести само свързаното: един пръст, без съседния.',
+  ktwist: 'Натиснете и влачете наляво или надясно: глината се усуква около точката, като истинска, без да губи обем.', kscale: 'Натиснете и влачете нагоре (раздува) или надолу (свива): глината наоколо се разстъпва еластично.', kpinch: 'Натиснете и влачете: глината се разтяга по посоката на влаченето и се прибира напречно на нея.',
   snake: 'Изтегля рога и пипала след писалката.', snakecurve: 'Начертайте линия от модела навън: повърхността се издърпва по нея.',
   vdm: 'Щракване слага цяла форма (и с надвиснали части); влачене задава размера и посоката.', dimple: 'Натиснете: кръгла трапчинка.',
   pose: 'Сгъва като става: натиснете ставата и дърпайте.', planar: 'Изравнява до равнината, в която е започнал щрихът.', morph: 'Връща към запомнената форма, където минете.',
@@ -9591,7 +9767,7 @@ const BASE_ABOUT = { draw: 'draw', clay: 'clay', claystrips: 'claybuild', inflat
 // per kind of brush: which of the common settings it has
 const NO_SIZE = new Set(['gizmo', 'ffd', 'zmodel', 'topology', 'shadowbox', 'clip', 'cut', 'slice']);
 const NO_STRENGTH = new Set([...NO_SIZE, 'insert', 'tube']);
-const NO_INVERT = new Set([...NO_STRENGTH, 'grab', 'snake', 'pose', 'groom', 'smooth', 'paint', 'cloth']);
+const NO_INVERT = new Set([...NO_STRENGTH, 'grab', 'kelvin', 'snake', 'pose', 'groom', 'smooth', 'paint', 'cloth']);
 function syncBrushBox(b) {
   const base = b.base;
   $('bbIcon').innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">${ICON[b.icon] || ICON[b.id] || ICON[base] || ICON.draw}</svg>`;
@@ -9615,7 +9791,7 @@ function syncBrushBox(b) {
 function syncBrushUI() {
   syncRadius(); syncStrength();
   const b = brush(), base = b.base;
-  const moves = base === 'grab' || base === 'snake' || base === 'vdm' || base === 'shadowbox' || base === 'topology' || base === 'pose' || base === 'clip' || base === 'cut' || base === 'slice' || base === 'insert' || base === 'tube' || base === 'gizmo' || base === 'ffd' || base === 'zmodel';
+  const moves = base === 'grab' || base === 'kelvin' || base === 'snake' || base === 'vdm' || base === 'shadowbox' || base === 'topology' || base === 'pose' || base === 'clip' || base === 'cut' || base === 'slice' || base === 'insert' || base === 'tube' || base === 'gizmo' || base === 'ffd' || base === 'zmodel';
   $('bName').value = b.name; $('bName').disabled = b.builtin;
   $('bName').title = b.builtin ? 'Готовите четки не се преименуват; „Нова от тази“ прави ваше копие' : '';
   $('bBase').value = base;
@@ -9625,8 +9801,9 @@ function syncBrushUI() {
   $('modRow').hidden = base !== 'draw';
   $('topoRow').hidden = $('deepRow').hidden = base !== 'grab';
   $('grabGrp').hidden = base !== 'grab';
-  $('volRow').hidden = !(base === 'grab' && b.grab === 'elastic');
-  $('curveGrp').hidden = (base === 'grab' && b.grab === 'elastic') || base === 'pose' || base === 'insert' || base === 'tube' || base === 'gizmo' || base === 'ffd' || base === 'zmodel' || base === 'groom';
+  $('volRow').hidden = !((base === 'grab' && b.grab === 'elastic') || (base === 'kelvin' && b.kel === 'pinch'));
+  $('kelGrp').hidden = base !== 'kelvin';
+  $('curveGrp').hidden = (base === 'grab' && b.grab === 'elastic') || base === 'kelvin' || base === 'pose' || base === 'insert' || base === 'tube' || base === 'gizmo' || base === 'ffd' || base === 'zmodel' || base === 'groom';
   $('immGrp').hidden = base !== 'insert';
   $('gzGrp').hidden = base !== 'gizmo';
   $('clothGrp').hidden = base !== 'cloth';
@@ -9891,6 +10068,11 @@ $('tSharpRemesh').addEventListener('change', () => { S.sharpRemesh = $('tSharpRe
 $('bPersp').onclick = () => setOrtho(!S.ortho);
 $('bMirror').onclick = mirrorFlip;
 $('bMorphStore').onclick = storeMorph;
+$('bTpose').onclick = tposeStart;
+$('bTposeApply').onclick = tposeApply;
+$('tThick').onchange = () => setThick($('tThick').checked);
+$('bThickBase').onclick = () => setThick(true);
+bindRange('sThick', 'oThick', () => S.thick, (v) => { S.thick = v; const T = thickOf(mesh); if (T) T.t = v * T.r; }, pct);
 $('bbMorphStore').onclick = $('bbMorphStore2').onclick = () => { storeMorph(); syncBrushUI(); };
 $('bbMorphSwitch').onclick = () => { switchMorph(); syncBrushUI(); };
 $('bQuad').onclick = quadRemesh;
@@ -10216,5 +10398,5 @@ loadAutosave().then((d) => {
     toast('Продължавате последния модел. „Нов“ започва отначало.');
   }
 });
-window.__glina = { get rustMR() { return rustMR; }, set rustMR(v) { rustMR = v; }, mrEncode, mrDecode, mrLower, mrFrames, setWheel, camHist, camHistGo, get wheelOp() { return wheelOp; }, frameView, arrayMatrices, arrayPreview, get arrPrev() { return arrPrev; }, resetPanels, applySecLayout, get rustDyn() { return rustDyn; }, set rustDyn(v) { rustDyn = v; }, get mrPending() { return mrPending; }, openPatterns, closePatterns, selectPattern, patternAlongCurve, armPatternCurve, beginStroke, processStroke, endStroke, get rustBrushes() { return rustBrushes; }, set rustBrushes(v) { rustBrushes = v; }, openBrushPanel, closeBrushPanel, openPalette, closePalette, setDrawerTab, railIds, microPoly, topoAdd, topoBuild, topoMake, get topoLines() { return topoLines; }, set topoLines(v) { topoLines = v; }, shadowAdd, shadowMake, get shadows() { return shadows; }, set shadows(v) { shadows = v; }, earClip, shadowPrism, viewAxis, bendBuild, vdmCapture, vdmReset, get vdmField() { return vdmField; }, set vdmField(v) { vdmField = v; }, vdmDefault, snakeAlongCurve, quadRemesh, quadRemeshArrays, surfaceStats, get coreSync() { return coreSync; }, set subdivCore(v) { subdivCore = v; }, polyTris, studioPNG, setCustomMatcap, dropCustomMatcap, get customMatcap() { return customMatcap; }, matcapTextures, material, get gmesh() { return gmesh; }, renderer, makeCube, polishFeatures, sliceGroups, makeGear, makeTube, makeRing, revolve, meshToAxis, straighten, transformTools, gizmoTools, eigenSym3, subdivideArrays, slimeBridge, nanoMesh, maskIslands, texturedFiles, zipMany, levelArrays, zmBuild, quadsOf, exportSTL, renderPrintInfo, decimate, decimateArrays, printScale, projectBytes, saveProject, openProject, packValue, unpackValue, panelLoops, balloonTool, shellFrom, refOpen, refState, refColourAt, refLayout, smoothViewUpdate, get smoothViewObj() { return smoothViewObj; }, recallFrom, makeFibers, fiberArrays, projectAll, storeMorph, switchMorph, dropMorph, morphOf, fillColour, cavityColour, zsOpen, zsClose, zsSkin, get zs() { return zs; }, xtract, latticeLive, latticeScreen, get lattice() { return lattice; }, surfaceContrast, snapshotPNG, maskHidden, startCloth, stopCloth, get clothRun() { return clothRun; }, hideSelection, hideGroup, showAll, invertVisibility, hideMasked, deleteHidden, hiddenCount, setHiddenUndoable, deform, makeArray, arrayArrays, setGizmoMode, get gizmoPin() { return gizmoPin; }, set gizmoPin(v) { gizmoPin = v; }, exportOBJ, scheduleAutosave, get TOOLS() { return TOOLS; }, get curTool() { return curTool; }, activateTool, addTool, appendPrimitive, duplicateTool, deleteTool, moveTool, mergeDown, splitGroups, extractTool, extractShell, makeBoolean, newScene, gizmoHandle, gizmoScreen, get solo() { return solo; }, set solo(v) { solo = v; renderOthers(); }, toolArrays, voxelCombine, voxelRemesh, coreStart, get working() { return working; }, sliceByPlane, mirrorWeldArrays, mirrorWeld, mirrorFlip, applyNoise, snapView, setOrtho, historyJump, polyframe, get cam() { return cam; }, trimByPlane, applyCut, tubeArrays, immShape, hasOpenEdges, get curve() { return liveCurve(); }, dropCurve, get immFile() { return immFile; }, set immFile(v) { immFile = v; }, get LAYERS() { return LAYERS; }, get recLayer() { return recLayer; }, addLayer, deleteLayer, toggleLayer, recordLayer, setLayerStrength, bakeLayers, groupOp, maskAllBut, groupNear, get mesh() { return mesh; }, get stroke() { return stroke; }, get gesture() { return gesture; }, get nav() { return nav; }, get MR() { return MR; }, syncSym, get SYM() { return SYM; }, setLevel, divide, deleteLower, deleteHigher, camera, orbit, pick, selectTool, brush, brushById, maskOp, remesh, undo, redo, subdivide, setDyntopo, floodDetail, S, get undoStack() { return undoStack; } };
+window.__glina = { tposeStart, tposeApply, get TP() { return TP; }, setThick, thickOf, get rustMR() { return rustMR; }, set rustMR(v) { rustMR = v; }, mrEncode, mrDecode, mrLower, mrFrames, setWheel, camHist, camHistGo, get wheelOp() { return wheelOp; }, frameView, arrayMatrices, arrayPreview, get arrPrev() { return arrPrev; }, resetPanels, applySecLayout, get rustDyn() { return rustDyn; }, set rustDyn(v) { rustDyn = v; }, get mrPending() { return mrPending; }, openPatterns, closePatterns, selectPattern, patternAlongCurve, armPatternCurve, beginStroke, processStroke, endStroke, get rustBrushes() { return rustBrushes; }, set rustBrushes(v) { rustBrushes = v; }, openBrushPanel, closeBrushPanel, openPalette, closePalette, setDrawerTab, railIds, microPoly, topoAdd, topoBuild, topoMake, get topoLines() { return topoLines; }, set topoLines(v) { topoLines = v; }, shadowAdd, shadowMake, get shadows() { return shadows; }, set shadows(v) { shadows = v; }, earClip, shadowPrism, viewAxis, bendBuild, vdmCapture, vdmReset, get vdmField() { return vdmField; }, set vdmField(v) { vdmField = v; }, vdmDefault, snakeAlongCurve, quadRemesh, quadRemeshArrays, surfaceStats, get coreSync() { return coreSync; }, set subdivCore(v) { subdivCore = v; }, polyTris, studioPNG, setCustomMatcap, dropCustomMatcap, get customMatcap() { return customMatcap; }, matcapTextures, material, get gmesh() { return gmesh; }, renderer, makeCube, polishFeatures, sliceGroups, makeGear, makeTube, makeRing, revolve, meshToAxis, straighten, transformTools, gizmoTools, eigenSym3, subdivideArrays, slimeBridge, nanoMesh, maskIslands, texturedFiles, zipMany, levelArrays, zmBuild, quadsOf, exportSTL, renderPrintInfo, decimate, decimateArrays, printScale, projectBytes, saveProject, openProject, packValue, unpackValue, panelLoops, balloonTool, shellFrom, refOpen, refState, refColourAt, refLayout, smoothViewUpdate, get smoothViewObj() { return smoothViewObj; }, recallFrom, makeFibers, fiberArrays, projectAll, storeMorph, switchMorph, dropMorph, morphOf, fillColour, cavityColour, zsOpen, zsClose, zsSkin, get zs() { return zs; }, xtract, latticeLive, latticeScreen, get lattice() { return lattice; }, surfaceContrast, snapshotPNG, maskHidden, startCloth, stopCloth, get clothRun() { return clothRun; }, hideSelection, hideGroup, showAll, invertVisibility, hideMasked, deleteHidden, hiddenCount, setHiddenUndoable, deform, makeArray, arrayArrays, setGizmoMode, get gizmoPin() { return gizmoPin; }, set gizmoPin(v) { gizmoPin = v; }, exportOBJ, scheduleAutosave, get TOOLS() { return TOOLS; }, get curTool() { return curTool; }, activateTool, addTool, appendPrimitive, duplicateTool, deleteTool, moveTool, mergeDown, splitGroups, extractTool, extractShell, makeBoolean, newScene, gizmoHandle, gizmoScreen, get solo() { return solo; }, set solo(v) { solo = v; renderOthers(); }, toolArrays, voxelCombine, voxelRemesh, coreStart, get working() { return working; }, sliceByPlane, mirrorWeldArrays, mirrorWeld, mirrorFlip, applyNoise, snapView, setOrtho, historyJump, polyframe, get cam() { return cam; }, trimByPlane, applyCut, tubeArrays, immShape, hasOpenEdges, get curve() { return liveCurve(); }, dropCurve, get immFile() { return immFile; }, set immFile(v) { immFile = v; }, get LAYERS() { return LAYERS; }, get recLayer() { return recLayer; }, addLayer, deleteLayer, toggleLayer, recordLayer, setLayerStrength, bakeLayers, groupOp, maskAllBut, groupNear, get mesh() { return mesh; }, get stroke() { return stroke; }, get gesture() { return gesture; }, get nav() { return nav; }, get MR() { return MR; }, syncSym, get SYM() { return SYM; }, setLevel, divide, deleteLower, deleteHigher, camera, orbit, pick, selectTool, brush, brushById, maskOp, remesh, undo, redo, subdivide, setDyntopo, floodDetail, S, get undoStack() { return undoStack; } };
 </script>
