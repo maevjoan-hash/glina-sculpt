@@ -249,6 +249,12 @@ input[type=range] { width: 100%; height: 26px; accent-color: var(--wax); backgro
 .dragHandle { cursor: move; touch-action: none; user-select: none; -webkit-user-select: none; }
 .fpPin { position: absolute; right: 44px; top: 10px; z-index: 1; width: 32px; height: 32px; border-radius: 8px; border: 0; background: none; color: var(--muted); cursor: pointer; display: grid; place-items: center; opacity: .55; }
 .fpPin svg { width: 17px; height: 17px; }
+.fpMin { position: absolute; right: 78px; top: 10px; z-index: 1; width: 32px; height: 32px; border-radius: 8px; border: 0; background: none; color: var(--muted); cursor: pointer; font-size: 20px; line-height: 1; }
+.fpMin:hover { background: var(--panel-2); color: var(--fg); }
+.floatpanel.mini { max-height: none; overflow: hidden; }
+.floatpanel.mini .palHead small, .floatpanel.mini > :not(.palHead):not(.fpClose):not(.fpPin):not(.fpMin):not(.brushbox), .floatpanel.mini .brushbox > :not(.bbHead) { display: none !important; }
+#palette.mini, #patterns.mini { width: min(300px, calc(100% - 20px)); padding: 10px 14px; }
+#brushPanel.mini .brushbox { padding-bottom: 10px; }
 .fpPin:hover { background: var(--panel-2); color: var(--fg); opacity: 1; }
 .fpPin[aria-pressed="true"] { color: var(--wax); opacity: 1; }
 .floatpanel.dragging { opacity: .92; box-shadow: 0 24px 70px rgba(0,0,0,.6); }
@@ -264,7 +270,7 @@ input[type=range] { width: 100%; height: 26px; accent-color: var(--wax); backgro
 .fpClose:hover { background: var(--panel-2); color: var(--fg); }
 #brushPanel { background: none; border: 0; box-shadow: none; overflow: visible; }
 #brushPanel .brushbox { margin: 0; max-height: calc(100vh - var(--bar) - 40px); overflow-y: auto; box-shadow: 0 18px 50px rgba(0,0,0,.5); }
-#brushPanel .bbHead { padding-right: 76px; }
+#brushPanel .bbHead { padding-right: 112px; }
 #palette, #patterns { width: min(560px, calc(100% - 20px)); padding: 14px; }
 .palSearch { width: 100%; height: 38px; margin: 10px 0 2px; padding: 0 12px; border-radius: 9px; border: 1px solid var(--line); background: var(--bg); color: var(--fg); font: inherit; }
 .palSearch:focus { outline: none; border-color: var(--wax); }
@@ -276,7 +282,7 @@ input[type=range] { width: 100%; height: 26px; accent-color: var(--wax); backgro
 .foundRow small { color: var(--muted); }
 .flash { animation: flash 1.4s ease-out; }
 @keyframes flash { 0%, 40% { box-shadow: 0 0 0 3px var(--wax); } 100% { box-shadow: 0 0 0 0 transparent; } }
-.palHead { display: grid; gap: 4px; padding-right: 76px; }
+.palHead { display: grid; gap: 4px; padding-right: 112px; }
 .palHead b { font-family: var(--font-display); font-weight: 600; }
 .palHead small { color: var(--muted); font-size: 12px; line-height: 1.4; }
 .palCat { font-size: 11px; font-weight: 600; letter-spacing: .09em; text-transform: uppercase; color: var(--muted); margin: 14px 0 6px; }
@@ -399,6 +405,13 @@ input[type=range] { width: 100%; height: 26px; accent-color: var(--wax); backgro
       <div class="row" id="volRow"><label for="sVolume">Запазване на обема</label><output id="oVolume"></output><input type="range" id="sVolume" min="0" max="0.49" step="0.01"></div>
       <label class="toggle" id="topoRow">Само свързаната повърхност <input type="checkbox" id="tTopo"></label>
       <label class="toggle" id="deepRow" title="Move Infinite Depth: хваща и задната страна">Във всяка дълбочина <input type="checkbox" id="tDeep"></label>
+      <div class="grp" id="arrBrushGrp">
+        <div class="note lab">Влаченето</div><div class="chips" id="arrDragChips"></div>
+        <div class="note lab">Подредба</div><div class="chips" id="arrKindChips"></div>
+        <p class="note" id="arrBrushNote"></p>
+        <div class="two"><button class="btn wide" id="bArrMake">Направи масив</button><button class="btn wide" id="bArrClear" title="Без отместване, завъртане и разтягане; мащабът пак 1">Отначало</button></div>
+        <button class="btn wide" id="bArrMore">Всички настройки на масива…</button>
+      </div>
       <div class="grp" id="kelGrp"><div class="note lab">Еластично</div><div class="chips" id="kelChips"></div></div>
       <div class="grp" id="clothGrp"><div class="note lab">Плат</div><div class="chips" id="clothChips"></div></div>
       <div class="grp" id="zmGrp"><div class="note lab">Действие</div><div class="chips" id="zmChips"></div>
@@ -786,6 +799,7 @@ const ICON = {
   zmodel: '<path d="M4 15l8 4 8-4-8-4z"/><path d="M8 9l4-6 4 6" opacity=".6"/><path d="M12 3v8" opacity=".6"/>',
   ffd: '<rect x="4" y="4" width="16" height="16" rx="1" stroke-dasharray="2 2"/><path d="M12 4v16M4 12h16" opacity=".45"/><circle cx="4" cy="4" r="1.6"/><circle cx="20" cy="4" r="1.6"/><circle cx="12" cy="12" r="1.8"/><circle cx="4" cy="20" r="1.6"/><circle cx="20" cy="20" r="1.6"/>',
   groom: '<path d="M5 20c1-6 3-10 8-14M9 20c1-5 3-9 8-12M13 20c1-4 3-7 7-9"/>',
+  array: '<rect x="3" y="9" width="5" height="6" rx="1"/><rect x="10" y="9" width="5" height="6" rx="1" opacity=".7"/><rect x="17" y="9" width="4" height="6" rx="1" opacity=".4"/><path d="M5 19h13M15 17l3 2-3 2"/>',
   ktwist: '<circle cx="12" cy="12" r="2"/><path d="M12 4a8 8 0 017.5 5.2"/><path d="M12 20a8 8 0 01-7.5-5.2"/><path d="M20 5v4.5h-4.5"/><path d="M4 19v-4.5h4.5"/>',
   kscale: '<circle cx="12" cy="12" r="3"/><path d="M12 3v3M12 18v3M3 12h3M18 12h3"/><path d="M12 3l-2 2M12 3l2 2M12 21l-2-2M12 21l2-2M3 12l2-2M3 12l2 2M21 12l-2-2M21 12l-2 2"/>',
   kpinch: '<path d="M3 12h18"/><path d="M12 5v4M12 19v-4"/><path d="M10 7l2 2 2-2M10 17l2-2 2 2"/><path d="M5 10l-2 2 2 2M19 10l2 2-2 2"/>',
@@ -811,7 +825,7 @@ const BASES = [
   { id: 'draw', name: 'Рисуване (Standard)' }, { id: 'clay', name: 'Глина (Clay)' }, { id: 'claystrips', name: 'Глина на ивици (ClayBuildup)' },
   { id: 'inflate', name: 'Надуване (Inflate)' }, { id: 'flatten', name: 'Изравняване (hPolish)' }, { id: 'scrape', name: 'Подрязване (TrimDynamic)' },
   { id: 'pinch', name: 'Притискане (Pinch)' }, { id: 'crease', name: 'Гънка' }, { id: 'smooth', name: 'Изглаждане (Smooth)' },
-  { id: 'grab', name: 'Хващане (Move)' }, { id: 'kelvin', name: 'Еластично усукване, раздуване, прищипване (Kelvinlets)' }, { id: 'snake', name: 'Издърпване (SnakeHook)' }, { id: 'vdm', name: 'Векторна форма (VDM)' }, { id: 'shadowbox', name: 'Силуети (ShadowBox)' }, { id: 'topology', name: 'Топология (Topology)' }, { id: 'pose', name: 'Поза (Pose)' }, { id: 'insert', name: 'Вмъкване на форма (InsertMesh)' }, { id: 'gizmo', name: 'Местене, завъртане, мащаб (Gizmo 3D)' }, { id: 'cloth', name: 'Плат (Cloth brushes)' }, { id: 'groom', name: 'Сресване на косми (Groom)' }, { id: 'ffd', name: 'Клетка (FFD)' }, { id: 'zmodel', name: 'Полигони (ZModeler)' }, { id: 'planar', name: 'Равнина (Planar)' }, { id: 'morph', name: 'Връщане към запомнената форма (Morph)' }, { id: 'layer', name: 'Слой (Layer)' }, { id: 'slice', name: 'Разделяне на групи (SliceCurve)' }, { id: 'tube', name: 'Тръба по крива (CurveTube)' }, { id: 'clip', name: 'Отсичане (ClipCurve)' }, { id: 'cut', name: 'Отрязване (TrimCurve)' }, { id: 'mask', name: 'Маска' }, { id: 'paint', name: 'Боя' },
+  { id: 'grab', name: 'Хващане (Move)' }, { id: 'kelvin', name: 'Еластично усукване, раздуване, прищипване (Kelvinlets)' }, { id: 'array', name: 'Масив с влачене (Array Mesh)' }, { id: 'snake', name: 'Издърпване (SnakeHook)' }, { id: 'vdm', name: 'Векторна форма (VDM)' }, { id: 'shadowbox', name: 'Силуети (ShadowBox)' }, { id: 'topology', name: 'Топология (Topology)' }, { id: 'pose', name: 'Поза (Pose)' }, { id: 'insert', name: 'Вмъкване на форма (InsertMesh)' }, { id: 'gizmo', name: 'Местене, завъртане, мащаб (Gizmo 3D)' }, { id: 'cloth', name: 'Плат (Cloth brushes)' }, { id: 'groom', name: 'Сресване на косми (Groom)' }, { id: 'ffd', name: 'Клетка (FFD)' }, { id: 'zmodel', name: 'Полигони (ZModeler)' }, { id: 'planar', name: 'Равнина (Planar)' }, { id: 'morph', name: 'Връщане към запомнената форма (Morph)' }, { id: 'layer', name: 'Слой (Layer)' }, { id: 'slice', name: 'Разделяне на групи (SliceCurve)' }, { id: 'tube', name: 'Тръба по крива (CurveTube)' }, { id: 'clip', name: 'Отсичане (ClipCurve)' }, { id: 'cut', name: 'Отрязване (TrimCurve)' }, { id: 'mask', name: 'Маска' }, { id: 'paint', name: 'Боя' },
 ];
 // a complete brush; presets only list what differs
 const BRUSH_DEFAULTS = {
@@ -821,6 +835,7 @@ const BRUSH_DEFAULTS = {
   group: false,        // only the polygroup under the brush (ZBrush: Auto Masking > Mask By Polygroups)
   gz: 'move',          // Gizmo: move | rotate | scale
   cloth: 'pinch',      // cloth brushes: pinch | slide | inflate
+  arr: 'move',         // the array brush: what a drag changes (move | turn | scale | count)
   kel: 'twist',        // elastic brushes (kelvin.rs): twist | scale | pinch
   ffdN: 3,             // FFD: control points along each side
   ffdMode: 'cage',     // FFD: cage (N×N×N) | curve (ZBrush: Bend Curve, N points along the deform axis)
@@ -868,6 +883,7 @@ const PRESETS = [
   { id: 'ffd', name: 'Клетка (FFD)', short: 'FFD', base: 'ffd', zb: 'Gizmo Deformer: FFD' },
   { id: 'topology', name: 'Топология (Topology)', short: 'Топол.', base: 'topology', zb: 'Topology brush' },
   { id: 'shadowbox', name: 'Силуети (ShadowBox)', short: 'Силует', base: 'shadowbox', zb: 'ShadowBox' },
+  { id: 'array', name: 'Масив с влачене', short: 'Масив', base: 'array', zb: 'Array Mesh (TransPose)' },
   { id: 'gizmo', name: 'Gizmo: местене, завъртане, мащаб', short: 'Gizmo', key: 'z', base: 'gizmo', zb: 'Gizmo 3D' },
   { id: 'imm', name: 'Вмъкване на форма', short: 'Вмъкни', key: 'j', base: 'insert', radius: 40, zb: 'InsertMesh (IMM)' },
   { id: 'tube', name: 'Тръба по крива', short: 'Тръба', key: 'l', base: 'tube', radius: 10, stroke: 'curve', zb: 'CurveTube' },
@@ -950,7 +966,7 @@ try { savedSettings = JSON.parse(localStorage.getItem('glina.settings') || 'null
 if (savedSettings) for (const k of Object.keys(savedSettings)) if (k in S && k !== 'penSeen' && k !== 'brushes') S[k] = savedSettings[k];
 // one brush field from settings or a file: right type and range, or undefined
 const ENUMS = { tip: ['round', 'square'], alphaRot: ['fixed', 'stroke', 'random'], stroke: ['dots', 'dragrect', 'dragdot', 'spray', 'line', 'curve'], grab: ['soft', 'elastic'],
-  imm: ['sphere', 'cube', 'cylinder', 'cone', 'torus', 'file'], gz: ['move', 'rotate', 'scale'], cloth: ['pinch', 'slide', 'inflate', 'hook', 'twist'], kel: ['twist', 'scale', 'pinch'], zm: ['extrude', 'inset', 'bevel'], ffdMode: ['cage', 'curve'] };
+  imm: ['sphere', 'cube', 'cylinder', 'cone', 'torus', 'file'], gz: ['move', 'rotate', 'scale'], cloth: ['pinch', 'slide', 'inflate', 'hook', 'twist'], kel: ['twist', 'scale', 'pinch'], arr: ['move', 'turn', 'scale', 'count'], zm: ['extrude', 'inset', 'bevel'], ffdMode: ['cage', 'curve'] };
 const RANGES = { radius: [4, 320], strength: [0.01, 1], focal: [-1, 1], alphaMid: [0, 1], alphaAngle: [0, 360], spacing: [0.03, 0.6], mod: [-1, 1], volume: [0, 0.49], taper: [0, 1], ffdN: [2, 5] };
 function brushField(k, v) {
   if (k === 'curve') return Array.isArray(v) && v.length >= 2 && v.length <= 32 && v.every((p) => Array.isArray(p) && p.length === 2 && p.every((x) => Number.isFinite(x) && x >= 0 && x <= 1)) ? v.map((p) => p.slice()) : undefined;
@@ -4625,6 +4641,14 @@ canvas.addEventListener('pointerdown', (e) => {
     if (og && (!hit || og.distance < camera.position.distanceTo(hit.point))) { gesture = { kind: 'picktool', tool: og.tool, x0: x, y0: y, x, y, id: e.pointerId }; hideRing(); return; }
     nav = { mode: e.altKey ? 'pan' : 'orbit', x, y, id: e.pointerId }; hideRing(); return;
   }
+  if (cb.base === 'array' && !e.shiftKey && !e.ctrlKey) {
+    // the array brush: a drag anywhere spreads, turns, scales or counts the copies (arrayDrag)
+    const a = toolArrays(TOOLS[curTool]), { c, r } = mesh.bounds(), at = hit ? hit.point.clone() : new THREE.Vector3(c[0], c[1], c[2]);
+    arrPaused = false;
+    gesture = { kind: 'array', x0: x, y0: y, x, y, id: e.pointerId, at, camN: new THREE.Vector3(0, 0, 1).applyQuaternion(camera.quaternion), size: arraySize(a),
+      start: { off: [S.arrOffX, S.arrOffY, S.arrOffZ], rot: [S.arrRotX, S.arrRotY, S.arrRotZ], scale: S.arrScale, count: S.arrCount } };
+    hideRing(); arrayPreview(); return;
+  }
   if (pcArmed && hit && !e.shiftKey) { gesture = { kind: 'pcdraw', pts: [[x, y]], x0: x, y0: y, x, y, id: e.pointerId }; hideRing(); drawOverlay(); return; }
   if (cb.base === 'topology' && !e.shiftKey && hit) { gesture = { kind: 'topodraw', pts: [[x, y]], x0: x, y0: y, x, y, id: e.pointerId }; hideRing(); drawOverlay(); return; }
   if (cb.base === 'shadowbox' && !e.shiftKey) { gesture = { kind: 'shadowdraw', pts: [[x, y]], x0: x, y0: y, x, y, id: e.pointerId }; hideRing(); drawOverlay(); return; }
@@ -4670,6 +4694,7 @@ canvas.addEventListener('pointermove', (e) => {
     if (gesture.kind === 'zsadd' || gesture.kind === 'zsmove' || gesture.kind === 'zsscale') { zsMove(gesture); return; }
     if (gesture.kind === 'picktool') { if (gesture.moved) { nav = { mode: 'orbit', x, y, id: gesture.id }; gesture = null; } return; }
     if (gesture.kind === 'curveedit') { drawOverlay(); return; }
+    if (gesture.kind === 'array') { gesture.x = x; gesture.y = y; arrayDrag(gesture); return; }
     if (gesture.kind === 'pcdraw') { const lp = gesture.pts[gesture.pts.length - 1]; if (Math.hypot(x - lp[0], y - lp[1]) > 3) { gesture.pts.push([x, y]); drawOverlay(); } return; }
     if (gesture.kind === 'topodraw') { const lp = gesture.pts[gesture.pts.length - 1]; if (Math.hypot(x - lp[0], y - lp[1]) > 3) { gesture.pts.push([x, y]); drawOverlay(); } return; }
     if (gesture.kind === 'shadowdraw') { const lp = gesture.pts[gesture.pts.length - 1]; if (Math.hypot(x - lp[0], y - lp[1]) > 3) { gesture.pts.push([x, y]); drawOverlay(); } return; }
@@ -4728,6 +4753,7 @@ function endPointer(e) {
     else if (g.kind === 'curvedraw') { if (moved) finishCurve(g); }
     else if (g.kind === 'shadowdraw') { if (moved) shadowAdd(g.pts); }
     else if (g.kind === 'topodraw') { if (moved) topoAdd(g.pts); }
+    else if (g.kind === 'array') { saveSettings(); syncArrBrush(); }
     else if (g.kind === 'pcdraw') { if (moved) { const pts = curveFromScreen(g.pts, true); if (pts) patternAlongCurve(pts); else toast('Линията трябва да е върху модела.'); armPatternCurve(false); } }
     else if (g.kind === 'curveedit') finishCurveEdit(g, false);
     else if (g.kind === 'hidesel') {
@@ -7428,6 +7454,43 @@ function arrayMatrices(a, opt) {
   }
   return mats;
 }
+// the part's size (its longest side): the unit of the per-copy offset
+function arraySize(a) {
+  const lo = [Infinity, Infinity, Infinity], hi = [-Infinity, -Infinity, -Infinity];
+  for (let i = 0; i < a.pos.length; i += 3) for (let k = 0; k < 3; k++) { lo[k] = Math.min(lo[k], a.pos[i + k]); hi[k] = Math.max(hi[k], a.pos[i + k]); }
+  return Math.max(hi[0] - lo[0], hi[1] - lo[1], hi[2] - lo[2]) || 1;
+}
+/* The array brush (ZBrush: Array Mesh with TransPose): the copies are set by dragging in the view.
+   Мести: the last copy follows the pen (the offset of every next copy is the drag over the number of
+   steps); Върти: left and right turn every next copy about the axis nearest to the line of sight;
+   Мащаб: up or right makes every next copy larger; Брой: right adds copies, left takes them away. */
+function arrayDrag(g) {
+  const b = brush(), kind = b.arr || 'move', dx = g.x - g.x0, dy = g.y - g.y0, st = g.start;
+  const N = S.arrCount * (S.arrMode === 'grid' ? S.arrRows : 1);
+  if (kind === 'move') {
+    const to = screenToPlane(g.x, g.y, g.at, g.camN), from = screenToPlane(g.x0, g.y0, g.at, g.camN);
+    if (!to || !from) return;
+    const d = to.sub(from).multiplyScalar(1 / (g.size * Math.max(1, (S.arrMode === 'grid' ? S.arrCount : N) - 1)));
+    S.arrOffX = st.off[0] + d.x; S.arrOffY = st.off[1] + d.y; S.arrOffZ = st.off[2] + d.z;
+  } else if (kind === 'turn') {
+    // about the axis that looks most at the eye, the way the turn is seen
+    const n = g.camN, k = Math.abs(n.x) > Math.abs(n.y) && Math.abs(n.x) > Math.abs(n.z) ? 0 : Math.abs(n.y) > Math.abs(n.z) ? 1 : 2;
+    const sign = [n.x, n.y, n.z][k] >= 0 ? -1 : 1, rot = st.rot.slice();
+    rot[k] = Math.max(-180, Math.min(180, Math.round(st.rot[k] + sign * dx * 0.4)));
+    [S.arrRotX, S.arrRotY, S.arrRotZ] = rot;
+  } else if (kind === 'scale') S.arrScale = Math.max(0.5, Math.min(1.5, +(st.scale * Math.exp((dx - dy) * 0.0015)).toFixed(3)));
+  else S.arrCount = Math.max(2, Math.min(36, st.count + Math.round(dx / 28)));
+  arrPaused = false; arrayPreview(); syncArrBrush(true);
+}
+function syncArrBrush(light) {
+  const f = (v) => (Math.abs(v) < 0.005 ? '0' : v.toFixed(2));
+  $('arrBrushNote').textContent = `${S.arrCount}${S.arrMode === 'grid' ? ' × ' + S.arrRows : ''} копия · отместване ${f(S.arrOffX)}, ${f(S.arrOffY)}, ${f(S.arrOffZ)} · завъртане ${S.arrRotX}°, ${S.arrRotY}°, ${S.arrRotZ}° · мащаб ×${S.arrScale.toFixed(2)}`;
+  if (light) return;
+  for (const el of $('arrKindChips').children) el.setAttribute('aria-pressed', el.dataset.id === S.arrMode);
+  for (const id of ['sArrCount', 'sArrScale', 'sArrOffX', 'sArrOffY', 'sArrOffZ', 'sArrRotX', 'sArrRotY', 'sArrRotZ']) { const el = $(id); if (el) el.value = S['arr' + id.slice(4)]; }
+  if (typeof syncArrMore !== 'undefined') syncArrMore.forEach((fn) => fn());
+  $('oArrCount').textContent = String(S.arrCount); $('oArrScale').textContent = '×' + S.arrScale.toFixed(2);
+}
 const arrayOpts = () => ({ count: S.arrCount, rows: S.arrRows, mode: S.arrMode, axis: S.arrAxis, axis2: S.arrAxis2, gap: S.arrGap, scale: S.arrScale,
   off: [S.arrOffX, S.arrOffY, S.arrOffZ], rot: [S.arrRotX, S.arrRotY, S.arrRotZ], scl: [S.arrSclX, S.arrSclY, S.arrSclZ] });
 // grid: `count` along the axis times `rows` along the second axis (each step the part's own size and
@@ -7455,7 +7518,8 @@ function arrayArrays(a, opt) {
 // they follow sculpting and every slider at once; after „Направи масив“ they wait for the next change
 function arrayPreview() {
   const P = PATTERNS.find((x) => x.id === S.pattern);
-  const on = S.arrLive && !arrPaused && !$('patterns').hidden && P && P.detail === 'array' && gmesh && mesh && !working;
+  const byBrush = typeof brush === 'function' && S.brushes && brush() && brush().base === 'array';
+  const on = (byBrush || S.arrLive) && !arrPaused && (byBrush || (!$('patterns').hidden && P && P.detail === 'array')) && gmesh && mesh && !working;
   if (!on) { if (arrPrev) { arrPrev.visible = false; requestRender(); } return; }
   if (!arrPrev) { arrPrev = new THREE.Group(); arrPrev.renderOrder = 1; scene.add(arrPrev); }
   const a = toolArrays(TOOLS[curTool]);
@@ -9251,7 +9315,7 @@ const PAL_CATS = [
   ['Местене и издърпване', ['grab', 'elastic', 'grabtopo', 'movedeep', 'ktwist', 'kscale', 'kpinch', 'snake', 'snakecurve', 'pose', 'gizmo']],
   ['По линия', ['curvedam', 'tube', 'clip', 'cut', 'slice']],
   ['Плат и косми', ['clothpinch', 'clothslide', 'clothhook', 'clothtwist', 'clothinflate', 'groom']],
-  ['Моделиране', ['zmodel', 'ffd', 'imm', 'topology', 'shadowbox']],
+  ['Моделиране', ['zmodel', 'ffd', 'imm', 'array', 'topology', 'shadowbox']],
   ['Маска и боя', ['mask', 'paint']],
 ];
 const pinned = () => (S.rail || RAIL_DEFAULT).filter((id) => brushById(id));
@@ -9489,7 +9553,7 @@ function showPanel(id) {
   for (const [k] of FLOATS) if (k !== id && !panelPinned(k)) $(k).hidden = true;
   const el = $(id), was = el.hidden;
   el.hidden = false; placePanel(id); raisePanel(el);
-  if (was) { el.scrollTop = 0; const box = el.querySelector('.brushbox'); if (box && id === 'brushPanel') box.scrollTop = 0; }   // its title (to drag it by) in sight
+  if (was) { el.classList.remove('mini'); if (el.syncMini) el.syncMini(); el.scrollTop = 0; const box = el.querySelector('.brushbox'); if (box && id === 'brushPanel') box.scrollTop = 0; }   // its title (to drag it by) in sight
 }
 const PIN_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 4h6l-1 6 3 3H7l3-3z"/><path d="M12 13v7"/></svg>';
 for (const [id, sel] of FLOATS) {
@@ -9530,7 +9594,14 @@ for (const [id, sel] of FLOATS) {
   const syncPin = () => pin.setAttribute('aria-pressed', panelPinned(id));
   pin.onclick = () => { const st = panelState(); st[id] = { ...(st[id] || {}), pin: !panelPinned(id) }; saveSettings(); syncPin(); };
   syncPin(); el.insertBefore(pin, el.firstChild);
+  // folded to its title: the model behind it is in sight, the panel a click away
+  const mini = document.createElement('button');
+  mini.className = 'fpMin';
+  const syncMini = () => { const on = el.classList.contains('mini'); mini.textContent = on ? '▢' : '–'; mini.title = on ? 'Разгъни панела' : 'Свий панела до заглавието му, за да се вижда моделът'; mini.setAttribute('aria-label', mini.title); mini.setAttribute('aria-expanded', !on); };
+  mini.onclick = () => { el.classList.toggle('mini'); syncMini(); };
+  el.syncMini = syncMini; syncMini(); el.insertBefore(mini, el.firstChild);
 }
+function foldPanel(id, on) { const el = $(id); el.classList.toggle('mini', on); if (el.syncMini) el.syncMini(); }
 window.addEventListener('resize', () => { for (const [id] of FLOATS) if (!$(id).hidden) placePanel(id); });
 
 // the drawer's sections: their order, tab and folding, by title
@@ -9755,6 +9826,8 @@ function selectTool(id) {
   const b = brush();
   $('brushName').textContent = b.name;
   syncBrushUI(); saveSettings(); drawOverlay(); requestRender();
+  if (brush().base === 'array') arrPaused = false;
+  arrayPreview();
 }
 function bindRange(id, out, get, set, fmtv) {
   const el = $(id);
@@ -9804,6 +9877,7 @@ brushSyncs.push(
   brushChips('zmChips', [{ id: 'extrude', name: 'Изтегли (Extrude)' }, { id: 'inset', name: 'Вдлъбни ръба (Inset)' }, { id: 'bevel', name: 'Скос (Bevel)' }], 'zm'),
   brushChips('ffdChips', [2, 3, 4, 5].map((k) => ({ id: k, name: k + '×' + k + '×' + k })), 'ffdN', () => { lattice = null; drawOverlay(); }),
   brushChips('ffdModeChips', [{ id: 'cage', name: 'Клетка (FFD)' }, { id: 'curve', name: 'Крива (Bend Curve)' }], 'ffdMode', () => { lattice = null; drawOverlay(); }),
+  brushChips('arrDragChips', [{ id: 'move', name: 'Мести (разстояние)' }, { id: 'turn', name: 'Върти' }, { id: 'scale', name: 'Мащаб' }, { id: 'count', name: 'Брой' }], 'arr'),
   brushChips('kelChips', [{ id: 'twist', name: 'Усукване (Twist)' }, { id: 'scale', name: 'Раздуване ↔ свиване (Scale)' }, { id: 'pinch', name: 'Прищипване (Pinch)' }], 'kel'),
   brushChips('clothChips', [{ id: 'pinch', name: 'Събира (ClothPinch)' }, { id: 'slide', name: 'Бута по щриха (ClothSlide)' }, { id: 'inflate', name: 'Надува (ClothInflate)' }, { id: 'hook', name: 'Кука: тегли след писалката (ClothHook)' }, { id: 'twist', name: 'Усуква (ClothTwister)' }], 'cloth'),
   brushChips('gzChips', [{ id: 'move', name: 'Местене' }, { id: 'rotate', name: 'Завъртане' }, { id: 'scale', name: 'Мащаб' }], 'gz', () => { gizmoCache = null; syncGizmoBar(); drawOverlay(); }),
@@ -9831,6 +9905,7 @@ const BRUSH_ABOUT = {
   inflate: 'Надува навън по нормалите (Alt — свива).', pinch: 'Събира повърхността към щриха: изостря ръбове.', crease: 'Гънка с притискане.',
   flatten: 'Изравнява с квадратен връх.', trim: 'Реже изпъкналото до равнината под четката: равни площи и ръбове.', smooth: 'Изглажда (и Shift с всяка четка).',
   grab: 'Хваща и мести зоната под четката.', elastic: 'Мести като истинска глина: страните се прибират, обемът се пази.', grabtopo: 'Мести само свързаното: един пръст, без съседния.',
+  array: 'Влачете в изгледа: копията на подобекта се разстилат след писалката. Отдолу избирате дали влаченето мести, върти, мащабира или добавя копия.',
   ktwist: 'Натиснете и влачете наляво или надясно: глината се усуква около точката, като истинска, без да губи обем.', kscale: 'Натиснете и влачете нагоре (раздува) или надолу (свива): глината наоколо се разстъпва еластично.', kpinch: 'Натиснете и влачете: глината се разтяга по посоката на влаченето и се прибира напречно на нея.',
   snake: 'Изтегля рога и пипала след писалката.', snakecurve: 'Начертайте линия от модела навън: повърхността се издърпва по нея.',
   vdm: 'Щракване слага цяла форма (и с надвиснали части); влачене задава размера и посоката.', dimple: 'Натиснете: кръгла трапчинка.',
@@ -9846,7 +9921,7 @@ const BRUSH_ABOUT = {
 };
 const BASE_ABOUT = { draw: 'draw', clay: 'clay', claystrips: 'claybuild', inflate: 'inflate', pinch: 'pinch', crease: 'crease', flatten: 'flatten', scrape: 'trim', smooth: 'smooth', grab: 'grab', snake: 'snake', vdm: 'vdm', pose: 'pose', planar: 'planar', morph: 'morph', layer: 'layer', cloth: 'clothpinch', groom: 'groom', zmodel: 'zmodel', ffd: 'ffd', topology: 'topology', shadowbox: 'shadowbox', gizmo: 'gizmo', insert: 'imm', tube: 'tube', clip: 'clip', cut: 'cut', slice: 'slice', mask: 'mask', paint: 'paint' };
 // per kind of brush: which of the common settings it has
-const NO_SIZE = new Set(['gizmo', 'ffd', 'zmodel', 'topology', 'shadowbox', 'clip', 'cut', 'slice']);
+const NO_SIZE = new Set(['array', 'gizmo', 'ffd', 'zmodel', 'topology', 'shadowbox', 'clip', 'cut', 'slice']);
 const NO_STRENGTH = new Set([...NO_SIZE, 'insert', 'tube']);
 const NO_INVERT = new Set([...NO_STRENGTH, 'grab', 'kelvin', 'snake', 'pose', 'groom', 'smooth', 'paint', 'cloth']);
 function syncBrushBox(b) {
@@ -9872,7 +9947,7 @@ function syncBrushBox(b) {
 function syncBrushUI() {
   syncRadius(); syncStrength();
   const b = brush(), base = b.base;
-  const moves = base === 'grab' || base === 'kelvin' || base === 'snake' || base === 'vdm' || base === 'shadowbox' || base === 'topology' || base === 'pose' || base === 'clip' || base === 'cut' || base === 'slice' || base === 'insert' || base === 'tube' || base === 'gizmo' || base === 'ffd' || base === 'zmodel';
+  const moves = base === 'grab' || base === 'array' || base === 'kelvin' || base === 'snake' || base === 'vdm' || base === 'shadowbox' || base === 'topology' || base === 'pose' || base === 'clip' || base === 'cut' || base === 'slice' || base === 'insert' || base === 'tube' || base === 'gizmo' || base === 'ffd' || base === 'zmodel';
   $('bName').value = b.name; $('bName').disabled = b.builtin;
   $('bName').title = b.builtin ? 'Готовите четки не се преименуват; „Нова от тази“ прави ваше копие' : '';
   $('bBase').value = base;
@@ -9884,7 +9959,9 @@ function syncBrushUI() {
   $('grabGrp').hidden = base !== 'grab';
   $('volRow').hidden = !((base === 'grab' && b.grab === 'elastic') || (base === 'kelvin' && b.kel === 'pinch'));
   $('kelGrp').hidden = base !== 'kelvin';
-  $('curveGrp').hidden = (base === 'grab' && b.grab === 'elastic') || base === 'kelvin' || base === 'pose' || base === 'insert' || base === 'tube' || base === 'gizmo' || base === 'ffd' || base === 'zmodel' || base === 'groom';
+  $('arrBrushGrp').hidden = base !== 'array';
+  if (base === 'array') syncArrBrush();
+  $('curveGrp').hidden = (base === 'grab' && b.grab === 'elastic') || base === 'kelvin' || base === 'array' || base === 'pose' || base === 'insert' || base === 'tube' || base === 'gizmo' || base === 'ffd' || base === 'zmodel' || base === 'groom';
   $('immGrp').hidden = base !== 'insert';
   $('gzGrp').hidden = base !== 'gizmo';
   $('clothGrp').hidden = base !== 'cloth';
@@ -10153,6 +10230,10 @@ bindRange('sBprSSS', 'oBprSSS', () => S.bprSSS, (v) => (S.bprSSS = v), pct);
 bindRange('sBprCav', 'oBprCav', () => S.bprCavity, (v) => (S.bprCavity = v), pct);
 bindRange('sBprRim', 'oBprRim', () => S.bprRim, (v) => (S.bprRim = v), pct);
 $('bStudioNow').onclick = () => saveStudio();
+chips('arrKindChips', [{ id: 'line', name: 'В редица' }, { id: 'circle', name: 'В кръг' }, { id: 'grid', name: 'Решетка' }], () => S.arrMode, (v) => { S.arrMode = v; S.pattern = v; syncArrayUI(); arrPaused = false; arrayPreview(); syncArrBrush(); });
+$('bArrMake').onclick = makeArray;
+$('bArrClear').onclick = () => { $('bArrZero').click(); S.arrScale = 1; saveSettings(); arrPaused = false; arrayPreview(); syncArrBrush(); };
+$('bArrMore').onclick = () => { closeBrushPanel(); openPatterns(S.arrMode); };
 $('bTpose').onclick = tposeStart;
 $('bTposeApply').onclick = tposeApply;
 $('tThick').onchange = () => setThick($('tThick').checked);
@@ -10483,5 +10564,5 @@ loadAutosave().then((d) => {
     toast('Продължавате последния модел. „Нов“ започва отначало.');
   }
 });
-window.__glina = { tposeStart, tposeApply, get TP() { return TP; }, setThick, thickOf, get rustMR() { return rustMR; }, set rustMR(v) { rustMR = v; }, mrEncode, mrDecode, mrLower, mrFrames, setWheel, camHist, camHistGo, get wheelOp() { return wheelOp; }, frameView, arrayMatrices, arrayPreview, get arrPrev() { return arrPrev; }, resetPanels, applySecLayout, get rustDyn() { return rustDyn; }, set rustDyn(v) { rustDyn = v; }, get mrPending() { return mrPending; }, openPatterns, closePatterns, selectPattern, patternAlongCurve, armPatternCurve, beginStroke, processStroke, endStroke, get rustBrushes() { return rustBrushes; }, set rustBrushes(v) { rustBrushes = v; }, openBrushPanel, closeBrushPanel, openPalette, closePalette, setDrawerTab, railIds, microPoly, topoAdd, topoBuild, topoMake, get topoLines() { return topoLines; }, set topoLines(v) { topoLines = v; }, shadowAdd, shadowMake, get shadows() { return shadows; }, set shadows(v) { shadows = v; }, earClip, shadowPrism, viewAxis, bendBuild, vdmCapture, vdmReset, get vdmField() { return vdmField; }, set vdmField(v) { vdmField = v; }, vdmDefault, snakeAlongCurve, quadRemesh, quadRemeshArrays, surfaceStats, get coreSync() { return coreSync; }, set subdivCore(v) { subdivCore = v; }, polyTris, studioPNG, setCustomMatcap, dropCustomMatcap, get customMatcap() { return customMatcap; }, matcapTextures, material, get gmesh() { return gmesh; }, renderer, makeCube, polishFeatures, sliceGroups, makeGear, makeTube, makeRing, revolve, meshToAxis, straighten, transformTools, gizmoTools, eigenSym3, subdivideArrays, slimeBridge, nanoMesh, maskIslands, texturedFiles, zipMany, levelArrays, zmBuild, quadsOf, exportSTL, renderPrintInfo, decimate, decimateArrays, printScale, projectBytes, saveProject, openProject, packValue, unpackValue, panelLoops, balloonTool, shellFrom, refOpen, refState, refColourAt, refLayout, smoothViewUpdate, get smoothViewObj() { return smoothViewObj; }, recallFrom, makeFibers, fiberArrays, projectAll, storeMorph, switchMorph, dropMorph, morphOf, fillColour, cavityColour, zsOpen, zsClose, zsSkin, get zs() { return zs; }, xtract, latticeLive, latticeScreen, get lattice() { return lattice; }, surfaceContrast, snapshotPNG, maskHidden, startCloth, stopCloth, get clothRun() { return clothRun; }, hideSelection, hideGroup, showAll, invertVisibility, hideMasked, deleteHidden, hiddenCount, setHiddenUndoable, deform, makeArray, arrayArrays, setGizmoMode, get gizmoPin() { return gizmoPin; }, set gizmoPin(v) { gizmoPin = v; }, exportOBJ, scheduleAutosave, get TOOLS() { return TOOLS; }, get curTool() { return curTool; }, activateTool, addTool, appendPrimitive, duplicateTool, deleteTool, moveTool, mergeDown, splitGroups, extractTool, extractShell, makeBoolean, newScene, gizmoHandle, gizmoScreen, get solo() { return solo; }, set solo(v) { solo = v; renderOthers(); }, toolArrays, voxelCombine, voxelRemesh, coreStart, get working() { return working; }, sliceByPlane, mirrorWeldArrays, mirrorWeld, mirrorFlip, applyNoise, snapView, setOrtho, historyJump, polyframe, get cam() { return cam; }, trimByPlane, applyCut, tubeArrays, immShape, hasOpenEdges, get curve() { return liveCurve(); }, dropCurve, get immFile() { return immFile; }, set immFile(v) { immFile = v; }, get LAYERS() { return LAYERS; }, get recLayer() { return recLayer; }, addLayer, deleteLayer, toggleLayer, recordLayer, setLayerStrength, bakeLayers, groupOp, maskAllBut, groupNear, get mesh() { return mesh; }, get stroke() { return stroke; }, get gesture() { return gesture; }, get nav() { return nav; }, get MR() { return MR; }, syncSym, get SYM() { return SYM; }, setLevel, divide, deleteLower, deleteHigher, camera, orbit, pick, selectTool, brush, brushById, maskOp, remesh, undo, redo, subdivide, setDyntopo, floodDetail, S, get undoStack() { return undoStack; } };
+window.__glina = { arrayDrag, foldPanel, arraySize, tposeStart, tposeApply, get TP() { return TP; }, setThick, thickOf, get rustMR() { return rustMR; }, set rustMR(v) { rustMR = v; }, mrEncode, mrDecode, mrLower, mrFrames, setWheel, camHist, camHistGo, get wheelOp() { return wheelOp; }, frameView, arrayMatrices, arrayPreview, get arrPrev() { return arrPrev; }, resetPanels, applySecLayout, get rustDyn() { return rustDyn; }, set rustDyn(v) { rustDyn = v; }, get mrPending() { return mrPending; }, openPatterns, closePatterns, selectPattern, patternAlongCurve, armPatternCurve, beginStroke, processStroke, endStroke, get rustBrushes() { return rustBrushes; }, set rustBrushes(v) { rustBrushes = v; }, openBrushPanel, closeBrushPanel, openPalette, closePalette, setDrawerTab, railIds, microPoly, topoAdd, topoBuild, topoMake, get topoLines() { return topoLines; }, set topoLines(v) { topoLines = v; }, shadowAdd, shadowMake, get shadows() { return shadows; }, set shadows(v) { shadows = v; }, earClip, shadowPrism, viewAxis, bendBuild, vdmCapture, vdmReset, get vdmField() { return vdmField; }, set vdmField(v) { vdmField = v; }, vdmDefault, snakeAlongCurve, quadRemesh, quadRemeshArrays, surfaceStats, get coreSync() { return coreSync; }, set subdivCore(v) { subdivCore = v; }, polyTris, studioPNG, setCustomMatcap, dropCustomMatcap, get customMatcap() { return customMatcap; }, matcapTextures, material, get gmesh() { return gmesh; }, renderer, makeCube, polishFeatures, sliceGroups, makeGear, makeTube, makeRing, revolve, meshToAxis, straighten, transformTools, gizmoTools, eigenSym3, subdivideArrays, slimeBridge, nanoMesh, maskIslands, texturedFiles, zipMany, levelArrays, zmBuild, quadsOf, exportSTL, renderPrintInfo, decimate, decimateArrays, printScale, projectBytes, saveProject, openProject, packValue, unpackValue, panelLoops, balloonTool, shellFrom, refOpen, refState, refColourAt, refLayout, smoothViewUpdate, get smoothViewObj() { return smoothViewObj; }, recallFrom, makeFibers, fiberArrays, projectAll, storeMorph, switchMorph, dropMorph, morphOf, fillColour, cavityColour, zsOpen, zsClose, zsSkin, get zs() { return zs; }, xtract, latticeLive, latticeScreen, get lattice() { return lattice; }, surfaceContrast, snapshotPNG, maskHidden, startCloth, stopCloth, get clothRun() { return clothRun; }, hideSelection, hideGroup, showAll, invertVisibility, hideMasked, deleteHidden, hiddenCount, setHiddenUndoable, deform, makeArray, arrayArrays, setGizmoMode, get gizmoPin() { return gizmoPin; }, set gizmoPin(v) { gizmoPin = v; }, exportOBJ, scheduleAutosave, get TOOLS() { return TOOLS; }, get curTool() { return curTool; }, activateTool, addTool, appendPrimitive, duplicateTool, deleteTool, moveTool, mergeDown, splitGroups, extractTool, extractShell, makeBoolean, newScene, gizmoHandle, gizmoScreen, get solo() { return solo; }, set solo(v) { solo = v; renderOthers(); }, toolArrays, voxelCombine, voxelRemesh, coreStart, get working() { return working; }, sliceByPlane, mirrorWeldArrays, mirrorWeld, mirrorFlip, applyNoise, snapView, setOrtho, historyJump, polyframe, get cam() { return cam; }, trimByPlane, applyCut, tubeArrays, immShape, hasOpenEdges, get curve() { return liveCurve(); }, dropCurve, get immFile() { return immFile; }, set immFile(v) { immFile = v; }, get LAYERS() { return LAYERS; }, get recLayer() { return recLayer; }, addLayer, deleteLayer, toggleLayer, recordLayer, setLayerStrength, bakeLayers, groupOp, maskAllBut, groupNear, get mesh() { return mesh; }, get stroke() { return stroke; }, get gesture() { return gesture; }, get nav() { return nav; }, get MR() { return MR; }, syncSym, get SYM() { return SYM; }, setLevel, divide, deleteLower, deleteHigher, camera, orbit, pick, selectTool, brush, brushById, maskOp, remesh, undo, redo, subdivide, setDyntopo, floodDetail, S, get undoStack() { return undoStack; } };
 </script>

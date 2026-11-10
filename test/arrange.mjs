@@ -153,6 +153,55 @@ const reset = await G(() => {
 });
 check('„Подреди панелите наново“ puts every panel and section back', !reset.shut && reset.groups === 'model' && reset.first === 'Подобекти' && reset.panels === 0 && reset.left === '', reset);
 
+// ---------- the array brush: the copies set by dragging in the view ----------
+await G(() => { const W = window.__glina; W.closePatterns(); document.getElementById('bNew').click(); [...document.querySelectorAll('#menu button')].find((b) => b.textContent.startsWith('Куб')).click(); W.setWheel(false); W.orbit(0, 0); document.getElementById('bPanel').getAttribute('aria-pressed') === 'true' && document.getElementById('bPanel').click(); });
+await frames(3);
+await G(() => { const W = window.__glina, S = W.S; S.arrMode = 'line'; S.arrAxis = 0; S.arrCount = 4; S.arrGap = 0.2; S.arrScale = 1; for (const k of ['OffX', 'OffY', 'OffZ', 'RotX', 'RotY', 'RotZ']) S['arr' + k] = 0; W.selectTool('array'); });
+await frames(2);
+const ab0 = await G(() => { const W = window.__glina, P = W.arrPrev; return { on: !!P && P.visible, shown: P ? P.children.filter((c) => c.visible).length : 0, last: P ? P.children[2].matrix.elements.slice(12, 15) : null }; });
+check('choosing „Масив“ shows the copies at once (3 besides the part)', ab0.on && ab0.shown === 3, ab0);
+const gl = await page.$eval('#gl', (el) => { const r = el.getBoundingClientRect(); return { x: r.left, y: r.top, w: r.width, h: r.height }; });
+const drag2 = async (x0, y0, x1, y1) => { await page.mouse.move(x0, y0); await page.mouse.down(); for (let i = 1; i <= 8; i++) { await page.mouse.move(x0 + (x1 - x0) * i / 8, y0 + (y1 - y0) * i / 8); await frames(1); } await page.mouse.up(); await frames(2); };
+const mx = gl.x + gl.w / 2, my = gl.y + gl.h / 2;
+// Мести: a drag up lifts the last copy by what the pen moved (in the world), the ones between in proportion
+const wpp = await G(() => { const W = window.__glina, r = document.getElementById('gl').getBoundingClientRect(); return 2 * Math.tan(W.camera.fov * Math.PI / 360) * W.camera.position.distanceTo(new W.cam.target.constructor(0, 0, 0)) / r.height; });
+await drag2(mx, my, mx, my - 120);
+const ab1 = await G(() => { const W = window.__glina, P = W.arrPrev; return { last: P.children[2].matrix.elements.slice(12, 15), mid: P.children[0].matrix.elements.slice(12, 15), off: [W.S.arrOffX, W.S.arrOffY, W.S.arrOffZ], undo: W.undoStack.length, n: W.mesh.n, note: document.getElementById('arrBrushNote').textContent }; });
+const rise = ab1.last[1] - ab0.last[1];
+check('Мести: the last copy follows the pen up, the first a third of the way; the model itself is untouched', rise > 120 * wpp * 0.5 && rise < 120 * wpp * 1.6 && Math.abs(ab1.mid[1] * 3 - ab1.last[1]) < 1e-4 && ab1.off[1] > 0, { rise, pen: 120 * wpp, ab1 });
+// Брой: right adds copies
+await G(() => { window.__glina.brush().arr = 'count'; });
+await drag2(mx, my, mx + 28 * 3, my);
+check('Брой: dragging right adds copies (4 → 7)', await G(() => window.__glina.S.arrCount === 7 && window.__glina.arrPrev.children.filter((c) => c.visible).length === 6));
+// Върти and Мащаб
+await G(() => { window.__glina.brush().arr = 'turn'; });
+await drag2(mx, my, mx + 100, my);
+await G(() => { window.__glina.brush().arr = 'scale'; });
+await drag2(mx, my, mx, my - 100);
+const ab2 = await G(() => { const S = window.__glina.S; return { rot: [S.arrRotX, S.arrRotY, S.arrRotZ], scale: S.arrScale }; });
+check('Върти turns every next copy; Мащаб (up) makes every next one larger', ab2.rot.some((v) => Math.abs(v) >= 20) && ab2.scale > 1.05 && ab2.scale <= 1.5, ab2);
+// the box, „Направи масив“ and undo
+await G(() => window.__glina.openBrushPanel()); await frames(1);
+const boxA = await G(() => ({ grp: !document.getElementById('arrBrushGrp').hidden, radius: document.getElementById('radiusRow').hidden, kind: document.querySelector('#arrKindChips [aria-pressed="true"]').dataset.id, drag: document.querySelectorAll('#arrDragChips button').length }));
+check('its box: what the drag changes, the pattern, the numbers, „Направи масив“ (no radius or strength)', boxA.grp && boxA.radius && boxA.kind === 'line' && boxA.drag === 4, boxA);
+const nA = await G(() => window.__glina.mesh.n);
+await page.click('#bArrMake'); await frames(2);
+const madeA = await G(() => ({ n: window.__glina.mesh.n, prev: window.__glina.arrPrev.visible }));
+check('„Направи масив“ in the box makes the 7 copies real; undo takes them back', madeA.n === nA * 7 && !madeA.prev && await G(async (n) => { window.__glina.undo(); await new Promise((r) => requestAnimationFrame(r)); return window.__glina.mesh.n === n; }, nA), madeA);
+// the fold button: the panel shrinks to its title and comes back
+const full = await page.$eval('#brushPanel .brushbox', (el) => el.getBoundingClientRect().height);
+await page.click('#brushPanel .fpMin'); await frames(1);
+const folded = await G(() => ({ h: document.querySelector('#brushPanel .brushbox').getBoundingClientRect().height, name: document.getElementById('brushName').offsetHeight > 0, rows: document.getElementById('arrBrushGrp').offsetHeight }));
+await page.click('#brushPanel .fpMin'); await frames(1);
+const unfolded = await page.$eval('#brushPanel .brushbox', (el) => el.getBoundingClientRect().height);
+check('„–“ folds a panel to its title so the model shows, and unfolds it again', folded.h < 130 && folded.h < full / 3 && folded.name && folded.rows === 0 && Math.abs(unfolded - full) < 2, { full, folded, unfolded });
+await G(() => { window.__glina.openPatterns('line'); }); await frames(1);
+const pf = await page.$eval('#patterns', (el) => el.getBoundingClientRect().height);
+await page.click('#patterns .fpMin'); await frames(1);
+const pm = await G(() => ({ h: document.getElementById('patterns').getBoundingClientRect().height, prev: window.__glina.arrPrev.visible }));
+check('„Шарки“ folds too, and the copies stay in sight behind it', pm.h < 140 && pm.h < pf / 4 && pm.prev, { pf, pm });
+await G(() => { window.__glina.closePatterns(); window.__glina.selectTool('draw'); }); await frames(1);
+check('another brush puts the copies away', await G(() => !window.__glina.arrPrev.visible));
 check('no page errors', errors.length === 0, errors.slice(0, 5));
 await browser.close();
 const ok = results.filter(Boolean).length;
