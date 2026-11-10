@@ -16,3 +16,4 @@ android/android/local.properties
 !android/android/app/glina-debug.keystore
 .DS_Store
 core/target/
+shot.png
