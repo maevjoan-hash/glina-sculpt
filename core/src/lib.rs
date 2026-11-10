@@ -591,6 +591,28 @@ pub unsafe extern "C" fn brush_dab_raw(kind: u32, n: usize, pos: *mut f32, nrm: 
     brush::dab(kind, std::slice::from_raw_parts_mut(pos, n * 3), std::slice::from_raw_parts(nrm, n * 3), std::slice::from_raw_parts(mask, n), std::slice::from_raw_parts(fall, n), std::slice::from_raw_parts(par, 28), aux, std::slice::from_raw_parts_mut(changed, n)) as i32
 }
 
+/// Smooth on a patch (brush.rs). Returns how many points changed, or −1 for bad input.
+/// # Safety
+/// Every pointer must point to as many values as its count says.
+#[no_mangle]
+pub unsafe extern "C" fn brush_smooth_raw(count: usize, ext: usize, pos: *const f32, nb_off: *const u32, nb: *const u32, nb_len: usize, edge: *const u8, mask: *const f32, fall: *const f32, s: f64, out: *mut f32, changed: *mut u8) -> i32 {
+    let nb_off = std::slice::from_raw_parts(nb_off, count + 1);
+    let nb = std::slice::from_raw_parts(nb, nb_len);
+    if nb.iter().any(|&u| u as usize >= ext) || nb_off[count] as usize > nb_len { return -1; }
+    brush::smooth(count, std::slice::from_raw_parts(pos, ext * 3), nb_off, nb, std::slice::from_raw_parts(edge, count), std::slice::from_raw_parts(mask, count), std::slice::from_raw_parts(fall, count), s, std::slice::from_raw_parts_mut(out, count * 3), std::slice::from_raw_parts_mut(changed, count)) as i32
+}
+/// A cloth-brush dab on a patch (brush.rs); `pos` (ext·3) in and out. Returns 0, or −1 for bad input.
+/// # Safety
+/// Every pointer must point to as many values as its count says.
+#[no_mangle]
+pub unsafe extern "C" fn brush_cloth_raw(kind: u32, count: usize, ext: usize, ids: *const u32, pos: *mut f32, nrm: *const f32, orig: *const f32, w: *const f64, nb_off: *const u32, nb: *const u32, nb_len: usize, par: *const f64) -> i32 {
+    let nb_off = std::slice::from_raw_parts(nb_off, count + 1);
+    let nb = std::slice::from_raw_parts(nb, nb_len);
+    if nb.iter().any(|&u| u as usize >= ext) || nb_off[count] as usize > nb_len { return -1; }
+    brush::cloth(kind, count, std::slice::from_raw_parts(ids, ext), std::slice::from_raw_parts_mut(pos, ext * 3), std::slice::from_raw_parts(nrm, ext * 3), std::slice::from_raw_parts(orig, ext * 3), std::slice::from_raw_parts(w, count), nb_off, nb, std::slice::from_raw_parts(par, 17));
+    0
+}
+
 thread_local! { static SUB: RefCell<Option<subdiv::Sub>> = const { RefCell::new(None) }; }
 /// Loop subdivision (subdiv.rs). `col`, `mask`, `grp` may be null. `flags`: 1 smooth, 2 crease.
 /// The result is read with `sub_ptr` / `sub_len` (0 pos, 1 idx, 2 col, 3 mask, 4 grp). Returns 0 or −1.

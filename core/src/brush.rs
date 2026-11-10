@@ -215,3 +215,180 @@ mod tests {
         assert!(pos[5] > 0.0 && pos[2] == 0.5);
     }
 }
+
+/// `Math.hypot` as V8 computes it (scaled, Kahan-summed squares), so the cloth gives the same numbers
+/// as the page's JavaScript.
+pub fn js_hypot(v: &[f64]) -> f64 {
+    let mut max = 0.0f64;
+    for &x in v { let a = x.abs(); if a.is_infinite() { return f64::INFINITY; } if a.is_nan() { return f64::NAN; } if a > max { max = a; } }
+    if max == 0.0 { return 0.0; }
+    let (mut sum, mut comp) = (0.0f64, 0.0f64);
+    for &x in v {
+        let n = x.abs() / max;
+        let summand = n * n - comp;
+        let pre = sum + summand;
+        comp = (pre - sum) - summand;
+        sum = pre;
+    }
+    sum.sqrt() * max
+}
+
+/// Smooth (and Shift): every point under the brush toward the average of its neighbours, by its
+/// falloff. The points come as a patch: the `count` under the brush first, then their neighbours;
+/// `nb_off` / `nb` list each brushed point's neighbours (patch indices, in the page's order, repeats
+/// kept); `edge` marks the points on an open edge, which stay. New positions go to `out`.
+#[allow(clippy::too_many_arguments)]
+pub fn smooth(count: usize, pos: &[f32], nb_off: &[u32], nb: &[u32], edge: &[u8], mask: &[f32], fall: &[f32], s: f64, out: &mut [f32], changed: &mut [u8]) -> usize {
+    // the averages first, rounded as the page's Float32Array keeps them
+    let mut t = vec![0f32; count * 3];
+    for k in 0..count {
+        let (a, b) = (nb_off[k] as usize, nb_off[k + 1] as usize);
+        if edge[k] != 0 || a == b { t[k * 3..k * 3 + 3].copy_from_slice(&pos[k * 3..k * 3 + 3]); continue; }
+        let (mut x, mut y, mut z) = (0f64, 0f64, 0f64);
+        for &u in &nb[a..b] { let u = u as usize * 3; x += pos[u] as f64; y += pos[u + 1] as f64; z += pos[u + 2] as f64; }
+        let inv = 1.0 / (b - a) as f64;
+        t[k * 3] = (x * inv) as f32; t[k * 3 + 1] = (y * inv) as f32; t[k * 3 + 2] = (z * inv) as f32;
+    }
+    let mut n = 0;
+    for k in 0..count {
+        changed[k] = 0;
+        let w = fall[k] as f64 * s * (1.0 - mask[k] as f64);
+        let o = k * 3;
+        out[o..o + 3].copy_from_slice(&pos[o..o + 3]);
+        if w <= 0.0 { continue; }
+        changed[k] = 1; n += 1;
+        for q in 0..3 { out[o + q] = (pos[o + q] as f64 + (t[o + q] as f64 - pos[o + q] as f64) * w) as f32; }
+    }
+    n
+}
+
+pub const CLOTH_PINCH: u32 = 0;
+pub const CLOTH_SLIDE: u32 = 1;
+pub const CLOTH_INFLATE: u32 = 2;
+pub const CLOTH_HOOK: u32 = 3;
+pub const CLOTH_TWIST: u32 = 4;
+
+/// The cloth brushes (ZBrush: ClothPinch, ClothSlide, ClothHook, ClothTwister, ClothInflate): the push,
+/// then the edges get back their length from the start of the stroke (a squeezed edge folds along the
+/// normals), then a light relax. The patch: `count` brushed points first, then their neighbours; `ids`
+/// the mesh's own numbers (for the order of edges), `w` the weight of each brushed point (0: it does
+/// not move), `orig` where every patch point was when the stroke began.
+/// `par`: c (3), r, s, sign, the stroke's direction (3) and whether there is one, its start (3),
+/// the hook's move since the last dab (3) and whether there is one.
+#[allow(clippy::too_many_arguments)]
+pub fn cloth(kind: u32, count: usize, ids: &[u32], pos: &mut [f32], nrm: &[f32], orig: &[f32], w: &[f64], nb_off: &[u32], nb: &[u32], par: &[f64]) {
+    let local: Vec<usize> = (0..count).filter(|&k| w[k] > 0.0).collect();
+    if local.is_empty() { return; }
+    let (cx, cy, cz, r, s, sign) = (par[0], par[1], par[2], par[3], par[4], par[5]);
+    let has_dir = par[9] != 0.0;
+    let (dx, dy, dz) = (par[6], par[7], par[8]);
+    let (sx, sy, sz) = (par[10], par[11], par[12]);
+    let has_hook = par[16] != 0.0;
+    let (hx, hy, hz) = (par[13], par[14], par[15]);
+    let p = |pos: &[f32], k: usize, q: usize| pos[k * 3 + q] as f64;
+    let set = |pos: &mut [f32], k: usize, q: usize, v: f64| { pos[k * 3 + q] = v as f32; };
+    // 1. the push
+    let (mut ax, mut ay, mut az) = (0.0, 0.0, 0.0);
+    for &k in &local { ax += nrm[k * 3] as f64; ay += nrm[k * 3 + 1] as f64; az += nrm[k * 3 + 2] as f64; }
+    let al = { let h = js_hypot(&[ax, ay, az]); if h == 0.0 || h.is_nan() { 1.0 } else { h } };
+    ax /= al; ay /= al; az /= al;
+    let (mut ux, mut uy, mut uz);
+    {
+        let t = if ax.abs() < 0.9 { [1.0, 0.0, 0.0] } else { [0.0, 1.0, 0.0] };
+        let d = t[0] * ax + t[1] * ay + t[2] * az;
+        ux = t[0] - ax * d; uy = t[1] - ay * d; uz = t[2] - az * d;
+        let l = js_hypot(&[ux, uy, uz]); ux /= l; uy /= l; uz /= l;
+    }
+    let (vx, vy, vz) = (ay * uz - az * uy, az * ux - ax * uz, ax * uy - ay * ux);
+    let lam = r * 0.42;
+    let mut wv = vec![0.0f64; pos.len() / 3];
+    let mut has_wv = vec![false; pos.len() / 3];
+    for &k in &local {
+        let (px, py, pz) = (p(pos, k, 0), p(pos, k, 1), p(pos, k, 2));
+        wv[k] = if kind == CLOTH_PINCH || kind == CLOTH_TWIST {
+            let (ox, oy, oz) = (px - cx, py - cy, pz - cz);
+            (6.0 * (ox * vx + oy * vy + oz * vz).atan2(ox * ux + oy * uy + oz * uz)).sin()
+        } else if (kind == CLOTH_SLIDE || kind == CLOTH_HOOK) && has_dir {
+            ((2.0 * std::f64::consts::PI * ((px - sx) * dx + (py - sy) * dy + (pz - sz) * dz)) / lam).sin()
+        } else { 1.0 };
+        has_wv[k] = true;
+    }
+    for &k in &local {
+        let wk = w[k];
+        let o = k * 3;
+        match kind {
+            CLOTH_PINCH => {
+                let (mut qx, mut qy, mut qz) = (cx - p(pos, k, 0), cy - p(pos, k, 1), cz - p(pos, k, 2));
+                let along = qx * ax + qy * ay + qz * az; qx -= ax * along; qy -= ay * along; qz -= az * along;
+                let kk = 0.22 * s * wk; let h = r * 0.025 * s * wk * wv[k];
+                for (q, qv) in [qx, qy, qz].into_iter().enumerate() { let v = p(pos, k, q) + (qv * kk + nrm[o + q] as f64 * h); set(pos, k, q, v); }
+            }
+            CLOTH_SLIDE => {
+                if !has_dir { continue; }
+                let kk = r * 0.08 * s * wk; let h = r * 0.025 * s * wk * wv[k];
+                for (q, dv) in [dx, dy, dz].into_iter().enumerate() { let v = p(pos, k, q) + (dv * kk + nrm[o + q] as f64 * h); set(pos, k, q, v); }
+            }
+            CLOTH_HOOK => {
+                if !has_hook { continue; }
+                let kk = (s * 1.5).min(1.0) * wk;
+                for (q, dv) in [hx, hy, hz].into_iter().enumerate() { let v = p(pos, k, q) + dv * kk; set(pos, k, q, v); }
+            }
+            CLOTH_TWIST => {
+                let (ox, oy, oz) = (p(pos, k, 0) - cx, p(pos, k, 1) - cy, p(pos, k, 2) - cz);
+                let ang = 0.12 * s * sign * wk;
+                let (lu, lv) = (ox * ux + oy * uy + oz * uz, ox * vx + oy * vy + oz * vz);
+                let (cs, sn) = (ang.cos() - 1.0, ang.sin());
+                let (du, dv) = (lu * cs - lv * sn, lu * sn + lv * cs);
+                for (q, (uq, vq)) in [(ux, vx), (uy, vy), (uz, vz)].into_iter().enumerate() { let v = p(pos, k, q) + (uq * du + vq * dv); set(pos, k, q, v); }
+            }
+            _ => {
+                let kk = r * 0.06 * s * sign * wk;
+                for q in 0..3 { let v = p(pos, k, q) + nrm[o + q] as f64 * kk; set(pos, k, q, v); }
+            }
+        }
+    }
+    // 2. the cloth: lengths from the start of the stroke; a squeezed edge lifts its ends along the normals
+    let lift = 0.45;
+    for _ in 0..6 {
+        for &i in &local {
+            let wi = w[i];
+            let (a, b) = (nb_off[i] as usize, nb_off[i + 1] as usize);
+            for &j in &nb[a..b] {
+                let j = j as usize;
+                let wj = if j < count { w[j] } else { 0.0 };
+                if ids[j] < ids[i] && wj > 0.0 { continue; }
+                let rest = js_hypot(&[orig[i * 3] as f64 - orig[j * 3] as f64, orig[i * 3 + 1] as f64 - orig[j * 3 + 1] as f64, orig[i * 3 + 2] as f64 - orig[j * 3 + 2] as f64]);
+                let (ex, ey, ez) = (p(pos, j, 0) - p(pos, i, 0), p(pos, j, 1) - p(pos, i, 1), p(pos, j, 2) - p(pos, i, 2));
+                let len = js_hypot(&[ex, ey, ez]);
+                if len < 1e-12 { continue; }
+                let ws = wi + wj;
+                if ws <= 0.0 { continue; }
+                let kk = (len - rest) / len / ws * 0.5;
+                for (q, e) in [ex, ey, ez].into_iter().enumerate() {
+                    let v = p(pos, i, q) + e * kk * wi; set(pos, i, q, v);
+                    let v = p(pos, j, q) - e * kk * wj; set(pos, j, q, v);
+                }
+                if len < rest {
+                    let u = (rest - len) * lift * sign;
+                    let si = wv[i];
+                    let sj = if has_wv[j] { wv[j] } else { si };
+                    for q in 0..3 { let v = p(pos, i, q) + nrm[i * 3 + q] as f64 * u * wi * si; set(pos, i, q, v); }
+                    if wj != 0.0 { for q in 0..3 { let v = p(pos, j, q) + nrm[j * 3 + q] as f64 * u * wj * sj; set(pos, j, q, v); } }
+                }
+            }
+        }
+    }
+    // 3. a light relax against the spikes a hard push leaves
+    let mut t: Vec<(usize, [f64; 4])> = Vec::with_capacity(local.len());
+    for &i in &local {
+        let (a, b) = (nb_off[i] as usize, nb_off[i + 1] as usize);
+        if a == b { continue; }
+        let (mut x, mut y, mut z) = (0.0, 0.0, 0.0);
+        for &j in &nb[a..b] { let j = j as usize; x += p(pos, j, 0); y += p(pos, j, 1); z += p(pos, j, 2); }
+        let k = (b - a) as f64;
+        t.push((i, [x / k, y / k, z / k, w[i] * 0.2]));
+    }
+    for (i, [x, y, z, ww]) in t {
+        for (q, c) in [x, y, z].into_iter().enumerate() { let v = p(pos, i, q) + (c - p(pos, i, q)) * ww; set(pos, i, q, v); }
+    }
+}

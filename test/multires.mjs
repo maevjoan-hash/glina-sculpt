@@ -105,7 +105,7 @@ check('…undo after the remesh: levels back', d.top === 2 && d.level === 1, { t
 await page.click('#bNew'); await page.click('#menu button:nth-child(5)'); await frames(3);   // plane (open)
 await page.keyboard.press('Control+d');
 // (wait for the level itself: on a busy machine the key's work can start after a first idle check)
-await page.waitForFunction(() => window.__glina.MR && window.__glina.MR.cur === 1, null, { timeout: 120000 }); await idle();
+await page.waitForFunction(() => window.__glina.MR && window.__glina.MR.levels.length === 2 && window.__glina.MR.cur === 1, null, { timeout: 120000 }); await idle();
 await page.evaluate(() => window.__glina.remesh()); await frames(2);
 d = await snap();
 check('remesh refused on the open plane: the levels stay', d.top === 1);

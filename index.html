@@ -3443,6 +3443,29 @@ function clothDab(G, F, count, c, r, s, sign, kind, dab) {
     if (w > 0) { local.set(i, w); touchVert(i); }
   }
   if (!local.size) return;
+  if (rustBrushes && coreSync) {
+    if (!stroke.clothStart) stroke.clothStart = c.clone();
+    const key = 'clothLast' + (dab.copy || 0), last = stroke[key];
+    const hook = kind === 'hook' && last ? [c.x - last.x, c.y - last.y, c.z - last.z, 1] : [0, 0, 0, 0];
+    stroke[key] = c.clone();
+    const X = coreSync, { ext, nbOff, nb } = corePatch(G, count), E = ext.length;
+    const pos = new Float32Array(E * 3), nrm = new Float32Array(E * 3), orig = new Float32Array(E * 3), ids = Uint32Array.from(ext), w = new Float64Array(count);
+    for (let e = 0; e < E; e++) {
+      const i = ext[e], o = O.get(i);
+      for (let q = 0; q < 3; q++) { pos[e * 3 + q] = P[i * 3 + q]; nrm[e * 3 + q] = NR[i * 3 + q]; orig[e * 3 + q] = o ? o[q] : P[i * 3 + q]; }
+    }
+    for (let k = 0; k < count; k++) w[k] = local.get(G[k]) || 0;
+    const d = dab.dir, st = stroke.clothStart;
+    const par = Float64Array.from([c.x, c.y, c.z, r, s, sign, d ? d.x : 0, d ? d.y : 0, d ? d.z : 0, d ? 1 : 0, st.x, st.y, st.z, ...hook]);
+    const KIND = { pinch: 0, slide: 1, inflate: 2, hook: 3, twist: 4 };
+    const at = coreBlock(X, [['par', par], ['w', w], ['pos', pos], ['nrm', nrm], ['orig', orig], ['ids', ids], ['off', nbOff], ['nb', nb]]);
+    if (X.brush_cloth_raw(KIND[kind] ?? 2, count, E, at.ids, at.pos, at.nrm, at.orig, at.w, at.off, at.nb, nb.length, at.par) === 0) {
+      const OUT = new Float32Array(X.memory.buffer, at.pos, E * 3);
+      for (let k = 0; k < count; k++) { if (!(w[k] > 0)) continue; const i = G[k]; P[i * 3] = OUT[k * 3]; P[i * 3 + 1] = OUT[k * 3 + 1]; P[i * 3 + 2] = OUT[k * 3 + 2]; }
+      frame_.positions = true;
+      return;
+    }
+  }
   // 1. the push
   let ax = 0, ay = 0, az = 0;
   for (const [i] of local) { ax += NR[i * 3]; ay += NR[i * 3 + 1]; az += NR[i * 3 + 2]; }
@@ -3526,7 +3549,53 @@ function clothDab(G, F, count, c, r, s, sign, kind, dab) {
   frame_.positions = true;
 }
 
+/* ---------- patches for the core: the brushed points and their neighbours ----------
+   The `count` points under the brush first (in their order), then every neighbour not among them;
+   each brushed point's neighbours as patch numbers, in the order forNeighbors gives them. */
+function corePatch(G, count) {
+  const m = mesh, cap = m.pos.length / 3;
+  if (!m.patchMap || m.patchMap.length < cap) { m.patchMap = new Int32Array(cap); m.patchStamp = new Uint32Array(cap); m.patchSerial = 0; }
+  const map = m.patchMap, st = m.patchStamp, tag = ++m.patchSerial;
+  const ext = [];
+  for (let k = 0; k < count; k++) { const i = G[k]; st[i] = tag; map[i] = k; ext.push(i); }
+  const nbOff = new Uint32Array(count + 1), nb = [];
+  for (let k = 0; k < count; k++) {
+    forNeighbors(m, G[k], (u) => { if (st[u] !== tag) { st[u] = tag; map[u] = ext.length; ext.push(u); } nb.push(map[u]); });
+    nbOff[k + 1] = nb.length;
+  }
+  return { ext, nbOff, nb: Uint32Array.from(nb) };
+}
+// arrays into one block of the core's memory (reused); views on it after the call
+function coreBlock(X, parts) {
+  let bytes = 0; for (const [, a] of parts) bytes += Math.ceil(a.byteLength / 8) * 8;
+  if (!dabBlock || dabBlock.cap < bytes) { if (dabBlock) X.mem_free(dabBlock.ptr, dabBlock.cap); const cap = Math.max(bytes, 1 << 20); dabBlock = { ptr: X.mem_alloc(cap), cap }; }
+  const at = {}; let o = dabBlock.ptr;
+  for (const [name, a] of parts) { new Uint8Array(X.memory.buffer, o, a.byteLength).set(new Uint8Array(a.buffer, a.byteOffset, a.byteLength)); at[name] = o; o += Math.ceil(a.byteLength / 8) * 8; }
+  return at;
+}
+function rustSmooth(G, F, count, s) {
+  const X = coreSync, m = mesh, P = m.pos, MK = m.mask;
+  const { ext, nbOff, nb } = corePatch(G, count), E = ext.length;
+  const pos = new Float32Array(E * 3), edge = new Uint8Array(count), mask = new Float32Array(count), fall = new Float32Array(count);
+  for (let e = 0; e < E; e++) { const i = ext[e]; pos[e * 3] = P[i * 3]; pos[e * 3 + 1] = P[i * 3 + 1]; pos[e * 3 + 2] = P[i * 3 + 2]; }
+  for (let k = 0; k < count; k++) {
+    const i = G[k]; mask[k] = MK[i]; fall[k] = F[k];
+    edge[k] = m.dyn ? (!m.vfA[i].length || m.isBoundary(i) ? 1 : 0) : (m.boundary[i] || m.vvOff[i + 1] === m.vvOff[i] ? 1 : 0);
+  }
+  const at = coreBlock(X, [['pos', pos], ['off', nbOff], ['nb', nb], ['edge', edge], ['mask', mask], ['fall', fall], ['out', new Float32Array(count * 3)], ['ch', new Uint8Array(count)]]);
+  const n = X.brush_smooth_raw(count, E, at.pos, at.off, at.nb, nb.length, at.edge, at.mask, at.fall, s, at.out, at.ch);
+  if (n < 0) return false;
+  const OUT = new Float32Array(X.memory.buffer, at.out, count * 3), CH = new Uint8Array(X.memory.buffer, at.ch, count);
+  for (let k = 0; k < count; k++) {
+    if (!CH[k]) continue;
+    const i = G[k]; touchVert(i);
+    P[i * 3] = OUT[k * 3]; P[i * 3 + 1] = OUT[k * 3 + 1]; P[i * 3 + 2] = OUT[k * 3 + 2];
+  }
+  frame_.positions = true;
+  return true;
+}
 function smoothVerts(G, F, count, s) {
+  if (rustBrushes && coreSync && count && rustSmooth(G, F, count, s)) return;
   const m = mesh, P = m.pos, T = m.tmp, MK = m.mask;
   for (let k = 0; k < count; k++) {
     const i = G[k];
