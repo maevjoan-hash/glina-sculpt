@@ -167,9 +167,51 @@ pub fn bake_color(uv: &[f32], corner: &[u32], idx: &[u32], col: &[f32], size: us
     img
 }
 
-/// A tangent-space normal map: for each texel of the low surface, the normal of the high surface found
-/// along the low one's normal, in the frame of the texel (tangent along U, bitangent along V, normal).
-pub fn bake_normals(pos: &[f32], idx: &[u32], nrm: &[f32], uv: &[f32], corner: &[u32], hpos: &[f32], hidx: &[u32], size: usize, reach: f64) -> Vec<u8> {
+pub const MAP_TANGENT: u32 = 0;
+pub const MAP_OBJECT: u32 = 1;
+pub const MAP_HEIGHT: u32 = 2;
+pub const MAP_CAVITY: u32 = 3;
+
+/// How much the surface closes (below 0) or opens (above 0) around each vertex: the mean, over its
+/// neighbours, of how far they lie under or over its tangent plane, relative to their distance.
+pub fn cavity(pos: &[f32], idx: &[u32]) -> Vec<f32> {
+    let n = pos.len() / 3;
+    let mut nrm = vec![0f64; n * 3];
+    for f in idx.chunks_exact(3) {
+        let (a, b, c) = (p3(pos, f[0] as usize), p3(pos, f[1] as usize), p3(pos, f[2] as usize));
+        let (u, v) = ([b[0] - a[0], b[1] - a[1], b[2] - a[2]], [c[0] - a[0], c[1] - a[1], c[2] - a[2]]);
+        let fnr = [u[1] * v[2] - u[2] * v[1], u[2] * v[0] - u[0] * v[2], u[0] * v[1] - u[1] * v[0]];
+        for &i in f { for q in 0..3 { nrm[i as usize * 3 + q] += fnr[q]; } }
+    }
+    let mut sum = vec![0f64; n];
+    let mut cnt = vec![0u32; n];
+    for f in idx.chunks_exact(3) {
+        for e in 0..3 {
+            let (i, j) = (f[e] as usize, f[(e + 1) % 3] as usize);
+            let (pi, pj) = (p3(pos, i), p3(pos, j));
+            let d = [pj[0] - pi[0], pj[1] - pi[1], pj[2] - pi[2]];
+            let l = (d[0] * d[0] + d[1] * d[1] + d[2] * d[2]).sqrt();
+            if l < 1e-20 { continue; }
+            for (v, sg) in [(i, 1.0), (j, -1.0)] {
+                let nv = [nrm[v * 3], nrm[v * 3 + 1], nrm[v * 3 + 2]];
+                let nl = (nv[0] * nv[0] + nv[1] * nv[1] + nv[2] * nv[2]).sqrt();
+                if nl < 1e-20 { continue; }
+                // a neighbour above the tangent plane: the surface closes in here (a fold, a pore)
+                sum[v] -= sg * (d[0] * nv[0] + d[1] * nv[1] + d[2] * nv[2]) / (nl * l);
+                cnt[v] += 1;
+            }
+        }
+    }
+    (0..n).map(|v| if cnt[v] > 0 { (sum[v] / cnt[v] as f64) as f32 } else { 0.0 }).collect()
+}
+
+/// A map of the high surface over the low one's charts: for each texel of the low surface the high one is
+/// found along the low one's normal. `mode`: the high surface's normal in the texel's frame (tangent along
+/// U, bitangent along V, normal) or in the model's axes; its height over the low surface (grey, 0.5 at
+/// none, ±`reach` at black and white); or its cavity (grey: folds dark, ridges light).
+#[allow(clippy::too_many_arguments)]
+pub fn bake_normals(pos: &[f32], idx: &[u32], nrm: &[f32], uv: &[f32], corner: &[u32], hpos: &[f32], hidx: &[u32], size: usize, reach: f64, mode: u32) -> Vec<u8> {
+    let hval = if mode == MAP_CAVITY { cavity(hpos, hidx) } else { Vec::new() };
     let mut img = vec![0u8; size * size * 4];
     let mut filled = vec![false; size * size];
     let Some(hc) = crate::cloth::Collider::new(hpos, hidx, reach / 3.0) else { return img };
@@ -201,10 +243,26 @@ pub fn bake_normals(pos: &[f32], idx: &[u32], nrm: &[f32], uv: &[f32], corner: &
             let h = (q[0] - p[0]) * n[0] + (q[1] - p[1]) * n[1] + (q[2] - p[2]) * n[2];
             if h.abs() > reach { break; }
             xq = [p[0] + n[0] * h, p[1] + n[1] * h, p[2] + n[2] * h];
-            hit = Some(ht);
+            hit = Some((ht, h, q));
         }
-        let Some(ht) = hit else { return };
+        let Some((ht, height, hq)) = hit else { return };
+        let k = y * size + x;
         let (a, b, c) = (p3(hpos, hidx[ht * 3] as usize), p3(hpos, hidx[ht * 3 + 1] as usize), p3(hpos, hidx[ht * 3 + 2] as usize));
+        if mode == MAP_HEIGHT || mode == MAP_CAVITY {
+            let g = if mode == MAP_HEIGHT { 0.5 + height / (2.0 * reach) } else {
+                // the cavity of the three corners, weighed by where in the triangle the point is
+                let (e0, e1, e2) = ([b[0] - a[0], b[1] - a[1], b[2] - a[2]], [c[0] - a[0], c[1] - a[1], c[2] - a[2]], [hq[0] - a[0], hq[1] - a[1], hq[2] - a[2]]);
+                let d = |u: [f64; 3], v: [f64; 3]| u[0] * v[0] + u[1] * v[1] + u[2] * v[2];
+                let (d00, d01, d11, d20, d21) = (d(e0, e0), d(e0, e1), d(e1, e1), d(e2, e0), d(e2, e1));
+                let den = d00 * d11 - d01 * d01;
+                let (wb, wc) = if den.abs() < 1e-30 { (0.0, 0.0) } else { (((d11 * d20 - d01 * d21) / den).clamp(0.0, 1.0), ((d00 * d21 - d01 * d20) / den).clamp(0.0, 1.0)) };
+                let hv = |e: usize| hval[hidx[ht * 3 + e] as usize] as f64;
+                0.5 + (hv(0) * (1.0 - wb - wc) + hv(1) * wb + hv(2) * wc) * 2.5
+            };
+            let v = (g.clamp(0.0, 1.0) * 255.0 + 0.5) as u8;
+            img[k * 4] = v; img[k * 4 + 1] = v; img[k * 4 + 2] = v; img[k * 4 + 3] = 255; filled[k] = true;
+            return;
+        }
         let (u, v) = ([b[0] - a[0], b[1] - a[1], b[2] - a[2]], [c[0] - a[0], c[1] - a[1], c[2] - a[2]]);
         let mut hn = [u[1] * v[2] - u[2] * v[1], u[2] * v[0] - u[0] * v[2], u[0] * v[1] - u[1] * v[0]];
         let hl = (hn[0] * hn[0] + hn[1] * hn[1] + hn[2] * hn[2]).sqrt(); if hl < 1e-20 { return; }
@@ -217,14 +275,14 @@ pub fn bake_normals(pos: &[f32], idx: &[u32], nrm: &[f32], uv: &[f32], corner: &
         for c in tt.iter_mut() { *c /= tl; }
         let mut bb = [n[1] * tt[2] - n[2] * tt[1], n[2] * tt[0] - n[0] * tt[2], n[0] * tt[1] - n[1] * tt[0]];
         if dot(bb, tb[t][1]) < 0.0 { for c in bb.iter_mut() { *c = -*c; } }
-        let local = [dot(hn, tt), dot(hn, bb), dot(hn, n)];
-        let k = y * size + x;
+        let local = if mode == MAP_OBJECT { hn } else { [dot(hn, tt), dot(hn, bb), dot(hn, n)] };
         for q in 0..3 { img[k * 4 + q] = ((local[q] * 0.5 + 0.5).clamp(0.0, 1.0) * 255.0 + 0.5) as u8; }
         img[k * 4 + 3] = 255; filled[k] = true;
     });
     // (texels between charts: the flat normal)
     dilate(&mut img, &mut filled, size, 6);
-    for k in 0..size * size { if !filled[k] { img[k * 4] = 128; img[k * 4 + 1] = 128; img[k * 4 + 2] = 255; img[k * 4 + 3] = 255; } }
+    let empty = if mode == MAP_TANGENT { [128, 128, 255] } else { [128, 128, 128] };
+    for k in 0..size * size { if !filled[k] { img[k * 4] = empty[0]; img[k * 4 + 1] = empty[1]; img[k * 4 + 2] = empty[2]; img[k * 4 + 3] = 255; } }
     img
 }
 

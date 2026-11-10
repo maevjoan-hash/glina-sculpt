@@ -575,7 +575,19 @@ pub unsafe extern "C" fn uv_bake_normals_raw(pos: *const f32, nv: usize, idx: *c
     let hidx = std::slice::from_raw_parts(hidx, hnt * 3);
     if hidx.iter().any(|&v| v as usize >= hnv) { return -1; }
     let (pos, idx, nrm, hpos) = (std::slice::from_raw_parts(pos, nv * 3), std::slice::from_raw_parts(idx, nt * 3), std::slice::from_raw_parts(nrm, nv * 3), std::slice::from_raw_parts(hpos, hnv * 3));
-    UV.with(|c| { let mut c = c.borrow_mut(); let img = uv::bake_normals(pos, idx, nrm, &c.0, &c.1, hpos, hidx, size, reach as f64); c.2 = img; });
+    UV.with(|c| { let mut c = c.borrow_mut(); let img = uv::bake_normals(pos, idx, nrm, &c.0, &c.1, hpos, hidx, size, reach as f64, uv::MAP_TANGENT); c.2 = img; });
+    0
+}
+/// Another map of the finer surface into `uv_ptr(2)` (uv.rs): `mode` 0 tangent-space normals, 1 object-
+/// space normals, 2 height over the low surface (grey, ±`reach`), 3 cavity (grey).
+/// # Safety
+/// As above.
+#[no_mangle]
+pub unsafe extern "C" fn uv_bake_map_raw(pos: *const f32, nv: usize, idx: *const u32, nt: usize, nrm: *const f32, hpos: *const f32, hnv: usize, hidx: *const u32, hnt: usize, size: usize, reach: f32, mode: u32) -> i32 {
+    let hidx = std::slice::from_raw_parts(hidx, hnt * 3);
+    if hidx.iter().any(|&v| v as usize >= hnv) || mode > uv::MAP_CAVITY { return -1; }
+    let (pos, idx, nrm, hpos) = (std::slice::from_raw_parts(pos, nv * 3), std::slice::from_raw_parts(idx, nt * 3), std::slice::from_raw_parts(nrm, nv * 3), std::slice::from_raw_parts(hpos, hnv * 3));
+    UV.with(|c| { let mut c = c.borrow_mut(); let img = uv::bake_normals(pos, idx, nrm, &c.0, &c.1, hpos, hidx, size, reach as f64, mode); c.2 = img; });
     0
 }
 #[no_mangle]
