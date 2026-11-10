@@ -17,6 +17,7 @@ pub mod brush;
 pub mod cloth;
 pub mod decimate;
 pub mod dyntopo;
+pub mod multires;
 pub mod quadmesh;
 pub mod subdiv;
 pub mod uv;
@@ -665,6 +666,38 @@ pub extern "C" fn dyn_info(kind: u32) -> f64 {
 }
 #[no_mangle]
 pub extern "C" fn dyn_free() { DYN.with(|c| *c.borrow_mut() = None); }
+
+/// Subdivision levels (multires.rs): the detail of `pos` over the subdivided surface `sub`, written to
+/// `out` (3 per vertex). Returns 0, or −1 when a face names a vertex that is not there.
+/// # Safety
+/// `pos`, `sub` and `out` hold `n` × 3 values, `idx` `nf` × 3.
+#[no_mangle]
+pub unsafe extern "C" fn mr_encode_raw(n: usize, pos: *const f32, sub: *const f32, nf: usize, idx: *const u32, out: *mut f32) -> i32 {
+    let idx = std::slice::from_raw_parts(idx, nf * 3);
+    if idx.iter().any(|&v| v as usize >= n) { return -1; }
+    multires::encode(std::slice::from_raw_parts(pos, n * 3), std::slice::from_raw_parts(sub, n * 3), idx, n, std::slice::from_raw_parts_mut(out, n * 3));
+    0
+}
+/// The surface `sub` with the detail `d` put back, into `out`. Returns 0 or −1.
+/// # Safety
+/// `sub`, `d` and `out` hold `n` × 3 values, `idx` `nf` × 3.
+#[no_mangle]
+pub unsafe extern "C" fn mr_decode_raw(n: usize, sub: *const f32, d: *const f32, nf: usize, idx: *const u32, out: *mut f32) -> i32 {
+    let idx = std::slice::from_raw_parts(idx, nf * 3);
+    if idx.iter().any(|&v| v as usize >= n) { return -1; }
+    multires::decode(std::slice::from_raw_parts(sub, n * 3), std::slice::from_raw_parts(d, n * 3), idx, n, std::slice::from_raw_parts_mut(out, n * 3));
+    0
+}
+/// The lower level's positions (`n_low` × 3, into `out`) from the higher level's. Returns 0 or −1.
+/// # Safety
+/// `high` holds `n_high` × 3 values, `idx` `nf` × 3, `out` `n_low` × 3.
+#[no_mangle]
+pub unsafe extern "C" fn mr_lower_raw(n_high: usize, high: *const f32, nf: usize, idx: *const u32, n_low: usize, out: *mut f32) -> i32 {
+    let idx = std::slice::from_raw_parts(idx, nf * 3);
+    if n_low > n_high || idx.iter().any(|&v| v as usize >= n_high) { return -1; }
+    multires::lower(std::slice::from_raw_parts(high, n_high * 3), idx, n_high, n_low, std::slice::from_raw_parts_mut(out, n_low * 3));
+    0
+}
 
 thread_local! { static SUB: RefCell<Option<subdiv::Sub>> = const { RefCell::new(None) }; }
 /// Loop subdivision (subdiv.rs). `col`, `mask`, `grp` may be null. `flags`: 1 smooth, 2 crease.
