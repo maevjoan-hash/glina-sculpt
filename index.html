@@ -4356,6 +4356,7 @@ function endStroke(commit = true) {
   curGroup = -1;   // (in case a brush threw halfway)
   processStroke(); flushFrame();
   if (commit && stroke.tool === 'grab' && mesh.dyn && stroke.changed) { refineAfterGrab(); flushFrame(); }
+  if (commit && stroke.changed && stroke.tool !== 'mask' && stroke.tool !== 'paint') healStroke();
   if (stroke.snap) {
     const { snap, changed } = stroke;
     stroke = null;
@@ -4439,6 +4440,24 @@ function healVerts(list, count) {
   }
   return fixed;
 }
+// the frame's moved points and the ring around them (a point the brush did not move can be left standing
+// out when its neighbours went)
+function healAround() {
+  if (!S.heal || !stroke) return 0;
+  const near = mesh.nTouched.slice();
+  return healVerts(near, near.length);
+}
+// once more over everything the stroke moved, when it ends: what a later frame folded again
+function healStroke() {
+  if (!S.heal || !stroke) return;
+  const m = mesh;
+  let list;
+  if (m.dyn) { if (!stroke.healSet) return; list = [...stroke.healSet].filter((v) => v < m.n && m.vfA[v] && m.vfA[v].length); }
+  else { if (!stroke.uCount) return; list = Array.from(m.uIdx.subarray(0, stroke.uCount)); }
+  let any = false;
+  for (let round = 0; round < 4 && healVerts(list, list.length); round++) any = true;
+  if (any) { m.updateNormals(list, list.length); frame_.positions = true; flushFrame(); }
+}
 function resetFrame() {
   frame_.count = 0; frame_.minV = Infinity; frame_.maxV = -1;
   frame_.positions = frame_.colors = frame_.masks = frame_.bvhKept = false;
@@ -4451,7 +4470,7 @@ function flushFrame() {
   if (frame_.positions && thickOf(m)) thickClamp(m.frList, frame_.count);
   if (frame_.positions) {
     m.updateNormals(m.frList, frame_.count);          // neighbours' normals change as well
-    if (healVerts(m.frList, frame_.count)) m.updateNormals(m.frList, frame_.count);
+    if (healAround()) m.updateNormals(m.frList, frame_.count);
     uploadVerts(['position', 'normal'], m.nTouched, m.nTouched.length);
     if (!frame_.bvhKept) bvhDirty = true;              // grab / snake: refit the whole tree next frame
   }
@@ -4466,7 +4485,8 @@ function flushDyn() {
   const touched = [];
   if (frame_.count && frame_.positions) {
     m.updateNormals(m.frList, frame_.count);
-    if (healVerts(m.frList, frame_.count)) m.updateNormals(m.frList, frame_.count);
+    if (stroke && S.heal) { const hs = stroke.healSet || (stroke.healSet = new Set()); if (hs.size < 300000) for (let k = 0; k < frame_.count; k++) hs.add(m.frList[k]); }
+    if (healAround()) m.updateNormals(m.frList, frame_.count);
     for (const v of m.nTouched) touched.push(v);
   }
   for (let k = 0; k < frame_.count; k++) touched.push(m.frList[k]);
