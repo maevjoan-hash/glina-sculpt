@@ -75,7 +75,7 @@ await G(() => { const W = window.__glina; W.maskOp('clear'); W.showAll(); });
 // cloth: a shell from the top of the sphere, pinned at its crown, drapes over the sphere
 await G(() => { const W = window.__glina, m = W.mesh; for (let i = 0; i < m.n; i++) m.mask[i] = m.pos[i * 3 + 1] > 0.35 ? 1 : 0; W.extractTool(); });
 await frames(2);
-await G(() => { const W = window.__glina, m = W.mesh; for (let i = 0; i < m.n; i++) m.mask[i] = m.pos[i * 3 + 1] > 0.97 ? 1 : 0; W.TOOLS[0].mesh.mask.fill(0); W.S.clothTime = 3; W.S.clothGravity = 1.5; });
+await G(() => { const W = window.__glina, m = W.mesh; for (let i = 0; i < m.n; i++) m.mask[i] = m.pos[i * 3 + 1] > 0.97 ? 1 : 0; W.TOOLS[0].mesh.mask.fill(0); W.S.clothTime = 8; W.S.clothGravity = 1.5; });
 const c0 = await G(() => { const m = window.__glina.mesh; return { pos: Array.from(m.pos.subarray(0, m.n * 3)), mask: Array.from(m.mask.subarray(0, m.n)), undo: window.__glina.undoStack.length }; });
 await G(() => window.__glina.startCloth());
 await frames(5);

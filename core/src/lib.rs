@@ -16,6 +16,7 @@
 pub mod brush;
 pub mod cloth;
 pub mod decimate;
+pub mod dyntopo;
 pub mod quadmesh;
 pub mod subdiv;
 pub mod uv;
@@ -612,6 +613,58 @@ pub unsafe extern "C" fn brush_cloth_raw(kind: u32, count: usize, ext: usize, id
     brush::cloth(kind, count, std::slice::from_raw_parts(ids, ext), std::slice::from_raw_parts_mut(pos, ext * 3), std::slice::from_raw_parts(nrm, ext * 3), std::slice::from_raw_parts(orig, ext * 3), std::slice::from_raw_parts(w, count), nb_off, nb, std::slice::from_raw_parts(par, 17));
     0
 }
+
+thread_local! { static DYN: RefCell<Option<(dyntopo::Patch, Vec<u32>, Vec<u8>, bool)>> = const { RefCell::new(None) }; }
+/// Dynamic topology on a patch (dyntopo.rs). `par`: centre (3), r² (∞ for all), max², min², split and
+/// collapse budgets, split?, collapse?, all?, the brush's group (−1: any), sample tick, room for faces.
+/// Read with `dyn_ptr` / `dyn_len` (0 pos, 1 nrm, 2 col, 3 mask, 4 grp, 5 hid: every patch vertex, the new
+/// ones after the old; 6 the faces left; 7 removed flags; 8 dirty vertices) and `dyn_info` (0 vertices,
+/// 1 changed, 2 hit the face limit, 3 splits, 4 collapses). Returns 1 changed, 0 not, −1 bad input.
+/// # Safety
+/// Every pointer must point to as many values as its count says.
+#[no_mangle]
+pub unsafe extern "C" fn dyn_patch_raw(nv: usize, pos: *const f32, nrm: *const f32, col: *const f32, mask: *const f32, grp: *const f32, hid: *const f32, nf: usize, faces: *const u32, locked: *const u8, extra: *const u32, nfrozen: usize, frozen: *const u32, nverts: usize, verts: *const u32, par: *const f64) -> i32 {
+    let faces = std::slice::from_raw_parts(faces, nf * 3);
+    let verts = std::slice::from_raw_parts(verts, nverts);
+    let frozen = if nfrozen == 0 { &[][..] } else { std::slice::from_raw_parts(frozen, nfrozen * 2) };
+    if faces.iter().chain(verts.iter()).chain(frozen.iter()).any(|&v| v as usize >= nv) { return -1; }
+    let f = |p: *const f32, k: usize| std::slice::from_raw_parts(p, nv * k);
+    let par = std::slice::from_raw_parts(par, 14);
+    let mut patch = dyntopo::Patch::new(f(pos, 3), f(nrm, 3), f(col, 3), f(mask, 1), f(grp, 1), f(hid, 1), faces, std::slice::from_raw_parts(locked, nv), std::slice::from_raw_parts(extra, nv), frozen, par[13] as i64);
+    let budget = |x: f64| if x.is_finite() { x.max(0.0) as usize } else { usize::MAX };
+    let p = dyntopo::Params { c: [par[0], par[1], par[2]], r2: par[3], max2: par[4], min2: par[5], split_budget: budget(par[6]), collapse_budget: budget(par[7]), do_split: par[8] != 0.0, do_collapse: par[9] != 0.0, all: par[10] != 0.0, cur_group: par[11] as f32, tick: par[12] as usize };
+    let changed = patch.remesh(verts, &p);
+    let left: Vec<u32> = patch.faces.iter().zip(patch.alive.iter()).filter(|(_, &a)| a).flat_map(|(f, _)| f.iter().copied()).collect();
+    let removed: Vec<u8> = patch.removed.iter().map(|&r| r as u8).collect();
+    DYN.with(|c| *c.borrow_mut() = Some((patch, left, removed, changed)));
+    changed as i32
+}
+#[no_mangle]
+pub extern "C" fn dyn_ptr(kind: u32) -> *const u8 {
+    DYN.with(|c| match c.borrow().as_ref() {
+        None => std::ptr::null(),
+        Some((p, left, removed, _)) => match kind {
+            0 => p.pos.as_ptr() as *const u8, 1 => p.nrm.as_ptr() as *const u8, 2 => p.col.as_ptr() as *const u8, 3 => p.mask.as_ptr() as *const u8,
+            4 => p.grp.as_ptr() as *const u8, 5 => p.hid.as_ptr() as *const u8, 6 => left.as_ptr() as *const u8, 7 => removed.as_ptr(), _ => p.dirty.as_ptr() as *const u8,
+        },
+    })
+}
+#[no_mangle]
+pub extern "C" fn dyn_len(kind: u32) -> usize {
+    DYN.with(|c| match c.borrow().as_ref() {
+        None => 0,
+        Some((p, left, removed, _)) => match kind { 0 | 1 | 2 => p.pos.len(), 3 | 4 | 5 => p.mask.len(), 6 => left.len(), 7 => removed.len(), _ => p.dirty.len() },
+    })
+}
+#[no_mangle]
+pub extern "C" fn dyn_info(kind: u32) -> f64 {
+    DYN.with(|c| match c.borrow().as_ref() {
+        None => 0.0,
+        Some((p, _, _, ch)) => match kind { 0 => p.mask.len() as f64, 1 => *ch as u8 as f64, 2 => p.hit_cap as u8 as f64, 3 => p.splits as f64, _ => p.collapses as f64 },
+    })
+}
+#[no_mangle]
+pub extern "C" fn dyn_free() { DYN.with(|c| *c.borrow_mut() = None); }
 
 thread_local! { static SUB: RefCell<Option<subdiv::Sub>> = const { RefCell::new(None) }; }
 /// Loop subdivision (subdiv.rs). `col`, `mask`, `grp` may be null. `flags`: 1 smooth, 2 crease.

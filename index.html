@@ -225,11 +225,25 @@ input[type=range] { width: 100%; height: 26px; accent-color: var(--wax); backgro
 .dtab[aria-selected="true"] { background: var(--wax); color: var(--wax-ink); border-color: var(--wax); font-weight: 600; }
 .floatpanel { position: absolute; left: 10px; top: 10px; z-index: 6; width: min(300px, calc(100% - 20px)); max-height: calc(100% - 20px); overflow-y: auto; background: var(--panel); border: 1px solid var(--line); border-radius: 12px; box-shadow: 0 18px 50px rgba(0,0,0,.5); }
 .floatpanel[hidden] { display: none; }
+.dragHandle { cursor: move; touch-action: none; user-select: none; -webkit-user-select: none; }
+.fpPin { position: absolute; right: 44px; top: 10px; z-index: 1; width: 32px; height: 32px; border-radius: 8px; border: 0; background: none; color: var(--muted); cursor: pointer; display: grid; place-items: center; opacity: .55; }
+.fpPin svg { width: 17px; height: 17px; }
+.fpPin:hover { background: var(--panel-2); color: var(--fg); opacity: 1; }
+.fpPin[aria-pressed="true"] { color: var(--wax); opacity: 1; }
+.floatpanel.dragging { opacity: .92; box-shadow: 0 24px 70px rgba(0,0,0,.6); }
+#drawer .sec[data-tab] > h2 { cursor: grab; touch-action: none; user-select: none; -webkit-user-select: none; }
+#drawer .sec[data-tab] > h2::before { content: '▾'; margin-right: 6px; color: var(--muted); display: inline-block; transition: transform .15s; }
+#drawer .sec.shut > h2::before { transform: rotate(-90deg); }
+#drawer .sec.shut > :not(h2) { display: none !important; }
+#drawer .sec.secDrag { opacity: .45; }
+#drawer .sec.dropBefore { box-shadow: inset 0 3px 0 var(--wax); }
+#drawer .sec.dropAfter { box-shadow: inset 0 -3px 0 var(--wax); }
+.dtab.dropTab { outline: 2px solid var(--wax); outline-offset: 1px; }
 .fpClose { position: absolute; right: 10px; top: 10px; z-index: 1; width: 32px; height: 32px; border-radius: 8px; border: 0; background: none; color: var(--muted); font-size: 22px; line-height: 1; cursor: pointer; }
 .fpClose:hover { background: var(--panel-2); color: var(--fg); }
 #brushPanel { background: none; border: 0; box-shadow: none; overflow: visible; }
 #brushPanel .brushbox { margin: 0; max-height: calc(100vh - var(--bar) - 40px); overflow-y: auto; box-shadow: 0 18px 50px rgba(0,0,0,.5); }
-#brushPanel .bbHead { padding-right: 34px; }
+#brushPanel .bbHead { padding-right: 76px; }
 #palette, #patterns { width: min(560px, calc(100% - 20px)); padding: 14px; }
 .palSearch { width: 100%; height: 38px; margin: 10px 0 2px; padding: 0 12px; border-radius: 9px; border: 1px solid var(--line); background: var(--bg); color: var(--fg); font: inherit; }
 .palSearch:focus { outline: none; border-color: var(--wax); }
@@ -241,7 +255,7 @@ input[type=range] { width: 100%; height: 26px; accent-color: var(--wax); backgro
 .foundRow small { color: var(--muted); }
 .flash { animation: flash 1.4s ease-out; }
 @keyframes flash { 0%, 40% { box-shadow: 0 0 0 3px var(--wax); } 100% { box-shadow: 0 0 0 0 transparent; } }
-.palHead { display: grid; gap: 4px; padding-right: 36px; }
+.palHead { display: grid; gap: 4px; padding-right: 76px; }
 .palHead b { font-family: var(--font-display); font-weight: 600; }
 .palHead small { color: var(--muted); font-size: 12px; line-height: 1.4; }
 .palCat { font-size: 11px; font-weight: 600; letter-spacing: .09em; text-transform: uppercase; color: var(--muted); margin: 14px 0 6px; }
@@ -422,6 +436,24 @@ input[type=range] { width: 100%; height: 26px; accent-color: var(--wax); backgro
         <div class="row"><label for="sArrCount" id="lArrCount">Брой</label><output id="oArrCount"></output><input type="range" id="sArrCount" min="2" max="36" step="1"></div>
         <div class="row" id="arrGapRow"><label for="sArrGap">Разстояние</label><output id="oArrGap"></output><input type="range" id="sArrGap" min="-0.9" max="3" step="0.05"></div>
         <div class="row" id="arrScaleRow"><label for="sArrScale">Мащаб на всяко следващо</label><output id="oArrScale"></output><input type="range" id="sArrScale" min="0.5" max="1.5" step="0.01"></div>
+        <details id="arrMore">
+          <summary>Още за всяко следващо копие: отместване, завъртане, разтягане</summary>
+          <p class="note">Като в ZBrush (Array Mesh): всяко следващо копие се мести, завърта и разтяга още толкова. Така стават спирала, стълба, усукана колона, верига.</p>
+          <div class="note lab">Отместване (в размера на частта)</div>
+          <div class="row"><label for="sArrOffX">X</label><output id="oArrOffX"></output><input type="range" id="sArrOffX" min="-2" max="2" step="0.01"></div>
+          <div class="row"><label for="sArrOffY">Y</label><output id="oArrOffY"></output><input type="range" id="sArrOffY" min="-2" max="2" step="0.01"></div>
+          <div class="row"><label for="sArrOffZ">Z</label><output id="oArrOffZ"></output><input type="range" id="sArrOffZ" min="-2" max="2" step="0.01"></div>
+          <div class="note lab">Завъртане около собствения център</div>
+          <div class="row"><label for="sArrRotX">X</label><output id="oArrRotX"></output><input type="range" id="sArrRotX" min="-180" max="180" step="1"></div>
+          <div class="row"><label for="sArrRotY">Y</label><output id="oArrRotY"></output><input type="range" id="sArrRotY" min="-180" max="180" step="1"></div>
+          <div class="row"><label for="sArrRotZ">Z</label><output id="oArrRotZ"></output><input type="range" id="sArrRotZ" min="-180" max="180" step="1"></div>
+          <div class="note lab">Разтягане по ос</div>
+          <div class="row"><label for="sArrSclX">X</label><output id="oArrSclX"></output><input type="range" id="sArrSclX" min="0.5" max="1.5" step="0.01"></div>
+          <div class="row"><label for="sArrSclY">Y</label><output id="oArrSclY"></output><input type="range" id="sArrSclY" min="0.5" max="1.5" step="0.01"></div>
+          <div class="row"><label for="sArrSclZ">Z</label><output id="oArrSclZ"></output><input type="range" id="sArrSclZ" min="0.5" max="1.5" step="0.01"></div>
+          <button class="btn wide" id="bArrZero">Без отместване, завъртане и разтягане</button>
+        </details>
+        <label class="toggle">Покажи копията, преди да ги направиш <input type="checkbox" id="tArrLive"></label>
         <button class="btn wide" id="bArray">Направи масив</button>
         <p class="note" id="arrNote"></p>
         </div>
@@ -635,6 +667,12 @@ input[type=range] { width: 100%; height: 26px; accent-color: var(--wax); backgro
       <input type="file" id="matIn" accept="image/*" hidden>
       <label class="toggle">Плоско засенчване <input type="checkbox" id="tFlat"></label>
     </section>
+
+    <section class="sec" data-tab="view">
+      <h2>Панели <em>Trays</em></h2>
+      <p class="note">Наредете ги както ви е удобно, като в ZBrush. Плаващите панели (четката, „Всички“, „Шарки“) се местят, като ги влачите за заглавието; с 📌 остават отворени, докато отваряте други. Разделите тук: щракване върху заглавието ги свива, влачене го мести нагоре или надолу, а пуснат върху раздел горе („Модел“, „Създай“, „Изглед“) отива там.</p>
+      <button class="btn wide" id="bPanelsReset">Подреди панелите наново</button>
+    </section>
   </aside>
 </div>
 <input type="file" id="fileIn" accept=".obj,.stl,.glina" hidden>
@@ -838,8 +876,13 @@ const S = {
   defAxis: 1, defTo: 0,  // deformers: along which axis, and (bend) toward which of the other two
   arrCount: 6, arrMode: 'line', arrAxis: 0, arrGap: 0.2, arrScale: 1,
   arrRows: 3, arrAxis2: 2,   // a grid: rows along the second axis
+  // each next copy moved (in the part's size), turned (degrees) and stretched along X, Y, Z on top of the
+  // pattern (ZBrush Array Mesh: Offset, Rotate, Scale); arrLive shows the copies before they are made
+  arrOffX: 0, arrOffY: 0, arrOffZ: 0, arrRotX: 0, arrRotY: 0, arrRotZ: 0, arrSclX: 1, arrSclY: 1, arrSclZ: 1, arrLive: true,
   pcShape: 'sphere', pcCount: 12, pcSize: 0.04,   // shapes along a curve
   pattern: 'line',     // the last pattern chosen in „Шарки“
+  panels: {},          // the floating panels: { id: { x, y, pin } } where they were dragged, and pinned open
+  secLayout: {},       // the drawer's sections: { order: [titles], tab: { title: tab }, shut: [titles] }
 };
 let savedSettings = null;
 try { savedSettings = JSON.parse(localStorage.getItem('glina.settings') || 'null'); } catch (e) { /* storage unavailable */ }
@@ -887,6 +930,8 @@ function saveSettings() {
     catch (e) { if (!saveSettings.warned) { saveSettings.warned = true; toast('Настройките не се запазиха: мястото е пълно. Изтрийте някоя своя четка с картинка.'); } }
   }, 300);
 }
+// leaving within those 300 ms still keeps the last change
+window.addEventListener('pagehide', () => { if (!saveSettingsT) return; clearTimeout(saveSettingsT); saveSettingsT = 0; try { localStorage.setItem('glina.settings', JSON.stringify(S)); } catch (e) { /* full */ } });
 const brushById = (id) => S.brushes.find((b) => b.id === id);
 const brush = () => brushById(S.tool);
 
@@ -2502,6 +2547,7 @@ let wgeo = null;
 
 let mesh = null;           // SculptMesh
 let geo = null, gmesh = null, wmesh = null;
+let arrPrev = null, arrPaused = false;   // the array's copies shown before they are made (arrayPreview)
 let bvhDirty = false;
 
 // 3D brush ring
@@ -2578,6 +2624,7 @@ function buildGeometry() {
   } else wmesh = new THREE.Mesh(geo, wireMat);
   wmesh.frustumCulled = false; wmesh.visible = S.wire; wmesh.raycast = () => {};
   scene.add(gmesh, wmesh);
+  if (arrPrev && arrPrev.visible) arrayPreview();
 }
 function writeWire(W, I, t) {
   const o = t * 6, a = I[t * 3], b = I[t * 3 + 1], c = I[t * 3 + 2];
@@ -2972,6 +3019,90 @@ function hasHalfEdge(m, from, to) {
 }
 // L = target edge length (world units). Edges longer than L are split, shorter than 0.4·L collapsed.
 // `front` limits the region to vertices facing like the hit normal (the brush's own filter).
+/* ---------- dynamic topology in the Rust core ----------
+   The patch under the dab (every face around the vertices under the brush, and their corners) goes to
+   the core, which splits and collapses edges there and gives the patch back; its faces then take the
+   place of the old ones. Corners with faces outside the patch stay as they are (locked), and so does
+   every edge that has a face outside it. */
+let rustDyn = true;
+function rustDynRemesh(verts, cx, cy, cz, r2, max2, min2, budget, cbudget, doSplit, doCollapse, all) {
+  const X = coreSync, m = mesh, vfA = m.vfA, I = m.idx;
+  // the faces around the vertices, and their corners (local numbers)
+  const ftag = m.nextTag(), TF = m.tagF, F = [];
+  for (const v of verts) { const L = vfA[v]; for (let j = 0; j < L.length; j++) { const t = L[j]; if (TF[t] !== ftag) { TF[t] = ftag; F.push(t); } } }
+  if (!F.length) return null;
+  const cap = m.pos.length / 3;
+  if (!m.patchMap || m.patchMap.length < cap) { m.patchMap = new Int32Array(cap); m.patchStamp = new Uint32Array(cap); m.patchSerial = 0; }
+  const map = m.patchMap, st = m.patchStamp, tag = ++m.patchSerial, ext = [], cnt = [];
+  const faces = new Uint32Array(F.length * 3);
+  for (let q = 0; q < F.length; q++) for (let k = 0; k < 3; k++) {
+    const g = I[F[q] * 3 + k];
+    if (st[g] !== tag) { st[g] = tag; map[g] = ext.length; ext.push(g); cnt.push(0); }
+    const l = map[g]; faces[q * 3 + k] = l; cnt[l]++;
+  }
+  const E = ext.length, P = m.pos, N = m.nrm, C = m.col, M = m.mask, Gp = m.grp, H = m.hid;
+  const pos = new Float32Array(E * 3), nrm = new Float32Array(E * 3), col = new Float32Array(E * 3), mask = new Float32Array(E), grp = new Float32Array(E), hid = new Float32Array(E), locked = new Uint8Array(E), extra = new Uint32Array(E);
+  for (let e = 0; e < E; e++) {
+    const g = ext[e];
+    for (let k = 0; k < 3; k++) { pos[e * 3 + k] = P[g * 3 + k]; nrm[e * 3 + k] = N[g * 3 + k]; col[e * 3 + k] = C[g * 3 + k]; }
+    mask[e] = M[g]; grp[e] = Gp[g]; hid[e] = H[g];
+    extra[e] = vfA[g].length - cnt[e]; locked[e] = extra[e] > 0 ? 1 : 0;
+  }
+  // edges with a face outside the patch (both ends locked and more faces on them than in the patch)
+  const frozen = [], seen = new Set();
+  for (let q = 0; q < F.length; q++) for (let k = 0; k < 3; k++) {
+    const a = faces[q * 3 + k], b = faces[q * 3 + (k + 1) % 3];
+    if (!locked[a] || !locked[b]) continue;
+    const key = a < b ? a * 4294967296 + b : b * 4294967296 + a;
+    if (seen.has(key)) continue; seen.add(key);
+    const ga = ext[a], gb = ext[b];
+    let all2 = 0; for (const t of vfA[ga]) if (vfA[gb].includes(t)) all2++;
+    let here = 0; for (const t of vfA[ga]) if (TF[t] === ftag && vfA[gb].includes(t)) here++;
+    if (all2 > here) frozen.push(a, b);
+  }
+  const cand = new Uint32Array(verts.length); for (let k = 0; k < verts.length; k++) cand[k] = map[verts[k]];
+  const par = Float64Array.from([cx, cy, cz, r2, max2, min2, budget, cbudget, doSplit ? 1 : 0, doCollapse ? 1 : 0, all ? 1 : 0, curGroup >= 0 ? curGroup : -1, sampleTick, DYN_MAX_TRIS - m.f]);
+  sampleTick += 8;
+  const fz = Uint32Array.from(frozen);
+  const at = coreBlock(X, [['par', par], ['pos', pos], ['nrm', nrm], ['col', col], ['mask', mask], ['grp', grp], ['hid', hid], ['faces', faces], ['locked', locked], ['extra', extra], ['fz', fz], ['cand', cand]]);
+  const rc = X.dyn_patch_raw(E, at.pos, at.nrm, at.col, at.mask, at.grp, at.hid, F.length, at.faces, at.locked, at.extra, fz.length / 2, at.fz, cand.length, at.cand, at.par);
+  if (rc < 0) { X.dyn_free(); return null; }
+  const info = { changed: rc === 1, hitCap: X.dyn_info(2) === 1, splits: X.dyn_info(3), collapses: X.dyn_info(4) };
+  if (!info.changed) { X.dyn_free(); return info; }
+  const nv = X.dyn_info(0), buf = X.memory.buffer;
+  const get = (k, T, len) => new T(buf, X.dyn_ptr(k), len);
+  const oPos = get(0, Float32Array, nv * 3).slice(), oNrm = get(1, Float32Array, nv * 3).slice(), oCol = get(2, Float32Array, nv * 3).slice();
+  const oMask = get(3, Float32Array, nv).slice(), oGrp = get(4, Float32Array, nv).slice(), oHid = get(5, Float32Array, nv).slice();
+  const oFaces = get(6, Uint32Array, X.dyn_len(6)).slice(), oRem = get(7, Uint8Array, nv).slice(), oDirty = get(8, Uint32Array, X.dyn_len(8)).slice();
+  X.dyn_free();
+  // the old faces go (highest first: a removal moves the last face into the gap)
+  F.sort((a, b) => b - a);
+  for (const t of F) m.removeFace(t);
+  // local → global: the patch's own vertices keep theirs; new ones get a slot (removed new ones none)
+  const glob = new Int32Array(nv);
+  for (let e = 0; e < E; e++) glob[e] = ext[e];
+  for (let e = E; e < nv; e++) glob[e] = oRem[e] ? -1 : m.newVertex();
+  // (the arrays may have grown: read them again)
+  const P2 = m.pos, N2 = m.nrm, C2 = m.col, M2 = m.mask, G2 = m.grp, H2 = m.hid;
+  for (let e = 0; e < nv; e++) {
+    const g = glob[e]; if (g < 0) continue;
+    if (oRem[e]) { P2[g * 3] = P2[g * 3 + 1] = P2[g * 3 + 2] = FAR; M2[g] = 0; m.vfA[g] = []; m.freeV.push(g); continue; }
+    for (let k = 0; k < 3; k++) { P2[g * 3 + k] = oPos[e * 3 + k]; N2[g * 3 + k] = oNrm[e * 3 + k]; C2[g * 3 + k] = oCol[e * 3 + k]; }
+    M2[g] = oMask[e]; G2[g] = oGrp[e]; H2[g] = oHid[e];
+  }
+  for (let q = 0; q < oFaces.length; q += 3) {
+    const a = glob[oFaces[q]], b = glob[oFaces[q + 1]], c = glob[oFaces[q + 2]];
+    const t = m.newFace(a, b, c);
+    m.vfA[a].push(t); m.vfA[b].push(t); m.vfA[c].push(t);
+    m.faceNormal(t);
+  }
+  const dirty = [];
+  for (const e of oDirty) { const g = glob[e]; if (g >= 0 && !oRem[e]) dirty.push(g); }
+  m.updateNormals(dirty, dirty.length);
+  for (const g of dirty) frameMark(g);
+  m.topoDirty = true; frame_.positions = true;
+  return info;
+}
 function dynRemesh(cx, cy, cz, r, L, nx, ny, nz, all = false, front = curFront) {
   const m = mesh;
   dynHitCap = false;
@@ -2991,6 +3122,14 @@ function dynRemesh(cx, cy, cz, r, L, nx, ny, nz, all = false, front = curFront) 
   else { const c = gather(cx, cy, cz, r, nx, ny, nz, front); verts = Array.from(m.gIdx.subarray(0, c)); }
   if (!verts.length) return false;
   const r2 = all ? Infinity : r * r, max2 = L * L, min2 = max2 * 0.16;
+  if (rustDyn && coreSync) {
+    const res = rustDynRemesh(verts, cx, cy, cz, r2, max2, min2, budget, cbudget, doSplit, doCollapse, all);
+    if (res) {
+      if (!all) { dynSplitsLeft -= res.splits; dynCollapsesLeft -= res.collapses; }
+      dynHitCap = res.hitCap || (atCap && !all);
+      return res.changed;
+    }
+  }
   m.dirty.length = 0;
   let changed = false, splits = 0, collapses = 0;
   const collapsePasses = (passes) => {
@@ -6958,31 +7097,84 @@ function dropCustomMatcap() {
 /* ---------- Array Mesh: copies of the active subtool in a row or around a circle ---------- */
 // grid: `count` along the axis times `rows` along the second axis (each step the part's own size and
 // the gap), every copy the same size
-function arrayArrays(a, opt) {
+// every copy as a matrix applied to the part where it is (copy 0 is the part itself)
+function arrayMatrices(a, opt) {
   const grid = opt.mode === 'grid', rows = grid ? Math.max(1, opt.rows | 0) : 1;
-  const n = a.pos.length / 3, f = a.idx.length / 3, N = opt.count * rows;
+  const n = a.pos.length / 3, N = opt.count * rows;
   const A = AXES[opt.axis], B = AXES[grid ? (opt.axis2 === opt.axis ? (opt.axis + 1) % 3 : opt.axis2) : opt.axis];
   let lo = Infinity, hi = -Infinity, lo2 = Infinity, hi2 = -Infinity, cx = 0, cy = 0, cz = 0;
+  const bl = [Infinity, Infinity, Infinity], bh = [-Infinity, -Infinity, -Infinity];
   for (let i = 0; i < n; i++) {
-    const v = a.pos[i * 3] * A.x + a.pos[i * 3 + 1] * A.y + a.pos[i * 3 + 2] * A.z; lo = Math.min(lo, v); hi = Math.max(hi, v);
-    const w = a.pos[i * 3] * B.x + a.pos[i * 3 + 1] * B.y + a.pos[i * 3 + 2] * B.z; lo2 = Math.min(lo2, w); hi2 = Math.max(hi2, w);
-    cx += a.pos[i * 3]; cy += a.pos[i * 3 + 1]; cz += a.pos[i * 3 + 2];
+    const x = a.pos[i * 3], y = a.pos[i * 3 + 1], z = a.pos[i * 3 + 2];
+    const v = x * A.x + y * A.y + z * A.z; lo = Math.min(lo, v); hi = Math.max(hi, v);
+    const w = x * B.x + y * B.y + z * B.z; lo2 = Math.min(lo2, w); hi2 = Math.max(hi2, w);
+    cx += x; cy += y; cz += z;
+    bl[0] = Math.min(bl[0], x); bl[1] = Math.min(bl[1], y); bl[2] = Math.min(bl[2], z); bh[0] = Math.max(bh[0], x); bh[1] = Math.max(bh[1], y); bh[2] = Math.max(bh[2], z);
   }
-  const c = [cx / n, cy / n, cz / n], step = (hi - lo) * (1 + opt.gap), step2 = (hi2 - lo2) * (1 + opt.gap);
-  const pos = new Float32Array(n * 3 * N), idx = new Uint32Array(f * 3 * N), col = new Float32Array(n * 3 * N), mask = new Float32Array(n * N), grp = new Float32Array(n * N);
+  const c = new THREE.Vector3(cx / n, cy / n, cz / n), step = (hi - lo) * (1 + opt.gap), step2 = (hi2 - lo2) * (1 + opt.gap);
+  const size = Math.max(bh[0] - bl[0], bh[1] - bl[1], bh[2] - bl[2]) || 1;
+  const off = opt.off || [0, 0, 0], rot = opt.rot || [0, 0, 0], scl = opt.scl || [1, 1, 1], D = Math.PI / 180;
+  const mats = [], toC = new THREE.Matrix4().makeTranslation(-c.x, -c.y, -c.z), M = new THREE.Matrix4(), q = new THREE.Quaternion();
   for (let k = 0; k < N; k++) {
-    const sc = grid ? 1 : Math.pow(opt.scale, k), q = new THREE.Quaternion().setFromAxisAngle(A, opt.mode === 'circle' ? (2 * Math.PI * k) / N : 0), v = new THREE.Vector3();
     const ka = grid ? k % opt.count : k, kb = grid ? Math.floor(k / opt.count) : 0;
+    const u = grid ? 1 : Math.pow(opt.scale, k);
+    // own turn and stretch, about the part's centre
+    M.compose(new THREE.Vector3(), q.setFromEuler(new THREE.Euler(rot[0] * D * k, rot[1] * D * k, rot[2] * D * k)),
+      new THREE.Vector3(u * Math.pow(scl[0], k), u * Math.pow(scl[1], k), u * Math.pow(scl[2], k)));
+    const m = new THREE.Matrix4().multiplyMatrices(M, toC);
+    const t = c.clone().add(new THREE.Vector3(off[0], off[1], off[2]).multiplyScalar(size * k));
+    if (opt.mode === 'circle') {
+      m.premultiply(new THREE.Matrix4().makeTranslation(t.x, t.y, t.z));
+      m.premultiply(new THREE.Matrix4().makeRotationAxis(A, (2 * Math.PI * k) / N));   // around the axis through the world centre
+    } else {
+      t.addScaledVector(A, step * ka).addScaledVector(B, step2 * kb);
+      m.premultiply(new THREE.Matrix4().makeTranslation(t.x, t.y, t.z));
+    }
+    mats.push(m);
+  }
+  return mats;
+}
+const arrayOpts = () => ({ count: S.arrCount, rows: S.arrRows, mode: S.arrMode, axis: S.arrAxis, axis2: S.arrAxis2, gap: S.arrGap, scale: S.arrScale,
+  off: [S.arrOffX, S.arrOffY, S.arrOffZ], rot: [S.arrRotX, S.arrRotY, S.arrRotZ], scl: [S.arrSclX, S.arrSclY, S.arrSclZ] });
+// grid: `count` along the axis times `rows` along the second axis (each step the part's own size and
+// the gap), every copy the same size
+function arrayArrays(a, opt) {
+  const mats = arrayMatrices(a, opt), N = mats.length;
+  const n = a.pos.length / 3, f = a.idx.length / 3;
+  const pos = new Float32Array(n * 3 * N), idx = new Uint32Array(f * 3 * N), col = new Float32Array(n * 3 * N), mask = new Float32Array(n * N), grp = new Float32Array(n * N);
+  const v = new THREE.Vector3();
+  for (let k = 0; k < N; k++) {
+    const e = mats[k].elements;
     for (let i = 0; i < n; i++) {
-      v.set(a.pos[i * 3] - c[0], a.pos[i * 3 + 1] - c[1], a.pos[i * 3 + 2] - c[2]).multiplyScalar(sc);
-      if (opt.mode === 'circle') { v.add(new THREE.Vector3(c[0], c[1], c[2])).applyQuaternion(q); }   // around the axis through the world centre
-      else v.add(new THREE.Vector3(c[0] + A.x * step * ka + B.x * step2 * kb, c[1] + A.y * step * ka + B.y * step2 * kb, c[2] + A.z * step * ka + B.z * step2 * kb));
-      pos[(k * n + i) * 3] = v.x; pos[(k * n + i) * 3 + 1] = v.y; pos[(k * n + i) * 3 + 2] = v.z;
+      const x = a.pos[i * 3], y = a.pos[i * 3 + 1], z = a.pos[i * 3 + 2], o = (k * n + i) * 3;
+      pos[o] = e[0] * x + e[4] * y + e[8] * z + e[12]; pos[o + 1] = e[1] * x + e[5] * y + e[9] * z + e[13]; pos[o + 2] = e[2] * x + e[6] * y + e[10] * z + e[14];
     }
     col.set(a.col.subarray(0, n * 3), k * n * 3); mask.set(a.mask.subarray(0, n), k * n); grp.set(a.grp.subarray(0, n), k * n);
     for (let t = 0; t < f * 3; t++) idx[k * f * 3 + t] = a.idx[t] + k * n;
   }
+  // a mirror (an odd number of negative stretches) turns the faces inside out: turn them back
+  for (let k = 0; k < N; k++) if (mats[k].determinant() < 0) for (let t = 0; t < f; t++) { const o = (k * f + t) * 3, w = idx[o + 1]; idx[o + 1] = idx[o + 2]; idx[o + 2] = w; }
+  void v;
   return { pos, idx, col, mask, grp };
+}
+// the copies shown before they are made: the part's own geometry drawn again at every copy's place, so
+// they follow sculpting and every slider at once; after „Направи масив“ they wait for the next change
+function arrayPreview() {
+  const P = PATTERNS.find((x) => x.id === S.pattern);
+  const on = S.arrLive && !arrPaused && !$('patterns').hidden && P && P.detail === 'array' && gmesh && mesh && !working;
+  if (!on) { if (arrPrev) { arrPrev.visible = false; requestRender(); } return; }
+  if (!arrPrev) { arrPrev = new THREE.Group(); arrPrev.renderOrder = 1; scene.add(arrPrev); }
+  const a = toolArrays(TOOLS[curTool]);
+  const mats = arrayMatrices(a, arrayOpts());
+  while (arrPrev.children.length < mats.length - 1) { const mm = new THREE.Mesh(gmesh.geometry, material); mm.matrixAutoUpdate = false; mm.frustumCulled = false; mm.raycast = () => {}; arrPrev.add(mm); }
+  arrPrev.children.forEach((mm, k) => {
+    mm.visible = k < mats.length - 1;
+    if (!mm.visible) return;
+    mm.geometry = gmesh.geometry; mm.material = material;
+    mm.matrix.copy(mats[k + 1]); mm.matrixWorldNeedsUpdate = true;
+  });
+  arrPrev.visible = true;
+  requestRender();
 }
 function makeArray() {
   if (stroke || working) return;
@@ -6990,9 +7182,9 @@ function makeArray() {
   const a = toolArrays(TOOLS[curTool]);
   const copies = S.arrCount * (S.arrMode === 'grid' ? S.arrRows : 1);
   if ((a.idx.length / 3) * copies > MAX_TRIS) { toast('Масивът би бил твърде голям: намалете броя.'); return; }
-  const r = arrayArrays(a, { count: S.arrCount, rows: S.arrRows, mode: S.arrMode, axis: S.arrAxis, axis2: S.arrAxis2, gap: S.arrGap, scale: S.arrScale });
+  const r = arrayArrays(a, arrayOpts());
   const paused = replaceMesh(new SculptMesh(r.pos, r.idx, r.col, r.mask, 0, r.grp));
-  frameView();
+  arrPaused = true; arrayPreview(); frameView();
   toast(`Масив от ${copies} копия (Ctrl+Z го връща). „Раздели по групи“ не ги разделя: те са с еднакви групи; за отделни части ползвайте „Копие“.` + (paused ? ' ' + DYN_PAUSED_MSG : ''));
 }
 
@@ -8793,6 +8985,7 @@ function settingsIndex() {
 }
 function showSetting(it) {
   closePalette(); setPanel(true); setDrawerTab(it.tab);
+  const sec = it.el.closest('.sec'); if (sec && sec.classList.contains('shut')) { sec.classList.remove('shut'); saveSecLayout(); }
   it.el.scrollIntoView({ block: 'center' });
   it.el.classList.remove('flash'); void it.el.offsetWidth; it.el.classList.add('flash');
 }
@@ -8891,6 +9084,7 @@ function selectPattern(id) {
   for (const el of document.querySelectorAll('#patBox .patDetail')) el.hidden = el.dataset.pat !== P.detail;
   if (P.mode) { S.arrMode = P.mode; syncArrayUI(); }
   renderPatterns();
+  arrPaused = false; arrayPreview();
 }
 function syncArrayUI() {
   const m = S.arrMode;
@@ -8901,8 +9095,8 @@ function syncArrayUI() {
   $('arrNote').textContent = m === 'circle' ? 'Копията застават около оста през центъра на сцената.' : m === 'grid' ? 'Колоните са по първата ос, редовете по втората; разстоянието е по размера на частта.' : 'Копията застават едно след друго, на разстояние по размера на частта.';
   for (const el of $('arrAxis2Chips').children) { el.disabled = +el.dataset.id === S.arrAxis; el.setAttribute('aria-pressed', +el.dataset.id === S.arrAxis2); }
 }
-function openPatterns(id) { $('palette').hidden = true; $('brushPanel').hidden = true; $('patterns').hidden = false; selectPattern(id || S.pattern); renderRail(); }
-function closePatterns() { if ($('patterns').hidden) return; $('patterns').hidden = true; renderRail(); }
+function openPatterns(id) { showPanel('patterns'); selectPattern(id || S.pattern); renderRail(); }
+function closePatterns() { if ($('patterns').hidden) return; $('patterns').hidden = true; renderRail(); arrayPreview(); }
 // shapes along a curve drawn on the model
 let pcArmed = false;
 function armPatternCurve(on) {
@@ -8933,9 +9127,9 @@ function patternAlongCurve(pts) {
   toast(`${N} форми по кривата, като нов подобект.`);
   return N;
 }
-function openPalette() { renderPalette(); $('palette').hidden = false; $('brushPanel').hidden = true; $('patterns').hidden = true; renderRail(); }
+function openPalette() { renderPalette(); showPanel('palette'); renderRail(); arrayPreview(); }
 function closePalette() { if ($('palette').hidden) return; $('palette').hidden = true; renderRail(); }
-function openBrushPanel() { $('palette').hidden = true; $('patterns').hidden = true; $('brushPanel').hidden = false; syncBrushUI(); renderRail(); try { localStorage.setItem('glina.bpSeen', '1'); } catch (e) {} }
+function openBrushPanel() { showPanel('brushPanel'); syncBrushUI(); renderRail(); arrayPreview(); try { localStorage.setItem('glina.bpSeen', '1'); } catch (e) {} }
 function closeBrushPanel() { $('brushPanel').hidden = true; }
 function toggleBrushPanel() { if ($('brushPanel').hidden) openBrushPanel(); else closeBrushPanel(); }
 // the settings, in three tabs
@@ -8947,6 +9141,144 @@ function setDrawerTab(t) {
   $('drawer').scrollTop = 0;
 }
 for (const el of document.querySelectorAll('#drawerTabs .dtab')) el.onclick = () => { setDrawerTab(el.dataset.tab); saveSettings(); };
+
+/* ---------- panels you move and arrange (ZBrush: floating palettes and trays) ----------
+   A floating panel goes where it is dragged by its title and stays there (a double click puts it back);
+   📌 keeps it open while others open. The drawer's sections: a click on the title folds the section,
+   dragging the title moves it up or down, or onto another tab. */
+const FLOATS = [['brushPanel', '.bbHead'], ['palette', '.palHead'], ['patterns', '.palHead']];
+function panelState() { if (!S.panels || typeof S.panels !== 'object' || Array.isArray(S.panels)) S.panels = {}; return S.panels; }
+const panelPinned = (id) => !!(panelState()[id] && panelState()[id].pin === true);
+function placePanel(id) {
+  const el = $(id), st = panelState()[id];
+  if (!st || !Number.isFinite(st.x) || !Number.isFinite(st.y)) { el.style.left = el.style.top = ''; return; }
+  const par = el.offsetParent || el.parentElement;
+  el.style.left = Math.round(Math.max(0, Math.min(par.clientWidth - 80, st.x))) + 'px';
+  el.style.top = Math.round(Math.max(0, Math.min(par.clientHeight - 48, st.y))) + 'px';
+}
+function raisePanel(el) { for (const [k] of FLOATS) $(k).style.zIndex = ''; el.style.zIndex = '7'; }
+function showPanel(id) {
+  for (const [k] of FLOATS) if (k !== id && !panelPinned(k)) $(k).hidden = true;
+  const el = $(id), was = el.hidden;
+  el.hidden = false; placePanel(id); raisePanel(el);
+  if (was) { el.scrollTop = 0; const box = el.querySelector('.brushbox'); if (box && id === 'brushPanel') box.scrollTop = 0; }   // its title (to drag it by) in sight
+}
+const PIN_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 4h6l-1 6 3 3H7l3-3z"/><path d="M12 13v7"/></svg>';
+for (const [id, sel] of FLOATS) {
+  const el = $(id), head = el.querySelector(sel);
+  head.classList.add('dragHandle');
+  head.title = 'Влачете за заглавието, за да преместите панела. Двойно щракване го връща на мястото му.';
+  el.addEventListener('pointerdown', () => raisePanel(el));
+  head.addEventListener('pointerdown', (e) => {
+    if (e.button !== 0 || e.target.closest('button, input, a, select')) return;
+    const par = el.offsetParent; if (!par) return;
+    const r = el.getBoundingClientRect(), pr = par.getBoundingClientRect(), dx = e.clientX - r.left, dy = e.clientY - r.top;
+    let moved = false;
+    try { head.setPointerCapture(e.pointerId); } catch (err) { /* synthetic events */ }
+    const mv = (ev) => {
+      if (!moved && Math.hypot(ev.clientX - e.clientX, ev.clientY - e.clientY) < 5) return;
+      moved = true; el.classList.add('dragging');
+      const W = par.clientWidth, H = par.clientHeight, w = el.offsetWidth;
+      let x = Math.max(0, Math.min(W - 80, ev.clientX - pr.left - dx)), y = Math.max(0, Math.min(H - 48, ev.clientY - pr.top - dy));
+      if (x < 18) x = 10; else if (W - (x + w) < 18 && W - (x + w) > -18) x = W - w - 10;   // it snaps to the edges
+      if (y < 18) y = 10;
+      el.style.left = Math.round(x) + 'px'; el.style.top = Math.round(y) + 'px';
+    };
+    const up = () => {
+      head.removeEventListener('pointermove', mv); head.removeEventListener('pointerup', up); head.removeEventListener('pointercancel', up);
+      el.classList.remove('dragging');
+      if (moved) { const st = panelState(); st[id] = { ...(st[id] || {}), x: parseFloat(el.style.left), y: parseFloat(el.style.top) }; saveSettings(); }
+    };
+    head.addEventListener('pointermove', mv); head.addEventListener('pointerup', up); head.addEventListener('pointercancel', up);
+  });
+  head.addEventListener('dblclick', (e) => {
+    if (e.target.closest('button, input, a, select')) return;
+    const st = panelState(); if (st[id]) { delete st[id].x; delete st[id].y; }
+    saveSettings(); placePanel(id);
+  });
+  const pin = document.createElement('button');
+  pin.className = 'fpPin'; pin.innerHTML = PIN_SVG; pin.setAttribute('aria-label', 'Забоден: остава отворен');
+  pin.title = 'Забоден: панелът остава отворен, докато отваряте други';
+  const syncPin = () => pin.setAttribute('aria-pressed', panelPinned(id));
+  pin.onclick = () => { const st = panelState(); st[id] = { ...(st[id] || {}), pin: !panelPinned(id) }; saveSettings(); syncPin(); };
+  syncPin(); el.insertBefore(pin, el.firstChild);
+}
+window.addEventListener('resize', () => { for (const [id] of FLOATS) if (!$(id).hidden) placePanel(id); });
+
+// the drawer's sections: their order, tab and folding, by title
+const secKey = (sec) => { const h = sec.querySelector('h2'); return (h.firstChild ? h.firstChild.textContent : h.textContent).trim(); };
+const drawerSecs = () => [...document.querySelectorAll('#drawer .sec[data-tab]')];
+for (const sec of drawerSecs()) sec.dataset.home = sec.dataset.tab;
+function secLayout() {
+  let L = S.secLayout;
+  if (!L || typeof L !== 'object' || Array.isArray(L)) L = S.secLayout = {};
+  if (!Array.isArray(L.order)) L.order = [];
+  if (!L.tab || typeof L.tab !== 'object' || Array.isArray(L.tab)) L.tab = {};
+  if (!Array.isArray(L.shut)) L.shut = [];
+  return L;
+}
+function applySecLayout() {
+  const L = secLayout(), secs = drawerSecs(), byKey = new Map(secs.map((s) => [secKey(s), s]));
+  const home = secs.slice().sort((a, b) => +a.dataset.idx - +b.dataset.idx);
+  const list = L.order.filter((k) => byKey.has(k)).map((k) => byKey.get(k));
+  for (const s of home) if (!list.includes(s)) list.push(s);
+  const dr = $('drawer');
+  for (const s of list) {
+    dr.appendChild(s);
+    const k = secKey(s), t = L.tab[k];
+    s.dataset.tab = ['model', 'make', 'view'].includes(t) ? t : s.dataset.home;
+    s.classList.toggle('shut', L.shut.includes(k));
+  }
+  setDrawerTab(S.drawerTab);
+}
+function saveSecLayout() {
+  const L = secLayout();
+  L.order = drawerSecs().map(secKey);
+  L.tab = {}; for (const s of drawerSecs()) if (s.dataset.tab !== s.dataset.home) L.tab[secKey(s)] = s.dataset.tab;
+  L.shut = drawerSecs().filter((s) => s.classList.contains('shut')).map(secKey);
+  saveSettings();
+}
+drawerSecs().forEach((s, i) => (s.dataset.idx = i));
+for (const sec of drawerSecs()) {
+  const h = sec.querySelector('h2');
+  h.title = 'Щракване свива или разгъва раздела; влачене го мести (и върху раздел горе — там)';
+  h.addEventListener('pointerdown', (e) => {
+    if (e.button !== 0) return;
+    let moved = false, target = null, after = false, tab = null;
+    try { h.setPointerCapture(e.pointerId); } catch (err) { /* synthetic events */ }
+    const clear = () => { for (const s of drawerSecs()) s.classList.remove('dropBefore', 'dropAfter'); for (const t of document.querySelectorAll('#drawerTabs .dtab')) t.classList.remove('dropTab'); };
+    const mv = (ev) => {
+      if (!moved && Math.abs(ev.clientY - e.clientY) + Math.abs(ev.clientX - e.clientX) < 6) return;
+      moved = true; sec.classList.add('secDrag'); clear();
+      const hit = document.elementFromPoint(ev.clientX, ev.clientY);
+      tab = hit && hit.closest('#drawerTabs .dtab');
+      target = null;
+      if (tab) { if (tab.dataset.tab !== sec.dataset.tab) tab.classList.add('dropTab'); else tab = null; return; }
+      const over = hit && hit.closest('#drawer .sec[data-tab]');
+      if (over && over !== sec) { const r = over.getBoundingClientRect(); after = ev.clientY > r.top + r.height / 2; target = over; over.classList.add(after ? 'dropAfter' : 'dropBefore'); }
+      // near the drawer's edges it scrolls
+      const dr = $('drawer'), R = dr.getBoundingClientRect();
+      if (ev.clientY < R.top + 40) dr.scrollTop -= 12; else if (ev.clientY > R.bottom - 40) dr.scrollTop += 12;
+    };
+    const up = () => {
+      h.removeEventListener('pointermove', mv); h.removeEventListener('pointerup', up); h.removeEventListener('pointercancel', up);
+      sec.classList.remove('secDrag'); clear();
+      if (!moved) { sec.classList.toggle('shut'); saveSecLayout(); return; }
+      if (tab) { sec.dataset.tab = tab.dataset.tab; sec.classList.remove('shut'); $('drawer').appendChild(sec); saveSecLayout(); setDrawerTab(tab.dataset.tab); toast(`„${secKey(sec)}“ е вече в „${tab.textContent.trim()}“.`); return; }
+      if (target) { target.insertAdjacentElement(after ? 'afterend' : 'beforebegin', sec); saveSecLayout(); }
+    };
+    h.addEventListener('pointermove', mv); h.addEventListener('pointerup', up); h.addEventListener('pointercancel', up);
+  });
+}
+function resetPanels() {
+  S.panels = {}; S.secLayout = {};
+  for (const [id] of FLOATS) { placePanel(id); $(id).style.zIndex = ''; }
+  for (const el of document.querySelectorAll('.fpPin')) el.setAttribute('aria-pressed', 'false');
+  applySecLayout(); saveSettings();
+  toast('Панелите са на първоначалните си места.');
+}
+$('bPanelsReset').onclick = resetPanels;
+applySecLayout();
 
 function selectTool(id) {
   if (!brushById(id)) id = 'draw';
@@ -9443,6 +9775,15 @@ bindRange('sArrCount', 'oArrCount', () => S.arrCount, (v) => (S.arrCount = v), (
 bindRange('sArrGap', 'oArrGap', () => S.arrGap, (v) => (S.arrGap = v), pct);
 bindRange('sArrScale', 'oArrScale', () => S.arrScale, (v) => (S.arrScale = v), (v) => '×' + v.toFixed(2));
 $('bArray').onclick = makeArray;
+const syncArrMore = ['Off', 'Rot', 'Scl'].flatMap((g) => ['X', 'Y', 'Z'].map((ax) => {
+  const k = 'arr' + g + ax;
+  return bindRange('sArr' + g + ax, 'oArr' + g + ax, () => S[k], (v) => (S[k] = v), g === 'Rot' ? (v) => v + '°' : g === 'Off' ? (v) => (v > 0 ? '+' : '') + v.toFixed(2) : (v) => '×' + v.toFixed(2));
+}));
+$('bArrZero').onclick = () => { for (const g of ['Off', 'Rot', 'Scl']) for (const ax of 'XYZ') S['arr' + g + ax] = g === 'Scl' ? 1 : 0; syncArrMore.forEach((f) => f()); saveSettings(); arrPaused = false; arrayPreview(); };
+$('tArrLive').checked = S.arrLive;
+$('tArrLive').onchange = () => { S.arrLive = $('tArrLive').checked; saveSettings(); arrPaused = false; arrayPreview(); };
+// every change of the array's settings shows the copies again
+for (const ev of ['input', 'click']) $('patBox').addEventListener(ev, (e) => { if (e.target.closest('[data-pat="array"]') && e.target.id !== 'bArray') { arrPaused = false; arrayPreview(); } });
 bindRange('sClothG', 'oClothG', () => S.clothGravity, (v) => (S.clothGravity = v), (v) => '×' + v.toFixed(2));
 bindRange('sClothS', 'oClothS', () => S.clothStretch, (v) => (S.clothStretch = v), pct);
 bindRange('sClothB', 'oClothB', () => S.clothBend, (v) => (S.clothBend = v), pct);
@@ -9663,5 +10004,5 @@ loadAutosave().then((d) => {
     toast('Продължавате последния модел. „Нов“ започва отначало.');
   }
 });
-window.__glina = { get mrPending() { return mrPending; }, openPatterns, closePatterns, selectPattern, patternAlongCurve, armPatternCurve, beginStroke, processStroke, endStroke, get rustBrushes() { return rustBrushes; }, set rustBrushes(v) { rustBrushes = v; }, openBrushPanel, closeBrushPanel, openPalette, closePalette, setDrawerTab, railIds, microPoly, topoAdd, topoBuild, topoMake, get topoLines() { return topoLines; }, set topoLines(v) { topoLines = v; }, shadowAdd, shadowMake, get shadows() { return shadows; }, set shadows(v) { shadows = v; }, earClip, shadowPrism, viewAxis, bendBuild, vdmCapture, vdmReset, get vdmField() { return vdmField; }, set vdmField(v) { vdmField = v; }, vdmDefault, snakeAlongCurve, quadRemesh, quadRemeshArrays, surfaceStats, get coreSync() { return coreSync; }, set subdivCore(v) { subdivCore = v; }, polyTris, studioPNG, setCustomMatcap, dropCustomMatcap, get customMatcap() { return customMatcap; }, matcapTextures, material, get gmesh() { return gmesh; }, renderer, makeCube, polishFeatures, sliceGroups, makeGear, makeTube, makeRing, revolve, meshToAxis, straighten, transformTools, gizmoTools, eigenSym3, subdivideArrays, slimeBridge, nanoMesh, maskIslands, texturedFiles, zipMany, levelArrays, zmBuild, quadsOf, exportSTL, renderPrintInfo, decimate, decimateArrays, printScale, projectBytes, saveProject, openProject, packValue, unpackValue, panelLoops, balloonTool, shellFrom, refOpen, refState, refColourAt, refLayout, smoothViewUpdate, get smoothViewObj() { return smoothViewObj; }, recallFrom, makeFibers, fiberArrays, projectAll, storeMorph, switchMorph, dropMorph, morphOf, fillColour, cavityColour, zsOpen, zsClose, zsSkin, get zs() { return zs; }, xtract, latticeLive, latticeScreen, get lattice() { return lattice; }, surfaceContrast, snapshotPNG, maskHidden, startCloth, stopCloth, get clothRun() { return clothRun; }, hideSelection, hideGroup, showAll, invertVisibility, hideMasked, deleteHidden, hiddenCount, setHiddenUndoable, deform, makeArray, arrayArrays, setGizmoMode, get gizmoPin() { return gizmoPin; }, set gizmoPin(v) { gizmoPin = v; }, exportOBJ, scheduleAutosave, get TOOLS() { return TOOLS; }, get curTool() { return curTool; }, activateTool, addTool, appendPrimitive, duplicateTool, deleteTool, moveTool, mergeDown, splitGroups, extractTool, extractShell, makeBoolean, newScene, gizmoHandle, gizmoScreen, get solo() { return solo; }, set solo(v) { solo = v; renderOthers(); }, toolArrays, voxelCombine, voxelRemesh, coreStart, get working() { return working; }, sliceByPlane, mirrorWeldArrays, mirrorWeld, mirrorFlip, applyNoise, snapView, setOrtho, historyJump, polyframe, get cam() { return cam; }, trimByPlane, applyCut, tubeArrays, immShape, hasOpenEdges, get curve() { return liveCurve(); }, dropCurve, get immFile() { return immFile; }, set immFile(v) { immFile = v; }, get LAYERS() { return LAYERS; }, get recLayer() { return recLayer; }, addLayer, deleteLayer, toggleLayer, recordLayer, setLayerStrength, bakeLayers, groupOp, maskAllBut, groupNear, get mesh() { return mesh; }, get stroke() { return stroke; }, get gesture() { return gesture; }, get nav() { return nav; }, get MR() { return MR; }, syncSym, get SYM() { return SYM; }, setLevel, divide, deleteLower, deleteHigher, camera, orbit, pick, selectTool, brush, brushById, maskOp, remesh, undo, redo, subdivide, setDyntopo, floodDetail, S, get undoStack() { return undoStack; } };
+window.__glina = { arrayMatrices, arrayPreview, get arrPrev() { return arrPrev; }, resetPanels, applySecLayout, get rustDyn() { return rustDyn; }, set rustDyn(v) { rustDyn = v; }, get mrPending() { return mrPending; }, openPatterns, closePatterns, selectPattern, patternAlongCurve, armPatternCurve, beginStroke, processStroke, endStroke, get rustBrushes() { return rustBrushes; }, set rustBrushes(v) { rustBrushes = v; }, openBrushPanel, closeBrushPanel, openPalette, closePalette, setDrawerTab, railIds, microPoly, topoAdd, topoBuild, topoMake, get topoLines() { return topoLines; }, set topoLines(v) { topoLines = v; }, shadowAdd, shadowMake, get shadows() { return shadows; }, set shadows(v) { shadows = v; }, earClip, shadowPrism, viewAxis, bendBuild, vdmCapture, vdmReset, get vdmField() { return vdmField; }, set vdmField(v) { vdmField = v; }, vdmDefault, snakeAlongCurve, quadRemesh, quadRemeshArrays, surfaceStats, get coreSync() { return coreSync; }, set subdivCore(v) { subdivCore = v; }, polyTris, studioPNG, setCustomMatcap, dropCustomMatcap, get customMatcap() { return customMatcap; }, matcapTextures, material, get gmesh() { return gmesh; }, renderer, makeCube, polishFeatures, sliceGroups, makeGear, makeTube, makeRing, revolve, meshToAxis, straighten, transformTools, gizmoTools, eigenSym3, subdivideArrays, slimeBridge, nanoMesh, maskIslands, texturedFiles, zipMany, levelArrays, zmBuild, quadsOf, exportSTL, renderPrintInfo, decimate, decimateArrays, printScale, projectBytes, saveProject, openProject, packValue, unpackValue, panelLoops, balloonTool, shellFrom, refOpen, refState, refColourAt, refLayout, smoothViewUpdate, get smoothViewObj() { return smoothViewObj; }, recallFrom, makeFibers, fiberArrays, projectAll, storeMorph, switchMorph, dropMorph, morphOf, fillColour, cavityColour, zsOpen, zsClose, zsSkin, get zs() { return zs; }, xtract, latticeLive, latticeScreen, get lattice() { return lattice; }, surfaceContrast, snapshotPNG, maskHidden, startCloth, stopCloth, get clothRun() { return clothRun; }, hideSelection, hideGroup, showAll, invertVisibility, hideMasked, deleteHidden, hiddenCount, setHiddenUndoable, deform, makeArray, arrayArrays, setGizmoMode, get gizmoPin() { return gizmoPin; }, set gizmoPin(v) { gizmoPin = v; }, exportOBJ, scheduleAutosave, get TOOLS() { return TOOLS; }, get curTool() { return curTool; }, activateTool, addTool, appendPrimitive, duplicateTool, deleteTool, moveTool, mergeDown, splitGroups, extractTool, extractShell, makeBoolean, newScene, gizmoHandle, gizmoScreen, get solo() { return solo; }, set solo(v) { solo = v; renderOthers(); }, toolArrays, voxelCombine, voxelRemesh, coreStart, get working() { return working; }, sliceByPlane, mirrorWeldArrays, mirrorWeld, mirrorFlip, applyNoise, snapView, setOrtho, historyJump, polyframe, get cam() { return cam; }, trimByPlane, applyCut, tubeArrays, immShape, hasOpenEdges, get curve() { return liveCurve(); }, dropCurve, get immFile() { return immFile; }, set immFile(v) { immFile = v; }, get LAYERS() { return LAYERS; }, get recLayer() { return recLayer; }, addLayer, deleteLayer, toggleLayer, recordLayer, setLayerStrength, bakeLayers, groupOp, maskAllBut, groupNear, get mesh() { return mesh; }, get stroke() { return stroke; }, get gesture() { return gesture; }, get nav() { return nav; }, get MR() { return MR; }, syncSym, get SYM() { return SYM; }, setLevel, divide, deleteLower, deleteHigher, camera, orbit, pick, selectTool, brush, brushById, maskOp, remesh, undo, redo, subdivide, setDyntopo, floodDetail, S, get undoStack() { return undoStack; } };
 </script>
