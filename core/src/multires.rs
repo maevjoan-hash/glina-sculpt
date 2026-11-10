@@ -99,24 +99,29 @@ fn neighbours(idx: &[u32], n: usize) -> (Vec<u32>, Vec<u32>, Vec<bool>) {
     let mut vf = vec![0u32; idx.len()];
     let mut fill: Vec<u32> = vf_off[..n].to_vec();
     for t in 0..f { for k in 0..3 { let v = idx[t * 3 + k] as usize; vf[fill[v] as usize] = t as u32; fill[v] += 1; } }
+    // (every index was checked against n by the caller, so the lookups below cannot miss)
     let mut stamp = vec![u32::MAX; n];
     let mut cnt = vec![0u8; n];
     let mut vv_off = vec![0u32; n + 1];
     let mut vv: Vec<u32> = Vec::with_capacity(idx.len());
     let mut boundary = vec![false; n];
-    let mut list: Vec<u32> = Vec::new();
     for v in 0..n {
-        list.clear();
+        let start = vv.len();
         for j in vf_off[v] as usize..vf_off[v + 1] as usize {
             let t = vf[j] as usize * 3;
             for k in 0..3 {
                 let u = idx[t + k];
                 if u as usize == v { continue; }
-                if stamp[u as usize] != v as u32 { stamp[u as usize] = v as u32; cnt[u as usize] = 0; list.push(u); }
-                cnt[u as usize] = cnt[u as usize].saturating_add(1);
+                // SAFETY: u < n (checked by the caller)
+                unsafe {
+                    let su = stamp.get_unchecked_mut(u as usize);
+                    let cu = cnt.get_unchecked_mut(u as usize);
+                    if *su != v as u32 { *su = v as u32; *cu = 0; vv.push(u); }
+                    *cu = cu.saturating_add(1);
+                }
             }
         }
-        for &u in &list { vv.push(u); if cnt[u as usize] == 1 { boundary[v] = true; } }
+        for &u in &vv[start..] { if cnt[u as usize] == 1 { boundary[v] = true; break; } }
         vv_off[v + 1] = vv.len() as u32;
     }
     (vv_off, vv, boundary)
@@ -133,7 +138,11 @@ pub fn lower(high: &[f32], idx: &[u32], n_high: usize, n_low: usize, out: &mut [
             let (a, b, o) = (off[v] as usize, off[v + 1] as usize, v * 3);
             if b == a || boundary[v] { q[o] = p[o]; q[o + 1] = p[o + 1]; q[o + 2] = p[o + 2]; continue; }
             let (mut x, mut y, mut z) = (0f64, 0f64, 0f64);
-            for &u in &vv[a..b] { let u = u as usize * 3; x += p[u] as f64; y += p[u + 1] as f64; z += p[u + 2] as f64; }
+            for &u in &vv[a..b] {
+                let u = u as usize * 3;
+                // SAFETY: every neighbour is a vertex below n_high, and p holds n_high × 3 values
+                unsafe { x += *p.get_unchecked(u) as f64; y += *p.get_unchecked(u + 1) as f64; z += *p.get_unchecked(u + 2) as f64; }
+            }
             let inv = 1.0 / (b - a) as f64;
             q[o] = (p[o] as f64 + (x * inv - p[o] as f64) * k) as f32;
             q[o + 1] = (p[o + 1] as f64 + (y * inv - p[o + 1] as f64) * k) as f32;

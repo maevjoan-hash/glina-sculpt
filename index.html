@@ -2725,6 +2725,8 @@ function applyCamera() {
   if (!camHist.quiet) { clearTimeout(camHist.timer); camHist.timer = setTimeout(camHistMark, 400); }
 }
 function camHistMark() {
+  // not in the middle of a drag: only where it ended counts
+  if (wheelOp || nav) { clearTimeout(camHist.timer); camHist.timer = setTimeout(camHistMark, 400); return; }
   const v = { t: cam.target.toArray(), d: cam.dist, q: cam.q.toArray() }, L = camHist.list, last = L[camHist.at];
   if (last && Math.abs(last.d - v.d) < 1e-6 && last.t.every((x, k) => Math.abs(x - v.t[k]) < 1e-6) && last.q.every((x, k) => Math.abs(x - v.q[k]) < 1e-6)) return;
   L.length = camHist.at + 1; L.push(v);
@@ -9399,9 +9401,8 @@ function wheelStart(e, id) {
   if (stroke || gesture) return;
   const svg = $('nwSvg');
   try { svg.setPointerCapture(e.pointerId); } catch (err) { /* synthetic events */ }
+  if (id === 'rewind') { clearTimeout(camHist.timer); camHistMark(); }   // where you are now is the newest view
   wheelOp = { id, x0: e.clientX, y0: e.clientY, x: e.clientX, y: e.clientY, moved: false, at: camHist.at };
-  if (id === 'rewind') camHistMark();
-  if (id === 'rewind') wheelOp.at = camHist.at;
   svg.querySelector(`.nwG[data-w="${id}"]`)?.classList.add('on');
   const w = WHEEL.find((x) => x.id === id); wheelTip(w ? w.tip : 'Начало: целият модел, отпред и отдясно.');
 }
@@ -9444,6 +9445,7 @@ function wheelMove(e) {
 function wheelEnd() {
   const o = wheelOp; if (!o) return;
   wheelOp = null;
+  if (o.id !== 'rewind') { clearTimeout(camHist.timer); camHist.timer = setTimeout(camHistMark, 400); }
   for (const g of $('nwSvg').querySelectorAll('.nwG.on')) g.classList.remove('on');
   const mk = $('centerMark'); if (mk) mk.hidden = true;
   if (o.id === 'home') { frameView.first = true; frameView(); wheelTip(''); return; }
