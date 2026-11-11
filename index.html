@@ -955,6 +955,8 @@ const S = {
   pcShape: 'sphere', pcCount: 12, pcSize: 0.04,   // shapes along a curve
   pattern: 'line',     // the last pattern chosen in „Шарки“
   bprSSS: 0.35, bprCavity: 0.35, bprRim: 0.25,   // the studio picture: light under the skin, pores, rim light (0: off)
+  // parts of what keeps the surface sound, as switches (for measuring; test/stress.mjs): smoothing under clay
+  // strips with dynamic topology, pleats healed, and the three rules of refinement on a coarse mesh
   stripRelax: 0.14, healPleats: true, dynSeg: true, dynBig: true, dynAll: true,   // (parts of the healer, kept as switches for measuring)
   heal: true,          // folds and spikes are smoothed away as they form (healVerts)
   thick: 0.05,         // Thick Skin: how far above or below the base, as a share of the model's radius
