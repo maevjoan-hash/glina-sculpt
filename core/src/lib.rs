@@ -537,10 +537,10 @@ pub unsafe extern "C" fn project_raw(pos: *const f32, nrm: *const f32, w: *const
 /// # Safety
 /// Every pointer must point to as many values as its count says.
 #[no_mangle]
-pub unsafe extern "C" fn decimate_raw(pos: *const f32, nv: usize, idx: *const u32, nt: usize, col: *const f32, mask: *const f32, grp: *const f32, target: usize) -> i32 {
+pub unsafe extern "C" fn decimate_raw(pos: *const f32, nv: usize, idx: *const u32, nt: usize, col: *const f32, mask: *const f32, grp: *const f32, target: usize, paint: f32) -> i32 {
     let idx = std::slice::from_raw_parts(idx, nt * 3);
     if idx.iter().any(|&v| v as usize >= nv) { return -1; }
-    let m = decimate::decimate(std::slice::from_raw_parts(pos, nv * 3), idx, std::slice::from_raw_parts(col, nv * 3), std::slice::from_raw_parts(mask, nv), std::slice::from_raw_parts(grp, nv), target);
+    let m = decimate::decimate(std::slice::from_raw_parts(pos, nv * 3), idx, std::slice::from_raw_parts(col, nv * 3), std::slice::from_raw_parts(mask, nv), std::slice::from_raw_parts(grp, nv), target, paint as f64);
     OUT.with(|c| *c.borrow_mut() = Output { pos: m.pos, idx: m.idx, col: m.col, mask: m.mask, grp: m.grp, res: 0, quads: Vec::new() });
     0
 }

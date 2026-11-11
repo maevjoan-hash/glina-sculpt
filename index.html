@@ -687,6 +687,7 @@ input[type=range] { width: 100%; height: 26px; accent-color: var(--wax); backgro
       <button class="btn wide" id="bQuad" title="ZRemesher: нова мрежа от четириъгълници, чиито ръбове следват формата">Ретопология с четириъгълници (ZRemesher)</button>
       <div class="row"><label for="sDecim">Остават от триъгълниците</label><output id="oDecim"></output><input type="range" id="sDecim" min="0.02" max="0.9" step="0.01"></div>
       <button class="btn wide" id="bDecimate" title="Decimation Master: по-малко триъгълници, същата форма">Намали триъгълниците</button>
+      <label class="toggle" title="Use Polypaint: границите между боядисаните цветове се пазят като ръбове, вместо да се размажат">При намаляване пази боята <input type="checkbox" id="tDecPaint"></label>
       <div class="row"><label for="nPrint">Размер при експорт: най-дългата страна, мм (0 — както е)</label><input type="number" id="nPrint" min="0" max="10000" step="1" style="width:90px"></div>
       <p class="note" id="printInfo"></p>
       <div class="note lab">Запомнена форма (Morph Target)</div>
@@ -958,6 +959,7 @@ const S = {
   // parts of what keeps the surface sound, as switches (for measuring; test/stress.mjs): smoothing under clay
   // strips with dynamic topology, pleats healed, and the three rules of refinement on a coarse mesh
   stripRelax: 0.14, healPleats: true, dynSeg: true, dynBig: true, dynAll: true,   // (parts of the healer, kept as switches for measuring)
+  decPaint: true,      // decimation keeps painted borders (Decimation Master: Use Polypaint)
   heal: true,          // folds and spikes are smoothed away as they form (healVerts)
   thick: 0.05,         // Thick Skin: how far above or below the base, as a share of the model's radius
   wheel: true,         // the navigation wheel (AutoCAD: SteeringWheels) is shown
@@ -3440,24 +3442,45 @@ function poseRegion(pt, r) {
 }
 // vertices within r of pt that are connected to the surface under pt (ZBrush: Move Topological);
 // the other lip of a mouth or a neighbouring finger stays where it is
+// Move Topological: what is joined to the point under the pen, and how far it is from it ALONG the
+// surface (Dijkstra over the edges, stopped at the radius), not straight through the air. The upper lip
+// then goes without the lower one even where the two meet at the corners of the mouth, and a finger
+// without its neighbour: the way round is longer than the brush. The falloff follows that distance.
+// (A path along edges zigzags, so it is a little longer than the true distance over the surface: ×0.93.)
 function gatherConnected(pt, r) {
   const m = mesh, cnt = gather(pt.x, pt.y, pt.z, r, 0, 0, 0, false);
   if (!cnt) return 0;
-  const G = m.gIdx, F = m.gFall, P = m.pos, inside = new Map();
+  const G = m.gIdx, F = m.gFall, P = m.pos, inside = new Set(), I = m.idx;
   let seed = -1, best = Infinity;
   for (let k = 0; k < cnt; k++) {
-    inside.set(G[k], F[k]);
+    inside.add(G[k]);
     const d = dist2(P, G[k], pt.x, pt.y, pt.z);
     if (d < best) { best = d; seed = G[k]; }
   }
-  const order = [seed], seen = new Set([seed]);
-  for (let h = 0; h < order.length; h++) {
-    const v = order[h];
-    const visit = (u) => { if (!seen.has(u) && inside.has(u)) { seen.add(u); order.push(u); } };
-    if (m.dyn) { const L = m.vfA[v], I = m.idx; for (let j = 0; j < L.length; j++) for (let q = 0; q < 3; q++) visit(I[L[j] * 3 + q]); }
+  const dist = new Map([[seed, Math.sqrt(best)]]), done = new Set(), order = [];
+  // a binary heap of (distance, point)
+  const hd = [Math.sqrt(best)], hv = [seed];
+  const push = (d, v) => { let i = hd.length; hd.push(d); hv.push(v); while (i > 0) { const p = (i - 1) >> 1; if (hd[p] <= d) break; hd[i] = hd[p]; hv[i] = hv[p]; i = p; } hd[i] = d; hv[i] = v; };
+  const pop = () => {
+    const d = hd[0], v = hv[0], ld = hd.pop(), lv = hv.pop(), n = hd.length;
+    if (n) { let i = 0; for (;;) { let c = i * 2 + 1; if (c >= n) break; if (c + 1 < n && hd[c + 1] < hd[c]) c++; if (hd[c] >= ld) break; hd[i] = hd[c]; hv[i] = hv[c]; i = c; } hd[i] = ld; hv[i] = lv; }
+    return [d, v];
+  };
+  const K = 0.93;
+  while (hd.length) {
+    const [d, v] = pop();
+    if (done.has(v)) continue;
+    if (d >= r) break;
+    done.add(v); order.push(v);
+    const visit = (u) => {
+      if (u === v || done.has(u) || !inside.has(u)) return;
+      const nd = d + Math.sqrt(edgeLen2(P, u, v)) * K, od = dist.get(u);
+      if (od === undefined || nd < od) { dist.set(u, nd); push(nd, u); }
+    };
+    if (m.dyn) { const L = m.vfA[v]; for (let j = 0; j < L.length; j++) for (let q = 0; q < 3; q++) visit(I[L[j] * 3 + q]); }
     else for (let j = m.vvOff[v]; j < m.vvOff[v + 1]; j++) visit(m.vv[j]);
   }
-  for (let k = 0; k < order.length; k++) { G[k] = order[k]; F[k] = inside.get(order[k]); }
+  for (let k = 0; k < order.length; k++) { G[k] = order[k]; F[k] = lut(curLUT, dist.get(order[k]) / r); }
   m.gCount = order.length;
   return order.length;
 }
@@ -7851,7 +7874,7 @@ function coreCall(X, m) {
     return { pos, idx, col, mask, grp, quads, res: 0 };
   }
   const rc = m.op === 'decimate'
-    ? X.decimate_raw(ptrs[0], m.pos.length / 3, ptrs[1], m.idx.length / 3, ptrs[2], ptrs[3], ptrs[4], m.target)
+    ? X.decimate_raw(ptrs[0], m.pos.length / 3, ptrs[1], m.idx.length / 3, ptrs[2], ptrs[3], ptrs[4], m.target, m.paint ? 1 : 0)
     : X.voxel_csg_raw(ptrs[0], m.pos.length / 3, ptrs[1], m.idx.length / 3, ptrs[2], ptrs[3], ptrs[4], ptrs[5], m.parts.length / 3, m.res, m.flags | 0);
   ins.forEach((a, k) => X.mem_free(ptrs[k], a.byteLength));
   if (rc !== 0) throw new Error('the core refused the input');
@@ -7930,7 +7953,7 @@ async function voxelCombine(parts, res, sharp = false) {
 async function decimateArrays(a, target) {
   const core = await coreStart();
   const n = a.pos.length / 3;
-  return core.run({ op: 'decimate', pos: Float32Array.from(a.pos), idx: Uint32Array.from(a.idx), col: Float32Array.from(a.col.subarray(0, n * 3)), mask: Float32Array.from(a.mask.subarray(0, n)), grp: Float32Array.from(a.grp.subarray(0, n)), parts: new Uint32Array(0), target });
+  return core.run({ op: 'decimate', pos: Float32Array.from(a.pos), idx: Uint32Array.from(a.idx), col: Float32Array.from(a.col.subarray(0, n * 3)), mask: Float32Array.from(a.mask.subarray(0, n)), grp: Float32Array.from(a.grp.subarray(0, n)), parts: new Uint32Array(0), target, paint: !!S.decPaint });
 }
 function decimate() {
   if (stroke || mrPending || working) return;
@@ -10433,6 +10456,7 @@ chips('arrKindChips', [{ id: 'line', name: 'В редица' }, { id: 'circle', 
 $('bArrMake').onclick = makeArray;
 $('bArrClear').onclick = () => { $('bArrZero').click(); S.arrScale = 1; saveSettings(); arrPaused = false; arrayPreview(); syncArrBrush(); };
 $('bArrMore').onclick = () => { closeBrushPanel(); openPatterns(S.arrMode); };
+$('tDecPaint').checked = S.decPaint; $('tDecPaint').onchange = () => { S.decPaint = $('tDecPaint').checked; saveSettings(); };
 $('bTpose').onclick = tposeStart;
 $('bTposeApply').onclick = tposeApply;
 $('tThick').onchange = () => setThick($('tThick').checked);
@@ -10763,5 +10787,5 @@ loadAutosave().then((d) => {
     toast('Продължавате последния модел. „Нов“ започва отначало.');
   }
 });
-window.__glina = { arrayDrag, foldPanel, arraySize, tposeStart, tposeApply, get TP() { return TP; }, setThick, thickOf, get rustMR() { return rustMR; }, set rustMR(v) { rustMR = v; }, mrEncode, mrDecode, mrLower, mrFrames, setWheel, camHist, camHistGo, get wheelOp() { return wheelOp; }, frameView, arrayMatrices, arrayPreview, get arrPrev() { return arrPrev; }, resetPanels, applySecLayout, get rustDyn() { return rustDyn; }, set rustDyn(v) { rustDyn = v; }, get mrPending() { return mrPending; }, openPatterns, closePatterns, selectPattern, patternAlongCurve, armPatternCurve, beginStroke, processStroke, endStroke, get rustBrushes() { return rustBrushes; }, set rustBrushes(v) { rustBrushes = v; }, openBrushPanel, closeBrushPanel, openPalette, closePalette, setDrawerTab, railIds, microPoly, topoAdd, topoBuild, topoMake, get topoLines() { return topoLines; }, set topoLines(v) { topoLines = v; }, shadowAdd, shadowMake, get shadows() { return shadows; }, set shadows(v) { shadows = v; }, earClip, shadowPrism, viewAxis, bendBuild, vdmCapture, vdmReset, get vdmField() { return vdmField; }, set vdmField(v) { vdmField = v; }, vdmDefault, snakeAlongCurve, quadRemesh, quadRemeshArrays, surfaceStats, get coreSync() { return coreSync; }, set subdivCore(v) { subdivCore = v; }, polyTris, studioPNG, setCustomMatcap, dropCustomMatcap, get customMatcap() { return customMatcap; }, matcapTextures, material, get gmesh() { return gmesh; }, renderer, makeCube, polishFeatures, sliceGroups, makeGear, makeTube, makeRing, revolve, meshToAxis, straighten, transformTools, gizmoTools, eigenSym3, subdivideArrays, slimeBridge, nanoMesh, maskIslands, texturedFiles, zipMany, levelArrays, zmBuild, quadsOf, exportSTL, renderPrintInfo, decimate, decimateArrays, printScale, projectBytes, saveProject, openProject, packValue, unpackValue, panelLoops, balloonTool, shellFrom, refOpen, refState, refColourAt, refLayout, smoothViewUpdate, get smoothViewObj() { return smoothViewObj; }, recallFrom, makeFibers, fiberArrays, projectAll, storeMorph, switchMorph, dropMorph, morphOf, fillColour, cavityColour, zsOpen, zsClose, zsSkin, get zs() { return zs; }, xtract, latticeLive, latticeScreen, get lattice() { return lattice; }, surfaceContrast, snapshotPNG, maskHidden, startCloth, stopCloth, get clothRun() { return clothRun; }, hideSelection, hideGroup, showAll, invertVisibility, hideMasked, deleteHidden, hiddenCount, setHiddenUndoable, deform, makeArray, arrayArrays, setGizmoMode, get gizmoPin() { return gizmoPin; }, set gizmoPin(v) { gizmoPin = v; }, exportOBJ, scheduleAutosave, get TOOLS() { return TOOLS; }, get curTool() { return curTool; }, activateTool, addTool, appendPrimitive, duplicateTool, deleteTool, moveTool, mergeDown, splitGroups, extractTool, extractShell, makeBoolean, newScene, gizmoHandle, gizmoScreen, get solo() { return solo; }, set solo(v) { solo = v; renderOthers(); }, toolArrays, voxelCombine, voxelRemesh, coreStart, get working() { return working; }, sliceByPlane, mirrorWeldArrays, mirrorWeld, mirrorFlip, applyNoise, snapView, setOrtho, historyJump, polyframe, get cam() { return cam; }, trimByPlane, applyCut, tubeArrays, immShape, hasOpenEdges, get curve() { return liveCurve(); }, dropCurve, get immFile() { return immFile; }, set immFile(v) { immFile = v; }, get LAYERS() { return LAYERS; }, get recLayer() { return recLayer; }, addLayer, deleteLayer, toggleLayer, recordLayer, setLayerStrength, bakeLayers, groupOp, maskAllBut, groupNear, get mesh() { return mesh; }, get stroke() { return stroke; }, get gesture() { return gesture; }, get nav() { return nav; }, get MR() { return MR; }, syncSym, get SYM() { return SYM; }, setLevel, divide, deleteLower, deleteHigher, camera, orbit, pick, selectTool, brush, brushById, maskOp, remesh, undo, redo, subdivide, setDyntopo, floodDetail, S, get undoStack() { return undoStack; } };
+window.__glina = { gatherConnected, arrayDrag, foldPanel, arraySize, tposeStart, tposeApply, get TP() { return TP; }, setThick, thickOf, get rustMR() { return rustMR; }, set rustMR(v) { rustMR = v; }, mrEncode, mrDecode, mrLower, mrFrames, setWheel, camHist, camHistGo, get wheelOp() { return wheelOp; }, frameView, arrayMatrices, arrayPreview, get arrPrev() { return arrPrev; }, resetPanels, applySecLayout, get rustDyn() { return rustDyn; }, set rustDyn(v) { rustDyn = v; }, get mrPending() { return mrPending; }, openPatterns, closePatterns, selectPattern, patternAlongCurve, armPatternCurve, beginStroke, processStroke, endStroke, get rustBrushes() { return rustBrushes; }, set rustBrushes(v) { rustBrushes = v; }, openBrushPanel, closeBrushPanel, openPalette, closePalette, setDrawerTab, railIds, microPoly, topoAdd, topoBuild, topoMake, get topoLines() { return topoLines; }, set topoLines(v) { topoLines = v; }, shadowAdd, shadowMake, get shadows() { return shadows; }, set shadows(v) { shadows = v; }, earClip, shadowPrism, viewAxis, bendBuild, vdmCapture, vdmReset, get vdmField() { return vdmField; }, set vdmField(v) { vdmField = v; }, vdmDefault, snakeAlongCurve, quadRemesh, quadRemeshArrays, surfaceStats, get coreSync() { return coreSync; }, set subdivCore(v) { subdivCore = v; }, polyTris, studioPNG, setCustomMatcap, dropCustomMatcap, get customMatcap() { return customMatcap; }, matcapTextures, material, get gmesh() { return gmesh; }, renderer, makeCube, polishFeatures, sliceGroups, makeGear, makeTube, makeRing, revolve, meshToAxis, straighten, transformTools, gizmoTools, eigenSym3, subdivideArrays, slimeBridge, nanoMesh, maskIslands, texturedFiles, zipMany, levelArrays, zmBuild, quadsOf, exportSTL, renderPrintInfo, decimate, decimateArrays, printScale, projectBytes, saveProject, openProject, packValue, unpackValue, panelLoops, balloonTool, shellFrom, refOpen, refState, refColourAt, refLayout, smoothViewUpdate, get smoothViewObj() { return smoothViewObj; }, recallFrom, makeFibers, fiberArrays, projectAll, storeMorph, switchMorph, dropMorph, morphOf, fillColour, cavityColour, zsOpen, zsClose, zsSkin, get zs() { return zs; }, xtract, latticeLive, latticeScreen, get lattice() { return lattice; }, surfaceContrast, snapshotPNG, maskHidden, startCloth, stopCloth, get clothRun() { return clothRun; }, hideSelection, hideGroup, showAll, invertVisibility, hideMasked, deleteHidden, hiddenCount, setHiddenUndoable, deform, makeArray, arrayArrays, setGizmoMode, get gizmoPin() { return gizmoPin; }, set gizmoPin(v) { gizmoPin = v; }, exportOBJ, scheduleAutosave, get TOOLS() { return TOOLS; }, get curTool() { return curTool; }, activateTool, addTool, appendPrimitive, duplicateTool, deleteTool, moveTool, mergeDown, splitGroups, extractTool, extractShell, makeBoolean, newScene, gizmoHandle, gizmoScreen, get solo() { return solo; }, set solo(v) { solo = v; renderOthers(); }, toolArrays, voxelCombine, voxelRemesh, coreStart, get working() { return working; }, sliceByPlane, mirrorWeldArrays, mirrorWeld, mirrorFlip, applyNoise, snapView, setOrtho, historyJump, polyframe, get cam() { return cam; }, trimByPlane, applyCut, tubeArrays, immShape, hasOpenEdges, get curve() { return liveCurve(); }, dropCurve, get immFile() { return immFile; }, set immFile(v) { immFile = v; }, get LAYERS() { return LAYERS; }, get recLayer() { return recLayer; }, addLayer, deleteLayer, toggleLayer, recordLayer, setLayerStrength, bakeLayers, groupOp, maskAllBut, groupNear, get mesh() { return mesh; }, get stroke() { return stroke; }, get gesture() { return gesture; }, get nav() { return nav; }, get MR() { return MR; }, syncSym, get SYM() { return SYM; }, setLevel, divide, deleteLower, deleteHigher, camera, orbit, pick, selectTool, brush, brushById, maskOp, remesh, undo, redo, subdivide, setDyntopo, floodDetail, S, get undoStack() { return undoStack; } };
 </script>

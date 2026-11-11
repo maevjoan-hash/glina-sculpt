@@ -54,9 +54,23 @@ fn ring(vf: &[Vec<u32>], alive: &[bool], faces: &[[u32; 3]], v: usize, out: &mut
 
 pub struct Mesh { pub pos: Vec<f32>, pub idx: Vec<u32>, pub col: Vec<f32>, pub mask: Vec<f32>, pub grp: Vec<f32> }
 
-/// Down to about `target` triangles.
-pub fn decimate(pos: &[f32], idx: &[u32], col: &[f32], mask: &[f32], grp: &[f32], target: usize) -> Mesh {
+// what it costs, on top of the shape, to merge two points of different colours (Garland & Heckbert's
+// error with a colour term): the edge's area times the square of a distance — 3% of the model's size for
+// colours a whole channel apart — so painted borders are kept like ridges of that height
+fn paint_cost(p: &[[f64; 3]], c: &[[f32; 3]], a: usize, b: usize, k: f64) -> f64 {
+    if k <= 0.0 { return 0.0; }
+    let len2 = (p[a][0] - p[b][0]).powi(2) + (p[a][1] - p[b][1]).powi(2) + (p[a][2] - p[b][2]).powi(2);
+    let dc = (0..3).map(|q| (c[a][q] as f64 - c[b][q] as f64).powi(2)).sum::<f64>();
+    k * len2 * dc
+}
+
+/// Down to about `target` triangles. `paint` > 0 keeps painted borders (1: as above).
+pub fn decimate(pos: &[f32], idx: &[u32], col: &[f32], mask: &[f32], grp: &[f32], target: usize, paint: f64) -> Mesh {
     let n = pos.len() / 3;
+    let (mut lo, mut hi) = ([f64::INFINITY; 3], [f64::NEG_INFINITY; 3]);
+    for i in 0..n { for q in 0..3 { let x = pos[i * 3 + q] as f64; lo[q] = lo[q].min(x); hi[q] = hi[q].max(x); } }
+    let diag2 = if n > 0 { (0..3).map(|q| (hi[q] - lo[q]).powi(2)).sum::<f64>() } else { 0.0 };
+    let pk = paint.max(0.0) * 0.0009 * diag2;
     let mut p: Vec<[f64; 3]> = (0..n).map(|i| [pos[i * 3] as f64, pos[i * 3 + 1] as f64, pos[i * 3 + 2] as f64]).collect();
     let mut c: Vec<[f32; 3]> = (0..n).map(|i| [col[i * 3], col[i * 3 + 1], col[i * 3 + 2]]).collect();
     let mut mk: Vec<f32> = mask.to_vec();
@@ -120,7 +134,7 @@ pub fn decimate(pos: &[f32], idx: &[u32], col: &[f32], mask: &[f32], grp: &[f32]
     for &(a, b) in count.keys() {
         let qq = Q::sum(&q[a as usize], &q[b as usize]);
         let (_, e) = place(&qq, p[a as usize], p[b as usize]);
-        heap.push(Cand { cost: e.max(0.0), a, b, sa: 0, sb: 0 });
+        heap.push(Cand { cost: e.max(0.0) + paint_cost(&p, &c, a as usize, b as usize, pk), a, b, sa: 0, sb: 0 });
     }
     let mut live = faces.len();
     let mut nbuf: Vec<u32> = Vec::new();
@@ -181,7 +195,7 @@ pub fn decimate(pos: &[f32], idx: &[u32], col: &[f32], mask: &[f32], grp: &[f32]
             let u = u as usize;
             let qq = Q::sum(&q[a], &q[u]);
             let (_, e) = place(&qq, p[a], p[u]);
-            heap.push(Cand { cost: e.max(0.0), a: a as u32, b: u as u32, sa: stamp[a], sb: stamp[u] });
+            heap.push(Cand { cost: e.max(0.0) + paint_cost(&p, &c, a, u, pk), a: a as u32, b: u as u32, sa: stamp[a], sb: stamp[u] });
         }
     }
     // compact
@@ -225,7 +239,7 @@ mod tests {
         let n = pos.len() / 3;
         let grp: Vec<f32> = (0..n).map(|i| if pos[i * 3 + 1] > 0.0 { 1.0 } else { 0.0 }).collect();
         let f0 = idx.len() / 3;
-        let m = decimate(&pos, &idx, &vec![1.0; n * 3], &vec![0.0; n], &grp, f0 / 60);
+        let m = decimate(&pos, &idx, &vec![1.0; n * 3], &vec![0.0; n], &grp, f0 / 60, 0.0);
         let mut worst = 0f32;
         for i in 0..m.pos.len() / 3 { let r = (m.pos[i * 3].powi(2) + m.pos[i * 3 + 1].powi(2) + m.pos[i * 3 + 2].powi(2)).sqrt(); worst = worst.max((r - 1.0).abs()); }
         assert!(worst < 0.08, "worst {} with {} triangles", worst, m.idx.len() / 3);
@@ -236,7 +250,7 @@ mod tests {
         let (pos, idx) = sphere(60);
         let n = pos.len() / 3;
         let f0 = idx.len() / 3;
-        let m = decimate(&pos, &idx, &vec![1.0; n * 3], &vec![0.0; n], &vec![0.0; n], f0 / 10);
+        let m = decimate(&pos, &idx, &vec![1.0; n * 3], &vec![0.0; n], &vec![0.0; n], f0 / 10, 0.0);
         let f1 = m.idx.len() / 3;
         assert!(f1 <= f0 / 10 + 2 && f1 > f0 / 12, "{} → {}", f0, f1);
         for i in 0..m.pos.len() / 3 { let r = (m.pos[i * 3].powi(2) + m.pos[i * 3 + 1].powi(2) + m.pos[i * 3 + 2].powi(2)).sqrt(); assert!((r - 1.0).abs() < 0.03, "r {}", r); }
@@ -244,5 +258,23 @@ mod tests {
         let mut e = std::collections::HashMap::new();
         for f in m.idx.chunks_exact(3) { for k in 0..3 { let (a, b) = (f[k], f[(k + 1) % 3]); *e.entry((a.min(b), a.max(b))).or_insert(0) += 1; } }
         assert!(e.values().all(|&c| c == 2));
+    }
+
+    #[test]
+    fn painted_border_survives_when_paint_counts() {
+        // a flat square, 40 x 40 cells, the left half black and the right half white
+        let k = 40usize; let n = (k + 1) * (k + 1);
+        let (mut pos, mut idx, mut col) = (Vec::new(), Vec::new(), Vec::new());
+        for j in 0..=k { for i in 0..=k { pos.extend_from_slice(&[i as f32 / k as f32, j as f32 / k as f32, 0.0]); let c = if i * 2 < k { 0.0 } else { 1.0 }; col.extend_from_slice(&[c, c, c]); } }
+        for j in 0..k { for i in 0..k { let a = (j * (k + 1) + i) as u32; let b = a + 1; let c = a + (k + 1) as u32; let d = c + 1; idx.extend_from_slice(&[a, b, d, a, d, c]); } }
+        // how far the colour boundary's vertices strayed from the line x = 0.5: grey ones are a blur
+        let grey = |m: &Mesh| m.col.chunks_exact(3).filter(|c| c[0] > 0.1 && c[0] < 0.9).count();
+        let plain = decimate(&pos, &idx, &col, &vec![0.0; n], &vec![0.0; n], idx.len() / 3 / 20, 0.0);
+        let kept = decimate(&pos, &idx, &col, &vec![0.0; n], &vec![0.0; n], idx.len() / 3 / 20, 1.0);
+        assert!(grey(&kept) == 0, "with paint counted no point is a blend of the two colours ({})", grey(&kept));
+        assert!(grey(&plain) > 0 || plain.idx.len() <= kept.idx.len(), "without it the flat square merges across the border");
+        // and the border still runs at x = 0.5: some point of each colour is beside it
+        let near = |m: &Mesh, black: bool| (0..m.pos.len() / 3).any(|v| (m.col[v * 3] < 0.5) == black && (m.pos[v * 3] - 0.5).abs() < 0.06);
+        assert!(near(&kept, true) && near(&kept, false));
     }
 }

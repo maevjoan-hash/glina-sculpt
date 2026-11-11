@@ -167,6 +167,39 @@ const maps = await G(async () => {
 });
 check('with levels the ZIP also has object-space normals, height and cavity maps (and a note on their scale)', ['glina-normal-object.png', 'glina-height.png', 'glina-cavity.png', 'glina-maps.txt'].every((n) => maps.names.includes(n)) && maps.txt >= 4, maps.names);
 check('height and cavity are grey maps around the middle, with the bumps in them; object normals are coloured', maps['glina-height.png'].grey && maps['glina-height.png'].hi - maps['glina-height.png'].lo > 8 && maps['glina-height.png'].lo < 128 && maps['glina-height.png'].hi > 128 && maps['glina-cavity.png'].grey && maps['glina-cavity.png'].hi - maps['glina-cavity.png'].lo > 10 && !maps['glina-normal-object.png'].grey, maps);
+// ---------- Move Topological: the distance is measured along the surface ----------
+await fresh(false);
+// a thin lens: the front and the back are close through the air, far round the rim
+await G(() => { const W = window.__glina, T = W.cam.target.constructor, M3 = W.camera.normalMatrix.constructor; W.transformTools([W.TOOLS[W.curTool]], new M3().set(1, 0, 0, 0, 1, 0, 0, 0, 0.06), new T(0, 0, 0), new T(0, 0, 0)); W.orbit(0, 0); });
+await frames(3);
+const lens0 = await G(() => Array.from(window.__glina.mesh.pos.subarray(0, window.__glina.mesh.n * 3)));
+// press near the right rim of the front and pull outward (toward the eye and right)
+const rim = await G(() => { const W = window.__glina, r = document.getElementById('gl').getBoundingClientRect(), v = new W.cam.target.constructor(0.8, 0, 0.03).project(W.camera); return { x: r.left + (v.x * 0.5 + 0.5) * r.width, y: r.top + (-v.y * 0.5 + 0.5) * r.height, wpp: 2 * Math.tan(W.camera.fov * Math.PI / 360) * W.camera.position.distanceTo(new W.cam.target.constructor(0.8, 0, 0.03)) / r.height }; });
+await G((wpp) => { const W = window.__glina; W.selectTool('grabtopo'); W.brush().radius = Math.round(0.4 / wpp); W.brush().strength = 1; }, rim.wpp);
+await drag(rim.x, rim.y, rim.x, rim.y - 60);
+const lens = await G((b) => {
+  // how far the front and the back moved, at x ≈ 0.6 (0.2 from the press through the air on either side; on
+  // the back that is 0.6 along the surface, round the rim: more than the brush)
+  const P = window.__glina.mesh.pos; let front = 0, back = 0, nf = 0, nb = 0;
+  for (let i = 0; i < P.length / 3; i++) {
+    const x = b[i * 3], y = b[i * 3 + 1], z = b[i * 3 + 2]; if (Math.abs(x - 0.6) > 0.04 || Math.abs(y) > 0.04) continue;
+    const d = Math.hypot(P[i * 3] - x, P[i * 3 + 1] - y, P[i * 3 + 2] - z);
+    if (z > 0) { front += d; nf++; } else { back += d; nb++; }
+  }
+  return { front: front / nf, back: back / nb, nf, nb };
+}, lens0);
+check('„Хващане на част“: the front follows the pen, the back (close through the air, far along the surface) stays', lens.nf > 0 && lens.nb > 0 && lens.front > 0.02 && lens.back < lens.front * 0.05, lens);
+await G(() => window.__glina.undo()); await frames(2);
+// ---------- decimation keeps painted borders ----------
+await fresh(false);
+const dec = async (keep) => {
+  await G((keep) => { const W = window.__glina, m = W.mesh; for (let i = 0; i < m.n; i++) { const c = m.pos[i * 3] > 0 ? 1 : 0; m.col[i * 3] = c; m.col[i * 3 + 1] = c; m.col[i * 3 + 2] = c; } W.S.decPaint = keep; W.S.decimateKeep = 0.08; }, keep);
+  const r = await G(async (keep) => { const W = window.__glina, a = W.toolArrays(W.TOOLS[W.curTool]), out = await W.decimateArrays(a, Math.round(a.idx.length / 3 * 0.08)); let grey = 0; for (let i = 0; i < out.col.length; i += 3) if (out.col[i] > 0.1 && out.col[i] < 0.9) grey++; return { f: out.idx.length / 3, n: out.pos.length / 3, grey }; }, keep);
+  return r;
+};
+const decPlain = await dec(false), decKeep = await dec(true);
+check('„При намаляване пази боята“: no point is a blend of the two colours; without it the border blurs', decKeep.grey === 0 && decPlain.grey > 0 && decKeep.f < 20480 * 0.1, { decPlain, decKeep });
+check('its switch is in „Геометрия“', await G(() => !!document.getElementById('tDecPaint')));
 check('no page errors', errors.length === 0, errors.slice(0, 5));
 await browser.close();
 const ok = results.filter(Boolean).length;

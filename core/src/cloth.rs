@@ -117,6 +117,15 @@ impl Collider {
     }
 }
 
+/// A stiffness as the page gives it (0…1: the share of a link's error the old solver took away in each of
+/// its six passes) as an XPBD compliance, so that the same number feels the same as before at the page's
+/// step of 1/180 s: 0 for 1 (rigid), larger the softer.
+fn compliance(k: f64) -> f64 {
+    let k = k.clamp(1e-4, 1.0);
+    let done = 1.0 - (1.0 - k).powi(6);
+    2.0 * (1.0 / done - 1.0) * (1.0 / 180.0) * (1.0 / 180.0)
+}
+
 #[derive(Clone, Copy, Debug)]
 pub struct ClothParams {
     /// downward acceleration, in model units per second²
@@ -144,7 +153,8 @@ pub struct Cloth {
     rest: Vec<f64>,
     prev: Vec<f64>,
     w: Vec<f64>,
-    cons: Vec<(u32, u32, f64, f64)>,
+    cons: Vec<(u32, u32, f64, f64)>,   // two points, their rest distance, the link's compliance
+    lambda: Vec<f64>,
     collider: Option<Collider>,
     p: ClothParams,
 }
@@ -169,12 +179,12 @@ impl Cloth {
         };
         let mut cons = Vec::with_capacity(edges.len() * 2);
         for (&(a, b), &(c, d)) in &edges {
-            cons.push((a, b, len(a, b), p.stretch));
-            if d >= 0 && p.bend > 0.0 { let d = d as u32; cons.push((c, d, len(c, d), p.bend)); }
+            cons.push((a, b, len(a, b), compliance(p.stretch)));
+            if d >= 0 && p.bend > 0.0 { let d = d as u32; cons.push((c, d, len(c, d), compliance(p.bend))); }
         }
         // a fixed order, so a run is the same every time
         cons.sort_by(|p, q| (p.0, p.1).cmp(&(q.0, q.1)));
-        Cloth { prev: x.clone(), rest: x.clone(), x, w, cons, collider, p }
+        Cloth { prev: x.clone(), rest: x.clone(), x, w, cons, lambda: Vec::new(), collider, p }
     }
 
     fn collide(&mut self, i: usize) {
@@ -238,8 +248,13 @@ impl Cloth {
                 if vl > self.p.max_step { for x in v.iter_mut() { *x *= self.p.max_step / vl; } }
                 for c in 0..3 { self.prev[k + c] = self.x[k + c]; self.x[k + c] += v[c]; }
             }
+            // XPBD (Macklin et al. 2016): every link has a compliance (how much it gives, 0: rigid) and
+            // keeps the sum of its corrections within the step (λ), so how stiff the cloth is does not depend
+            // on how many times the links are gone over, nor on the length of the step
+            self.lambda.clear(); self.lambda.resize(self.cons.len(), 0.0);
+            let inv_dt2 = 1.0 / (dt * dt);
             for _ in 0..self.p.iters.max(1) {
-                for &(a, b, rest, stiff) in &self.cons {
+                for (ci, &(a, b, rest, alpha)) in self.cons.iter().enumerate() {
                     let (a, b) = (a as usize, b as usize);
                     let (wa, wb) = (self.w[a], self.w[b]);
                     let ws = wa + wb;
@@ -248,7 +263,10 @@ impl Cloth {
                     let d = [self.x[kb] - self.x[ka], self.x[kb + 1] - self.x[ka + 1], self.x[kb + 2] - self.x[ka + 2]];
                     let l = (d[0] * d[0] + d[1] * d[1] + d[2] * d[2]).sqrt();
                     if l < 1e-12 { continue; }
-                    let s = (l - rest) / l * stiff / ws;
+                    let at = alpha * inv_dt2;
+                    let dl = (-(l - rest) - at * self.lambda[ci]) / (ws + at);
+                    self.lambda[ci] += dl;
+                    let s = -dl / l;
                     for c in 0..3 { self.x[ka + c] += d[c] * s * wa; self.x[kb + c] -= d[c] * s * wb; }
                 }
             }
@@ -329,5 +347,24 @@ mod tests {
         // the middle of the sheet rests on the top of the box
         let mid = (10 * 21 + 10) * 3;
         assert!((c.x[mid + 1] - 0.51).abs() < 0.03, "mid y {}", c.x[mid + 1]);
+    }
+
+    #[test]
+    fn stiffness_does_not_depend_on_how_often_the_links_are_solved() {
+        // a strip hanging from its top row: how far its bottom ends up below the top
+        let hang = |iters: u32| -> f64 {
+            let (w, h) = (4usize, 20usize);
+            let (mut pos, mut idx, mut inv) = (Vec::new(), Vec::new(), Vec::new());
+            for j in 0..h { for i in 0..w { pos.extend_from_slice(&[i as f32 * 0.05, 1.0 - j as f32 * 0.05, 0.0]); inv.push(if j == 0 { 0.0f32 } else { 1.0 }); } }
+            for j in 0..h - 1 { for i in 0..w - 1 { let a = (j * w + i) as u32; let b = a + 1; let c = a + w as u32; let d = c + 1; idx.extend_from_slice(&[a, c, b, b, c, d]); } }
+            let mut p = params(-1e30); p.iters = iters; p.stretch = 0.5; p.bend = 0.1;
+            let mut c = Cloth::new(&pos, &idx, &inv, None, p);
+            c.step(600, 1.0 / 180.0);
+            1.0 - c.x[(h - 1) * w * 3 + 1]
+        };
+        let (few, many) = (hang(4), hang(16));
+        // it stretched under its weight (softer than rigid), and by the same amount either way
+        assert!(few > 0.95 && many > 0.95, "{few} {many}");
+        assert!((few - many).abs() < few * 0.08, "4 passes: {few}, 16 passes: {many}");
     }
 }
