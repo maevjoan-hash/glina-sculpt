@@ -14,7 +14,7 @@ const DIST = path.join(ROOT, 'dist');
 const pkg = JSON.parse(fs.readFileSync(path.join(HERE, 'package.json'), 'utf8'));
 const VERSION = pkg.version;
 
-const src = fs.readFileSync(path.join(ROOT, 'index.html'), 'utf8');
+const src = fs.readFileSync(path.join(ROOT, 'index.html'), 'utf8').replace(/__GLINA_VERSION__/g, VERSION);
 const take = (re, what) => { const m = src.match(re); if (!m) throw new Error('index.html: cannot find ' + what); return m; };
 
 // ---------- pieces of the source page ----------

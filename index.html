@@ -730,6 +730,15 @@ input[type=range] { width: 100%; height: 26px; accent-color: var(--wax); backgro
     </section>
 
     <section class="sec" data-tab="view">
+      <h2>Дневник <em>Journal</em></h2>
+      <p class="note">Записва какво правите (четка, сила, брой триъгълници, отмени) и какво се е объркало: грешки, прегънати или стърчащи места след щрих, бавни кадри, инструмент, ползван така, че няма да даде добър резултат. Стои само на това устройство; с „Запиши дневника във файл“ можете да го изпратите, за да се види какво е станало. Самият модел не се записва.</p>
+      <label class="toggle">Записвай дневник <input type="checkbox" id="tJournal"></label>
+      <label class="toggle">Показвай съвети на екрана <input type="checkbox" id="tJournalHints"></label>
+      <p class="note" id="journalInfo"></p>
+      <div class="two"><button class="btn wide" id="bJournalSave">Запиши дневника във файл</button><button class="btn wide" id="bJournalClear">Изчисти</button></div>
+    </section>
+
+    <section class="sec" data-tab="view">
       <h2>Панели <em>Trays</em></h2>
       <p class="note">Наредете ги както ви е удобно, като в ZBrush. Плаващите панели (четката, „Всички“, „Шарки“) се местят, като ги влачите за заглавието; с 📌 остават отворени, докато отваряте други. Разделите тук: щракване върху заглавието ги свива, влачене го мести нагоре или надолу, а пуснат върху раздел горе („Модел“, „Създай“, „Изглед“) отива там.</p>
       <label class="toggle" title="Като SteeringWheels в AutoCAD: мащаб, орбита, местене, назад, горе/долу, огледай се, център, наклон">Колело за навигация (Shift+W) <input type="checkbox" id="tWheel"></label>
@@ -959,6 +968,8 @@ const S = {
   // parts of what keeps the surface sound, as switches (for measuring; test/stress.mjs): smoothing under clay
   // strips with dynamic topology, pleats healed, and the three rules of refinement on a coarse mesh
   stripRelax: 0.14, healPleats: true, dynSeg: true, dynBig: true, dynAll: true,   // (parts of the healer, kept as switches for measuring)
+  journal: true,       // the journal of what is done and what went wrong (kept on this device only)
+  journalHints: true,  // a hint on the screen when a tool is used in a way that will not work well
   decPaint: true,      // decimation keeps painted borders (Decimation Master: Use Polypaint)
   heal: true,          // folds and spikes are smoothed away as they form (healVerts)
   thick: 0.05,         // Thick Skin: how far above or below the base, as a share of the model's radius
@@ -1004,6 +1015,19 @@ function sanitizeBrush(src, keepId = false) {
   b.name = String(src.name || 'Моя четка').slice(0, 40);
   b.short = String(src.short || b.name).slice(0, 7);
   return b;
+}
+// the journal's records (the rest of it is further down: „the journal“); here, because the first brush is
+// chosen and the first messages shown before that part runs
+const JOURNAL_MAX = 800, JOURNAL_KEY = 'glina.journal';
+let journal = [], journalT = 0, journalQuiet = false;
+const journalSeen = new Set();   // hints already shown this session
+try { const j = JSON.parse(localStorage.getItem(JOURNAL_KEY) || '[]'); if (Array.isArray(j)) journal = j.slice(-JOURNAL_MAX); } catch (e) { /* no storage */ }
+function logEv(k, data) {
+  if (!S.journal) return;
+  journal.push({ t: Date.now(), k, ...(data || {}) });
+  if (journal.length > JOURNAL_MAX) journal.splice(0, journal.length - JOURNAL_MAX);
+  clearTimeout(journalT);
+  journalT = setTimeout(() => { try { localStorage.setItem(JOURNAL_KEY, JSON.stringify(journal)); } catch (e) { /* full: it stays in memory */ } if (typeof syncJournalUI === 'function') syncJournalUI(); }, 600);
 }
 let saveSettingsT = 0;
 function saveSettings() {
@@ -4007,6 +4031,7 @@ function beginStroke(e, x, y, b, sign) {
   };
   strokeId++;
   frame_.tag++;
+  stroke.t0 = performance.now(); stroke.f0 = mesh.f; stroke.slow = 0;
   if (drag) {
     const hit = pick(x, y);
     if (!hit) { stroke = null; return false; }
@@ -4429,6 +4454,7 @@ function dab(x, y, p, o = {}) {
     frame_.bvhKept = true;
   }
   placeRing(hit.point, hit.normal, r);
+  stroke.at = (stroke.at || new THREE.Vector3()).copy(hit.point); stroke.atR = r;
 }
 
 // Dynamic topology after a grab: the pulled part is stretched, so split its long edges (and merge
@@ -4475,6 +4501,7 @@ function endStroke(commit = true) {
   processStroke(); flushFrame();
   if (commit && stroke.tool === 'grab' && mesh.dyn && stroke.changed) { refineAfterGrab(); flushFrame(); }
   if (commit && stroke.changed && stroke.tool !== 'mask' && stroke.tool !== 'paint') healStroke();
+  if (commit) journalStroke();
   if (stroke.snap) {
     const { snap, changed } = stroke;
     stroke = null;
@@ -4506,8 +4533,8 @@ function endStroke(commit = true) {
    from the point's own normal), or the point stands far out of the ring of its neighbours (more than 2.2
    times the ring's size), it is drawn most of the way to the middle of its neighbours — up to three
    rounds. Sound parts are not touched, so the shape and its detail stay as sculpted. */
-function healVerts(list, count) {
-  if (!S.heal || !stroke || !count) return 0;
+function healVerts(list, count, dry = false) {
+  if ((!S.heal && !dry) || !stroke || !count) return 0;
   const m = mesh, P = m.pos, N = m.nrm, FN = m.fn, I = m.idx, MK = m.mask, H = m.hid, dyn = m.dyn;
   const bad = [], to = [];
   let fixed = 0;
@@ -4567,6 +4594,7 @@ function healVerts(list, count) {
       bad.push(v); to.push(cx, cy, cz);
     }
     if (!bad.length) break;
+    if (dry) return bad.length;   // (only counting, for the journal)
     for (let k = 0; k < bad.length; k++) {
       const v = bad[k], o = v * 3, w = 0.7 * (1 - MK[v]);
       touchVert(v);
@@ -4711,8 +4739,8 @@ function pushUndo(rec) {
   }
   updateUndoButtons();
 }
-function undo() { if (zs) { zsUndo(); return; } if (stroke || mrPending || working || !undoStack.length) return; undoSerial++; redoStack.push(applyRecord(undoStack.pop())); updateUndoButtons(); requestRender(); scheduleAutosave(); }
-function redo() { if (zs) { zsUndo(true); return; } if (stroke || mrPending || working || !redoStack.length) return; undoSerial++; undoStack.push(applyRecord(redoStack.pop())); updateUndoButtons(); requestRender(); scheduleAutosave(); }
+function undo() { if (zs) { zsUndo(); return; } if (stroke || mrPending || working || !undoStack.length) return; journalUndo(); undoSerial++; redoStack.push(applyRecord(undoStack.pop())); updateUndoButtons(); requestRender(); scheduleAutosave(); }
+function redo() { if (zs) { zsUndo(true); return; } if (stroke || mrPending || working || !redoStack.length) return; logEv('redo'); undoSerial++; undoStack.push(applyRecord(redoStack.pop())); updateUndoButtons(); requestRender(); scheduleAutosave(); }
 function updateUndoButtons() {
   $('bUndo').disabled = !undoStack.length; $('qUndo').disabled = !undoStack.length; $('bRedo').disabled = !redoStack.length;
   renderHistory();
@@ -5055,7 +5083,7 @@ function updateHover() {
 /* ---------- frame loop ---------- */
 function frame() {
   renderQueued = false;
-  if (stroke) { refitBVH(); dynSplitsLeft = DYN_FRAME_SPLITS; dynCollapsesLeft = DYN_FRAME_COLLAPSES; processStroke(); flushFrame(); }
+  if (stroke) { const t0 = performance.now(); refitBVH(); dynSplitsLeft = DYN_FRAME_SPLITS; dynCollapsesLeft = DYN_FRAME_COLLAPSES; processStroke(); flushFrame(); if (stroke) stroke.slow = Math.max(stroke.slow || 0, performance.now() - t0); }
   else updateHover();
   if (S.smoothView || smoothViewObj) smoothViewUpdate();
   renderer.render(scene, camera);
@@ -9519,7 +9547,7 @@ async function loadAutosave() {
    ===================================================================== */
 function fmt(n) { return n.toLocaleString('bg-BG'); }
 let toastT = 0;
-function toast(msg) { const t = $('toast'); t.textContent = msg; t.classList.add('show'); clearTimeout(toastT); toastT = setTimeout(() => t.classList.remove('show'), 2600); }
+function toast(msg) { if (!journalQuiet) logEv('msg', { m: String(msg).slice(0, 200) }); const t = $('toast'); t.textContent = msg; t.classList.add('show'); clearTimeout(toastT); toastT = setTimeout(() => t.classList.remove('show'), 2600); }
 function updateStats() {
   renderVisibility(); syncMorphUI();
   if (typeof TOOLS !== 'undefined' && TOOLS.length) renderPrintInfo();
@@ -9901,6 +9929,115 @@ function resetPanels() {
 $('bPanelsReset').onclick = resetPanels;
 applySecLayout();
 
+/* ---------- the journal: what was done and what went wrong ----------
+   A list of small records kept on this device (the last 800): the brush and its numbers for every stroke,
+   undo and redo, every message shown, errors of the program, and after each stroke a look at the surface
+   it touched — folds and spikes the healer would still find, triangles pulled long, a sudden swell in the
+   number of triangles, slow frames. Some records are „hints“: a tool used in a way that will not work well
+   (a stroke on a masked place, the same brush undone again and again, big changes without dynamic
+   topology, hammering one place at full strength). A hint also shows on the screen once per session.
+   „Запиши дневника във файл“ writes it all out as a file to send; nothing leaves the device by itself. */
+function journalHint(id, text, data) {
+  logEv('hint', { id, ...(data || {}) });
+  if (!S.journalHints || journalSeen.has(id)) return;
+  journalSeen.add(id);
+  journalQuiet = true; try { toast(text); } finally { journalQuiet = false; }
+}
+// a small picture of the view at the moment of a problem (at most three are kept)
+function journalShot() {
+  try {
+    if (journal.filter((e) => e.img).length >= 3) return undefined;
+    renderer.render(scene, camera);
+    const c = document.createElement('canvas'), src = renderer.domElement, w = 320, h = Math.max(1, Math.round(w * src.height / src.width));
+    c.width = w; c.height = h; c.getContext('2d').drawImage(src, 0, 0, w, h);
+    return c.toDataURL('image/jpeg', 0.6);
+  } catch (e) { return undefined; }
+}
+function journalStroke() {
+  if (!S.journal || !stroke) return;
+  const st = stroke, m = mesh, b = st.b || {}, tool = st.tool;
+  const rec = { tool: b.id || tool, base: tool, r: b.radius, s: +(+b.strength || 0).toFixed(2), dir: st.sign, dyn: !!m.dyn, sym: SYM.length, f0: st.f0, f: m.f, ms: Math.round(performance.now() - st.t0), pen: st.pointerType, changed: !!st.changed };
+  if (st.slow > 120) rec.slow = Math.round(st.slow);
+  // the surface it touched
+  let list = null;
+  if (m.dyn) { if (st.healSet) list = [...st.healSet].filter((v) => v < m.n && m.vfA[v] && m.vfA[v].length); }
+  else if (st.uCount) list = Array.from(m.uIdx.subarray(0, st.uCount));
+  const sculpt = tool !== 'mask' && tool !== 'paint';
+  if (list && list.length && sculpt) {
+    rec.touched = list.length;
+    const bad = healVerts(list, list.length, true);
+    if (bad) rec.bad = bad;
+    // triangles pulled long: the longest edge at a touched point against the model's usual edge
+    if (!m.dyn) {
+      const P = m.pos; let mean = m.meanEdgeJ;
+      if (!mean || m.meanEdgeN !== m.n) { let sum = 0, c = 0; const I = m.idx, step = Math.max(1, Math.floor(m.f / 3000)); for (let t = 0; t < m.f; t += step) { sum += Math.sqrt(edgeLen2(P, I[t * 3], I[t * 3 + 1])); c++; } mean = m.meanEdgeJ = c ? sum / c : 0; m.meanEdgeN = m.n; }
+      let mx = 0; const stepV = Math.max(1, Math.floor(list.length / 4000));
+      for (let k = 0; k < list.length; k += stepV) { const v = list[k]; for (let j = m.vvOff[v]; j < m.vvOff[v + 1]; j++) { const l = edgeLen2(P, v, m.vv[j]); if (l > mx) mx = l; } }
+      if (mean > 0) rec.stretch = +(Math.sqrt(mx) / mean).toFixed(1);
+    }
+    if (bad > Math.max(30, list.length * 0.03)) { rec.bug = 'folds'; rec.img = journalShot(); }
+    else if (m.dyn && st.f0 > 0 && m.f > st.f0 * 3 && m.f - st.f0 > 60000) { rec.bug = 'swell'; rec.img = journalShot(); }
+  }
+  logEv('stroke', rec);
+  journalUndoRun = 0;
+  // tools used in a way that will not work well
+  let masked = false;
+  if (sculpt && !st.changed && st.at) { const c = gather(st.at.x, st.at.y, st.at.z, st.atR, 0, 0, 0, false); masked = c > 0; for (let k = 0; k < c && masked; k++) if (m.mask[m.gIdx[k]] < 0.99) masked = false; }
+  if (masked) journalHint('masked', 'Тук моделът е маскиран, затова четката не го променя. Ctrl+щракване по празното обръща маската; „Изчисти“ в Настройки → Маска я маха.', { tool: rec.tool });
+  if (rec.stretch > 8 && S.journalHints) journalHint('stretch', 'Триъгълниците тук са силно разтегнати: при голяма промяна без динамична топология нови не се добавят. Включете „Дин. топология“ (D) или „Преизгради мрежата“ в Настройки → Геометрия.', { stretch: rec.stretch, tool: rec.tool });
+  if (sculpt && st.changed && rec.s >= 0.95 && st.at) {
+    const h = journalHammer;
+    if (h.tool === rec.tool && h.at && h.at.distanceTo(st.at) < (st.atR || 0) * 0.8) h.n++; else { h.tool = rec.tool; h.n = 1; }
+    h.at = st.at.clone();
+    if (h.n === 8) journalHint('hammer', 'Осем минавания с пълна сила на едно място. За по-плавен резултат намалете силата (десен бутон върху четката) и минавайте по-леко; Shift изглажда.', { tool: rec.tool });
+  }
+}
+const journalHammer = { tool: '', n: 0, at: null };
+let journalUndoRun = 0;
+function journalUndo() {
+  const last = journal.length ? journal[journal.length - 1] : null;
+  logEv('undo');
+  journalUndoRun++;
+  // the same brush undone again and again: it is not doing what was meant
+  if (journalUndoRun === 1) journalUndoTool = last && last.k === 'stroke' ? last.tool : '';
+  if (journalUndoRun === 3) {
+    const strokes = journal.filter((e) => e.k === 'stroke').slice(-3), same = strokes.length === 3 && strokes.every((e) => e.tool === strokes[0].tool);
+    if (same) { const br = brushById(strokes[0].tool); journalHint('undo3', `Три отмени подред с „${br ? br.name : strokes[0].tool}“. Ако четката не прави каквото очаквате: десен бутон (или задържане) върху нея отваря настройките ѝ — радиус, сила, посока.`, { tool: strokes[0].tool }); }
+  }
+}
+let journalUndoTool = '';
+window.addEventListener('error', (e) => logEv('error', { m: String(e.message || e.error).slice(0, 300), at: `${(e.filename || '').split('/').pop()}:${e.lineno || 0}`, img: undefined }));
+window.addEventListener('unhandledrejection', (e) => logEv('error', { m: 'promise: ' + String(e.reason && (e.reason.message || e.reason)).slice(0, 300) }));
+function journalFile() {
+  const count = (k, f) => journal.filter((e) => e.k === k && (!f || f(e))).length;
+  const keep = {}; for (const k of ['tool', 'dyntopo', 'detail', 'decimate', 'sym', 'symY', 'symZ', 'radial', 'heal', 'ortho', 'prStrength', 'prRadius', 'stab', 'wire', 'thick']) keep[k] = S[k];
+  return {
+    app: 'Глина Sculpt', version: '__GLINA_VERSION__', written: new Date().toISOString(),
+    device: { agent: navigator.userAgent, screen: [screen.width, screen.height], view: [Math.round(viewport.w), Math.round(viewport.h)], pixelRatio: window.devicePixelRatio || 1, touch: navigator.maxTouchPoints || 0, memory: navigator.deviceMemory || null },
+    model: { tools: TOOLS.length, verts: mesh.n, tris: mesh.f, dyn: !!mesh.dyn, levels: MR ? MR.levels.length : 1, rustCore: !!coreSync },
+    settings: keep,
+    summary: { records: journal.length, strokes: count('stroke'), undos: count('undo'), bugs: count('stroke', (e) => e.bug), errors: count('error'), hints: count('hint'), slowStrokes: count('stroke', (e) => e.slow) },
+    journal,
+  };
+}
+async function journalSave() {
+  const data = new TextEncoder().encode(JSON.stringify(journalFile(), null, 1));
+  journalQuiet = true;
+  try { await offerFile('glina-journal.json', data); toast('Дневникът е записан във файла glina-journal.json. Изпратете го, за да се види какво е станало.'); } catch (e) { toast('Дневникът не се записа: ' + e.message); } finally { journalQuiet = false; }
+}
+function syncJournalUI() {
+  if (!$('journalInfo')) return;
+  const bugs = journal.filter((e) => (e.k === 'stroke' && e.bug) || e.k === 'error').length, hints = journal.filter((e) => e.k === 'hint').length;
+  $('journalInfo').textContent = S.journal ? `${journal.length} записа: ${journal.filter((e) => e.k === 'stroke').length} щриха, ${bugs} проблема, ${hints} съвета.` : 'Дневникът е изключен.';
+  $('tJournal').checked = S.journal; $('tJournalHints').checked = S.journalHints;
+}
+$('tJournal').onchange = () => { S.journal = $('tJournal').checked; saveSettings(); syncJournalUI(); };
+$('tJournalHints').onchange = () => { S.journalHints = $('tJournalHints').checked; saveSettings(); };
+$('bJournalSave').onclick = journalSave;
+$('bJournalClear').onclick = () => { journal = []; try { localStorage.removeItem(JOURNAL_KEY); } catch (e) { /* no storage */ } journalSeen.clear(); syncJournalUI(); journalQuiet = true; toast('Дневникът е изчистен.'); journalQuiet = false; };
+logEv('start', { v: '__GLINA_VERSION__' });
+syncJournalUI();
+
 /* ---------- the navigation wheel (AutoCAD: SteeringWheels, Full Navigation Wheel) ----------
    Press a part of the wheel and drag: the outer ring zooms, orbits, pans and goes back through the views
    you had; the inner ring moves up and down, looks around from where the camera stands, centres on a
@@ -10050,6 +10187,7 @@ function selectTool(id) {
   syncBrushUI(); saveSettings(); drawOverlay(); requestRender();
   if (brush().base === 'array') arrPaused = false;
   arrayPreview();
+  logEv('tool', { id });
 }
 function bindRange(id, out, get, set, fmtv) {
   const el = $(id);
@@ -10787,5 +10925,5 @@ loadAutosave().then((d) => {
     toast('Продължавате последния модел. „Нов“ започва отначало.');
   }
 });
-window.__glina = { gatherConnected, arrayDrag, foldPanel, arraySize, tposeStart, tposeApply, get TP() { return TP; }, setThick, thickOf, get rustMR() { return rustMR; }, set rustMR(v) { rustMR = v; }, mrEncode, mrDecode, mrLower, mrFrames, setWheel, camHist, camHistGo, get wheelOp() { return wheelOp; }, frameView, arrayMatrices, arrayPreview, get arrPrev() { return arrPrev; }, resetPanels, applySecLayout, get rustDyn() { return rustDyn; }, set rustDyn(v) { rustDyn = v; }, get mrPending() { return mrPending; }, openPatterns, closePatterns, selectPattern, patternAlongCurve, armPatternCurve, beginStroke, processStroke, endStroke, get rustBrushes() { return rustBrushes; }, set rustBrushes(v) { rustBrushes = v; }, openBrushPanel, closeBrushPanel, openPalette, closePalette, setDrawerTab, railIds, microPoly, topoAdd, topoBuild, topoMake, get topoLines() { return topoLines; }, set topoLines(v) { topoLines = v; }, shadowAdd, shadowMake, get shadows() { return shadows; }, set shadows(v) { shadows = v; }, earClip, shadowPrism, viewAxis, bendBuild, vdmCapture, vdmReset, get vdmField() { return vdmField; }, set vdmField(v) { vdmField = v; }, vdmDefault, snakeAlongCurve, quadRemesh, quadRemeshArrays, surfaceStats, get coreSync() { return coreSync; }, set subdivCore(v) { subdivCore = v; }, polyTris, studioPNG, setCustomMatcap, dropCustomMatcap, get customMatcap() { return customMatcap; }, matcapTextures, material, get gmesh() { return gmesh; }, renderer, makeCube, polishFeatures, sliceGroups, makeGear, makeTube, makeRing, revolve, meshToAxis, straighten, transformTools, gizmoTools, eigenSym3, subdivideArrays, slimeBridge, nanoMesh, maskIslands, texturedFiles, zipMany, levelArrays, zmBuild, quadsOf, exportSTL, renderPrintInfo, decimate, decimateArrays, printScale, projectBytes, saveProject, openProject, packValue, unpackValue, panelLoops, balloonTool, shellFrom, refOpen, refState, refColourAt, refLayout, smoothViewUpdate, get smoothViewObj() { return smoothViewObj; }, recallFrom, makeFibers, fiberArrays, projectAll, storeMorph, switchMorph, dropMorph, morphOf, fillColour, cavityColour, zsOpen, zsClose, zsSkin, get zs() { return zs; }, xtract, latticeLive, latticeScreen, get lattice() { return lattice; }, surfaceContrast, snapshotPNG, maskHidden, startCloth, stopCloth, get clothRun() { return clothRun; }, hideSelection, hideGroup, showAll, invertVisibility, hideMasked, deleteHidden, hiddenCount, setHiddenUndoable, deform, makeArray, arrayArrays, setGizmoMode, get gizmoPin() { return gizmoPin; }, set gizmoPin(v) { gizmoPin = v; }, exportOBJ, scheduleAutosave, get TOOLS() { return TOOLS; }, get curTool() { return curTool; }, activateTool, addTool, appendPrimitive, duplicateTool, deleteTool, moveTool, mergeDown, splitGroups, extractTool, extractShell, makeBoolean, newScene, gizmoHandle, gizmoScreen, get solo() { return solo; }, set solo(v) { solo = v; renderOthers(); }, toolArrays, voxelCombine, voxelRemesh, coreStart, get working() { return working; }, sliceByPlane, mirrorWeldArrays, mirrorWeld, mirrorFlip, applyNoise, snapView, setOrtho, historyJump, polyframe, get cam() { return cam; }, trimByPlane, applyCut, tubeArrays, immShape, hasOpenEdges, get curve() { return liveCurve(); }, dropCurve, get immFile() { return immFile; }, set immFile(v) { immFile = v; }, get LAYERS() { return LAYERS; }, get recLayer() { return recLayer; }, addLayer, deleteLayer, toggleLayer, recordLayer, setLayerStrength, bakeLayers, groupOp, maskAllBut, groupNear, get mesh() { return mesh; }, get stroke() { return stroke; }, get gesture() { return gesture; }, get nav() { return nav; }, get MR() { return MR; }, syncSym, get SYM() { return SYM; }, setLevel, divide, deleteLower, deleteHigher, camera, orbit, pick, selectTool, brush, brushById, maskOp, remesh, undo, redo, subdivide, setDyntopo, floodDetail, S, get undoStack() { return undoStack; } };
+window.__glina = { get journal() { return journal; }, journalFile, logEv, gatherConnected, arrayDrag, foldPanel, arraySize, tposeStart, tposeApply, get TP() { return TP; }, setThick, thickOf, get rustMR() { return rustMR; }, set rustMR(v) { rustMR = v; }, mrEncode, mrDecode, mrLower, mrFrames, setWheel, camHist, camHistGo, get wheelOp() { return wheelOp; }, frameView, arrayMatrices, arrayPreview, get arrPrev() { return arrPrev; }, resetPanels, applySecLayout, get rustDyn() { return rustDyn; }, set rustDyn(v) { rustDyn = v; }, get mrPending() { return mrPending; }, openPatterns, closePatterns, selectPattern, patternAlongCurve, armPatternCurve, beginStroke, processStroke, endStroke, get rustBrushes() { return rustBrushes; }, set rustBrushes(v) { rustBrushes = v; }, openBrushPanel, closeBrushPanel, openPalette, closePalette, setDrawerTab, railIds, microPoly, topoAdd, topoBuild, topoMake, get topoLines() { return topoLines; }, set topoLines(v) { topoLines = v; }, shadowAdd, shadowMake, get shadows() { return shadows; }, set shadows(v) { shadows = v; }, earClip, shadowPrism, viewAxis, bendBuild, vdmCapture, vdmReset, get vdmField() { return vdmField; }, set vdmField(v) { vdmField = v; }, vdmDefault, snakeAlongCurve, quadRemesh, quadRemeshArrays, surfaceStats, get coreSync() { return coreSync; }, set subdivCore(v) { subdivCore = v; }, polyTris, studioPNG, setCustomMatcap, dropCustomMatcap, get customMatcap() { return customMatcap; }, matcapTextures, material, get gmesh() { return gmesh; }, renderer, makeCube, polishFeatures, sliceGroups, makeGear, makeTube, makeRing, revolve, meshToAxis, straighten, transformTools, gizmoTools, eigenSym3, subdivideArrays, slimeBridge, nanoMesh, maskIslands, texturedFiles, zipMany, levelArrays, zmBuild, quadsOf, exportSTL, renderPrintInfo, decimate, decimateArrays, printScale, projectBytes, saveProject, openProject, packValue, unpackValue, panelLoops, balloonTool, shellFrom, refOpen, refState, refColourAt, refLayout, smoothViewUpdate, get smoothViewObj() { return smoothViewObj; }, recallFrom, makeFibers, fiberArrays, projectAll, storeMorph, switchMorph, dropMorph, morphOf, fillColour, cavityColour, zsOpen, zsClose, zsSkin, get zs() { return zs; }, xtract, latticeLive, latticeScreen, get lattice() { return lattice; }, surfaceContrast, snapshotPNG, maskHidden, startCloth, stopCloth, get clothRun() { return clothRun; }, hideSelection, hideGroup, showAll, invertVisibility, hideMasked, deleteHidden, hiddenCount, setHiddenUndoable, deform, makeArray, arrayArrays, setGizmoMode, get gizmoPin() { return gizmoPin; }, set gizmoPin(v) { gizmoPin = v; }, exportOBJ, scheduleAutosave, get TOOLS() { return TOOLS; }, get curTool() { return curTool; }, activateTool, addTool, appendPrimitive, duplicateTool, deleteTool, moveTool, mergeDown, splitGroups, extractTool, extractShell, makeBoolean, newScene, gizmoHandle, gizmoScreen, get solo() { return solo; }, set solo(v) { solo = v; renderOthers(); }, toolArrays, voxelCombine, voxelRemesh, coreStart, get working() { return working; }, sliceByPlane, mirrorWeldArrays, mirrorWeld, mirrorFlip, applyNoise, snapView, setOrtho, historyJump, polyframe, get cam() { return cam; }, trimByPlane, applyCut, tubeArrays, immShape, hasOpenEdges, get curve() { return liveCurve(); }, dropCurve, get immFile() { return immFile; }, set immFile(v) { immFile = v; }, get LAYERS() { return LAYERS; }, get recLayer() { return recLayer; }, addLayer, deleteLayer, toggleLayer, recordLayer, setLayerStrength, bakeLayers, groupOp, maskAllBut, groupNear, get mesh() { return mesh; }, get stroke() { return stroke; }, get gesture() { return gesture; }, get nav() { return nav; }, get MR() { return MR; }, syncSym, get SYM() { return SYM; }, setLevel, divide, deleteLower, deleteHigher, camera, orbit, pick, selectTool, brush, brushById, maskOp, remesh, undo, redo, subdivide, setDyntopo, floodDetail, S, get undoStack() { return undoStack; } };
 </script>
