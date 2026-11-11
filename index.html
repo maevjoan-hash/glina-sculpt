@@ -4475,6 +4475,23 @@ function healVerts(list, count) {
   const m = mesh, P = m.pos, N = m.nrm, FN = m.fn, I = m.idx, MK = m.mask, H = m.hid, dyn = m.dyn;
   const bad = [], to = [];
   let fixed = 0;
+  // pleats: two faces that meet at the point turned more than 120° against each other. A brush pressing
+  // steep walls down (clay strips carving a pit from changing sides) folds them like a fan, each fold too
+  // mild for the test above, and with dynamic topology the folds then breed triangles. The brushes whose
+  // work is a sharp groove are let be.
+  const pleats = !(stroke.tool === 'pinch' || stroke.tool === 'crease' || (stroke.b && stroke.b.mod > 0));
+  const pleated = (L, from, end, v) => {
+    for (let j = from; j < end; j++) {
+      const t = L[j] * 3, ax = FN[t], ay = FN[t + 1], az = FN[t + 2], a2 = ax * ax + ay * ay + az * az;
+      for (let k = j + 1; k < end; k++) {
+        const u = L[k] * 3, d = ax * FN[u] + ay * FN[u + 1] + az * FN[u + 2];
+        if (d >= 0 || d * d < 0.25 * a2 * (FN[u] * FN[u] + FN[u + 1] * FN[u + 1] + FN[u + 2] * FN[u + 2])) continue;
+        // (only faces that share an edge at the point)
+        for (let q = 0; q < 3; q++) { const w = I[t + q]; if (w !== v && (I[u] === w || I[u + 1] === w || I[u + 2] === w)) return true; }
+      }
+    }
+    return false;
+  };
   for (let pass = 0; pass < 3; pass++) {
     bad.length = 0; to.length = 0;
     for (let k = 0; k < count; k++) {
@@ -4491,12 +4508,14 @@ function healVerts(list, count) {
           const q = I[t] === v ? I[t + 1] : I[t + 1] === v ? I[t + 2] : I[t];
           cx += P[q * 3]; cy += P[q * 3 + 1]; cz += P[q * 3 + 2]; c++;
         }
+        if (!folded && pleats) folded = pleated(L, 0, L.length, v);
       } else {
         if (m.boundary[v] || m.vvOff[v + 1] === m.vvOff[v]) continue;
         for (let j = m.vfOff[v]; j < m.vfOff[v + 1]; j++) {
           const t = m.vf[j] * 3, fx = FN[t], fy = FN[t + 1], fz = FN[t + 2], d = fx * nx + fy * ny + fz * nz;
           if (d < 0 && d * d > 0.04 * (fx * fx + fy * fy + fz * fz)) folded = true;
         }
+        if (!folded && pleats) folded = pleated(m.vf, m.vfOff[v], m.vfOff[v + 1], v);
         for (let j = m.vvOff[v]; j < m.vvOff[v + 1]; j++) { const q = m.vv[j] * 3; cx += P[q]; cy += P[q + 1]; cz += P[q + 2]; c++; }
       }
       if (!c) continue;
