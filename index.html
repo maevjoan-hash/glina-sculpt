@@ -955,6 +955,7 @@ const S = {
   pcShape: 'sphere', pcCount: 12, pcSize: 0.04,   // shapes along a curve
   pattern: 'line',     // the last pattern chosen in „Шарки“
   bprSSS: 0.35, bprCavity: 0.35, bprRim: 0.25,   // the studio picture: light under the skin, pores, rim light (0: off)
+  stripRelax: 0.14, healPleats: true,   // (parts of the healer, kept as switches for measuring)
   heal: true,          // folds and spikes are smoothed away as they form (healVerts)
   thick: 0.05,         // Thick Skin: how far above or below the base, as a share of the model's radius
   wheel: true,         // the navigation wheel (AutoCAD: SteeringWheels) is shown
@@ -4376,7 +4377,7 @@ function dab(x, y, p, o = {}) {
   // clay strips with dynamic topology: the square tip leaves walls that stand upright, and the points the
   // splitting puts on such a wall are crushed into crumbs by the next pass; a light smoothing under the tip
   // after every dab keeps the wall a steep slope instead
-  const relax = mesh.dyn && tool === 'claystrips' ? 0.14 : 0;
+  const relax = mesh.dyn && tool === 'claystrips' ? S.stripRelax : 0;
   applyBrush(tool, hit.point, hit.normal, r, s, stroke.sign, info);
   if (relax && mesh.gCount) smoothVerts(mesh.gIdx, mesh.gFall, mesh.gCount, relax);
   if (mesh.dyn && moves) gridFollowBrush();
@@ -4485,7 +4486,7 @@ function healVerts(list, count) {
   // steep walls down (clay strips carving a pit from changing sides) folds them like a fan, each fold too
   // mild for the test above, and with dynamic topology the folds then breed triangles. The brushes whose
   // work is a sharp groove are let be.
-  const pleats = !(stroke.tool === 'pinch' || stroke.tool === 'crease' || (stroke.b && stroke.b.mod > 0));
+  const pleats = S.healPleats && !(stroke.tool === 'pinch' || stroke.tool === 'crease' || (stroke.b && stroke.b.mod > 0));
   const pleated = (L, from, end, v) => {
     for (let j = from; j < end; j++) {
       const t = L[j] * 3, ax = FN[t], ay = FN[t + 1], az = FN[t + 2], a2 = ax * ax + ay * ay + az * az;
