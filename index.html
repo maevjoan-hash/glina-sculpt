@@ -4373,13 +4373,19 @@ function dab(x, y, p, o = {}) {
   const lockGroup = (k, p) => { if (!b.group) return -1; if (!stroke.groups) stroke.groups = []; if (!(stroke.groups[k] >= 0)) stroke.groups[k] = groupNear(p, r); return stroke.groups[k]; };
   curGroup = lockGroup(0, hit.point);
   info.copy = 0;
+  // clay strips with dynamic topology: the square tip leaves walls that stand upright, and the points the
+  // splitting puts on such a wall are crushed into crumbs by the next pass; a light smoothing under the tip
+  // after every dab keeps the wall a steep slope instead
+  const relax = mesh.dyn && tool === 'claystrips' ? 0.14 : 0;
   applyBrush(tool, hit.point, hit.normal, r, s, stroke.sign, info);
+  if (relax && mesh.gCount) smoothVerts(mesh.gIdx, mesh.gFall, mesh.gCount, relax);
   if (mesh.dyn && moves) gridFollowBrush();
   // each copy's brush plane is the transformed main one, so stamps are mirrored / turned with it
   const frame = { u: lastFrame.u.slice(), v: lastFrame.v.slice() }, shaped = b.tip === 'square' || b.alpha !== 'none' || b.mod;
   copies.forEach((c, k) => {
     curGroup = lockGroup(k + 1, c.p);
     applyBrush(tool, c.p, c.n, r, s, stroke.sign, { b, copy: k + 1, dir: info.dir ? symV(c.m, info.dir) : null, uv: shaped ? { u: symA(c.m, frame.u), v: symA(c.m, frame.v) } : null });
+    if (relax && mesh.gCount) smoothVerts(mesh.gIdx, mesh.gFall, mesh.gCount, relax);
     if (mesh.dyn && moves) gridFollowBrush();
   });
   curGroup = -1;
