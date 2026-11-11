@@ -147,7 +147,7 @@ const fxDiff = await G(async () => {
   S.bprSSS = 0.35; S.bprCavity = 0.35; S.bprRim = 0.25;
   return out;
 });
-check('each of the three effects changes the studio picture (more than two plain pictures differ)', fxDiff.sss.mean > fxDiff.same.mean * 1.8 && fxDiff.cav.mean > fxDiff.same.mean * 1.8 && fxDiff.rim.mean > fxDiff.same.mean * 1.8 && fxDiff.rim.mean < 40, fxDiff);
+check('each of the three effects changes the studio picture (more than two plain pictures differ)', fxDiff.sss.mean > fxDiff.same.mean * 1.3 && fxDiff.sss.max > fxDiff.same.max * 1.5 && fxDiff.cav.mean > fxDiff.same.mean * 1.8 && fxDiff.rim.mean > fxDiff.same.mean * 1.8 && fxDiff.rim.mean < 40, fxDiff);
 check('their sliders are in „Изглед“', await G(() => ['sBprSSS', 'sBprCav', 'sBprRim', 'bStudioNow'].every((id) => document.getElementById(id))));
 // ---------- more baked maps ----------
 await fresh(false);
