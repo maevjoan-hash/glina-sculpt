@@ -219,9 +219,15 @@ impl Patch {
             if if split { l2 <= lim2 } else { l2 >= lim2 } { return; }
             if p.r2.is_finite() {
                 let (v3, w3) = (v as usize * 3, w as usize * 3);
-                let mx = (self.pos[v3] as f64 + self.pos[w3] as f64) * 0.5 - p.c[0];
-                let my = (self.pos[v3 + 1] as f64 + self.pos[w3 + 1] as f64) * 0.5 - p.c[1];
-                let mz = (self.pos[v3 + 2] as f64 + self.pos[w3 + 2] as f64) * 0.5 - p.c[2];
+                let a = [self.pos[v3] as f64, self.pos[v3 + 1] as f64, self.pos[v3 + 2] as f64];
+                let b = [self.pos[w3] as f64, self.pos[w3 + 1] as f64, self.pos[w3 + 2] as f64];
+                // a long edge is split when any part of it is under the brush (its middle may be outside:
+                // a big triangle reaching in with one corner would be dragged out into a shard); a short
+                // one is merged when its middle is
+                let t = if split && l2 > 0.0 {
+                    (((p.c[0] - a[0]) * (b[0] - a[0]) + (p.c[1] - a[1]) * (b[1] - a[1]) + (p.c[2] - a[2]) * (b[2] - a[2])) / l2).clamp(0.0, 1.0)
+                } else { 0.5 };
+                let (mx, my, mz) = (a[0] + (b[0] - a[0]) * t - p.c[0], a[1] + (b[1] - a[1]) * t - p.c[1], a[2] + (b[2] - a[2]) * t - p.c[2]);
                 if mx * mx + my * my + mz * mz > p.r2 { return; }
             }
             out.push((v, w, l2));

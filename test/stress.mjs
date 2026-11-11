@@ -82,6 +82,22 @@ for (const b of ids) {
     else check(`${b.id}${dyn ? ' (дин. топология)' : ''}: sound after the extreme`, h.nan === 0 && h.spikes <= h.f * 0.015 && h.folded <= h.f * 0.005 && h.needles <= h.f * 0.01 && h.maxR < 12, h);
   }
 }
+// carving (the brush turned inward) close up on a coarse model with dynamic topology, from changing angles:
+// big triangles beside the brush must be split before they are moved, or they are dragged into the pit as
+// shards (a mouth carved with „Надуване“ → „Навътре“)
+for (const id of ['inflate', 'draw', 'clay', 'claybuild', 'dam', 'crease']) {
+  if (ONLY.length && !ONLY.includes(id) && !ONLY.includes('carve')) continue;
+  await fresh(true);
+  await G((id) => { const W = window.__glina; W.S.sym = true; W.syncSym(); W.cam.dist *= 0.45; W.orbit(0, 0); W.selectTool(id); const br = W.brush(); br.strength = 0.7; br.radius = 69; br.dir = -1; }, id);
+  for (let k = 0; k < 24; k++) {
+    if (k % 5 === 4) await G((k) => window.__glina.orbit(k % 10 === 4 ? 90 : -90, k % 10 === 4 ? 40 : -40), k);
+    await drag([[cx - 70, cy + (k % 3) * 8], [cx + 70, cy + (k % 3) * 8], [cx - 50, cy + 10]], 5);
+  }
+  const h = await health();
+  await G((id) => { window.__glina.brush().dir = id === 'dam' || id === 'crease' ? -1 : 1; }, id);
+  if (REPORT) console.log(JSON.stringify({ id, carve: true, ...h }));
+  else check(`${id}: carving close up on a coarse model (дин. топология) stays sound`, h.nan === 0 && h.folded <= h.f * 0.003 && h.needles <= h.f * 0.005 && h.spikes <= h.f * 0.015, h);
+}
 if (!REPORT) check('no page errors', errors.length === 0, errors.slice(0, 5));
 await browser.close();
 const ok = results.filter(Boolean).length;

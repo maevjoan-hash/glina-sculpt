@@ -2964,6 +2964,10 @@ function touchVert(i) {
   frameMark(i);
 }
 
+// „Само видимата страна“ fades out over the sides turned away (full from 0.3 of facing the brush, nothing
+// from −0.1): with a sharp line there a wall of a pit had points that moved beside points that did not,
+// and the triangles between them were pulled out into shards
+const FRONT_FULL = 0.3;
 function gather(cx, cy, cz, r, nx, ny, nz, frontOnly) {
   const m = mesh, p = m.pos, nr = m.nrm, out = m.gIdx, fall = m.gFall, H = m.hid;
   const r2 = r * r, FL = curLUT;   // (not L: the dynamic branch below has its own L)
@@ -2987,10 +2991,11 @@ function gather(cx, cy, cz, r, nx, ny, nz, frontOnly) {
           const dx = p[i * 3] - cx, dy = p[i * 3 + 1] - cy, dz = p[i * 3 + 2] - cz;
           const d2 = dx * dx + dy * dy + dz * dz;
           if (d2 >= r2) continue;
-          if (frontOnly && nr[i * 3] * nx + nr[i * 3 + 1] * ny + nr[i * 3 + 2] * nz < -0.1) continue;
+          let face = 1;
+          if (frontOnly) { const d = nr[i * 3] * nx + nr[i * 3 + 1] * ny + nr[i * 3 + 2] * nz; if (d < -0.1) continue; if (d < FRONT_FULL) { const t = (d + 0.1) / (FRONT_FULL + 0.1); face = t * t * (3 - 2 * t); } }
           if (curGroup >= 0 && m.grp[i] !== curGroup) continue;
           if (H[i]) continue;   // hidden: out of reach, as in ZBrush
-          out[c] = i; fall[c] = lut(FL, Math.sqrt(d2) / r); c++;
+          out[c] = i; fall[c] = lut(FL, Math.sqrt(d2) / r) * face; c++;
         }
       }
     }
@@ -3003,10 +3008,11 @@ function gather(cx, cy, cz, r, nx, ny, nz, frontOnly) {
     const dz = p[i * 3 + 2] - cz;
     const d2 = dx * dx + dy * dy + dz * dz;
     if (d2 >= r2) continue;
-    if (frontOnly && nr[i * 3] * nx + nr[i * 3 + 1] * ny + nr[i * 3 + 2] * nz < -0.1) continue;
+    let face = 1;
+    if (frontOnly) { const d = nr[i * 3] * nx + nr[i * 3 + 1] * ny + nr[i * 3 + 2] * nz; if (d < -0.1) continue; if (d < FRONT_FULL) { const t = (d + 0.1) / (FRONT_FULL + 0.1); face = t * t * (3 - 2 * t); } }
     if (curGroup >= 0 && m.grp[i] !== curGroup) continue;
     if (H[i]) continue;
-    out[c] = i; fall[c] = lut(FL, Math.sqrt(d2) / r); c++;
+    out[c] = i; fall[c] = lut(FL, Math.sqrt(d2) / r) * face; c++;
   }
   m.gCount = c;
   return c;
@@ -3073,8 +3079,17 @@ function pushEdge(P, v, w, cx, cy, cz, r2, split, lim2) {
   const l2 = edgeLen2(P, v, w);
   if (split ? l2 <= lim2 : l2 >= lim2) return;
   if (r2 !== Infinity) {
-    const mx = (P[v * 3] + P[w * 3]) * 0.5 - cx, my = (P[v * 3 + 1] + P[w * 3 + 1]) * 0.5 - cy, mz = (P[v * 3 + 2] + P[w * 3 + 2]) * 0.5 - cz;
-    if (mx * mx + my * my + mz * mz > r2) return;
+    if (split) {
+      // a long edge is split when any part of it is under the brush (a big triangle that only reaches
+      // into the brush with one corner would otherwise be dragged out into a shard); its middle may be outside
+      const ax = P[v * 3], ay = P[v * 3 + 1], az = P[v * 3 + 2], bx = P[w * 3] - ax, by = P[w * 3 + 1] - ay, bz = P[w * 3 + 2] - az;
+      const t = Math.min(1, Math.max(0, ((cx - ax) * bx + (cy - ay) * by + (cz - az) * bz) / l2));
+      const dx = ax + bx * t - cx, dy = ay + by * t - cy, dz = az + bz * t - cz;
+      if (dx * dx + dy * dy + dz * dz > r2) return;
+    } else {
+      const mx = (P[v * 3] + P[w * 3]) * 0.5 - cx, my = (P[v * 3 + 1] + P[w * 3 + 1]) * 0.5 - cy, mz = (P[v * 3 + 2] + P[w * 3 + 2]) * 0.5 - cz;
+      if (mx * mx + my * my + mz * mz > r2) return;
+    }
   }
   if (EN === EA.length) {
     const g = (A) => { const B = new A.constructor(A.length * 2); B.set(A); return B; };
@@ -3199,6 +3214,54 @@ function rustDynRemesh(verts, cx, cy, cz, r2, max2, min2, budget, cbudget, doSpl
   m.topoDirty = true; frame_.positions = true;
   return info;
 }
+// Triangles much larger than the detail that pass under the brush without a corner in it (a coarse
+// model, a small brush): their corners join the candidates, so their edges are split before the brush
+// moves anything. `verts` grows in place.
+function dynBigFaces(verts, cx, cy, cz, r, L) {
+  const m = mesh; if (!m.gFaces) return;
+  const B = m.gBox, F = m.gFaces, I = m.idx, P = m.pos, tf = m.tagF, tag = m.nextTag(), r2 = r * r, big2 = 4 * L * L, H = m.hid;
+  const have = new Set(verts);
+  for (let q = 0; q < F.length; q++) {
+    const Lq = F[q]; if (!Lq.length) continue;
+    const o = q * 6;
+    const ex = cx < B[o] ? B[o] - cx : cx > B[o + 3] ? cx - B[o + 3] : 0, ey = cy < B[o + 1] ? B[o + 1] - cy : cy > B[o + 4] ? cy - B[o + 4] : 0, ez = cz < B[o + 2] ? B[o + 2] - cz : cz > B[o + 5] ? cz - B[o + 5] : 0;
+    if (ex * ex + ey * ey + ez * ez > r2) continue;
+    for (let j = 0; j < Lq.length; j++) {
+      const t = Lq[j]; if (tf[t] === tag) continue; tf[t] = tag;
+      const a = I[t * 3], b = I[t * 3 + 1], c = I[t * 3 + 2];
+      if (H[a] || H[b] || H[c] || (have.has(a) && have.has(b) && have.has(c))) continue;
+      if (Math.max(edgeLen2(P, a, b), edgeLen2(P, b, c), edgeLen2(P, c, a)) < big2) continue;
+      if (triDist2(P, a, b, c, cx, cy, cz) > r2) continue;
+      for (const v of [a, b, c]) if (!have.has(v) && (curGroup < 0 || m.grp[v] === curGroup)) { have.add(v); verts.push(v); }
+    }
+  }
+}
+// the squared distance from a point to a triangle (Ericson, Real-Time Collision Detection 5.1.5)
+function triDist2(P, ia, ib, ic, px, py, pz) {
+  const ax = P[ia * 3], ay = P[ia * 3 + 1], az = P[ia * 3 + 2], abx = P[ib * 3] - ax, aby = P[ib * 3 + 1] - ay, abz = P[ib * 3 + 2] - az, acx = P[ic * 3] - ax, acy = P[ic * 3 + 1] - ay, acz = P[ic * 3 + 2] - az;
+  const apx = px - ax, apy = py - ay, apz = pz - az;
+  const d1 = abx * apx + aby * apy + abz * apz, d2 = acx * apx + acy * apy + acz * apz;
+  let u = 0, w = 0;   // the nearest point: a + ab·u + ac·w
+  if (d1 <= 0 && d2 <= 0) { u = 0; w = 0; } else {
+    const bpx = apx - abx, bpy = apy - aby, bpz = apz - abz, d3 = abx * bpx + aby * bpy + abz * bpz, d4 = acx * bpx + acy * bpy + acz * bpz;
+    if (d3 >= 0 && d4 <= d3) { u = 1; w = 0; } else {
+      const vc = d1 * d4 - d3 * d2;
+      if (vc <= 0 && d1 >= 0 && d3 <= 0) { u = d1 / (d1 - d3); w = 0; } else {
+        const cpx = apx - acx, cpy = apy - acy, cpz = apz - acz, d5 = abx * cpx + aby * cpy + abz * cpz, d6 = acx * cpx + acy * cpy + acz * cpz;
+        if (d6 >= 0 && d5 <= d6) { u = 0; w = 1; } else {
+          const vb = d5 * d2 - d1 * d6;
+          if (vb <= 0 && d2 >= 0 && d6 <= 0) { u = 0; w = d2 / (d2 - d6); } else {
+            const va = d3 * d6 - d5 * d4;
+            if (va <= 0 && d4 - d3 >= 0 && d5 - d6 >= 0) { w = (d4 - d3) / (d4 - d3 + d5 - d6); u = 1 - w; }
+            else { const den = 1 / (va + vb + vc); u = vb * den; w = vc * den; }
+          }
+        }
+      }
+    }
+  }
+  const dx = apx - abx * u - acx * w, dy = apy - aby * u - acy * w, dz = apz - abz * u - acz * w;
+  return dx * dx + dy * dy + dz * dz;
+}
 function dynRemesh(cx, cy, cz, r, L, nx, ny, nz, all = false, front = curFront) {
   const m = mesh;
   dynHitCap = false;
@@ -3215,7 +3278,10 @@ function dynRemesh(cx, cy, cz, r, L, nx, ny, nz, all = false, front = curFront) 
   if (!doSplit && !doCollapse) { dynHitCap = atCap; return false; }
   let verts;
   if (all) { verts = []; for (let v = 0; v < m.n; v++) if (m.vfA[v].length) verts.push(v); }
-  else { const c = gather(cx, cy, cz, r, nx, ny, nz, front); verts = Array.from(m.gIdx.subarray(0, c)); }
+  else {
+    const c = gather(cx, cy, cz, r, nx, ny, nz, front); verts = Array.from(m.gIdx.subarray(0, c));
+    if (doSplit) dynBigFaces(verts, cx, cy, cz, r, L);
+  }
   if (!verts.length) return false;
   const r2 = all ? Infinity : r * r, max2 = L * L, min2 = max2 * 0.16;
   if (rustDyn && coreSync) {
@@ -4291,10 +4357,12 @@ function dab(x, y, p, o = {}) {
   if (mesh.dyn && stroke.snap && DYN_TOOLS.has(tool)) {
     const L = S.detail * wpp;
     if (b.group) curGroup = stroke.groups && stroke.groups[0] >= 0 ? stroke.groups[0] : groupNear(hit.point, r);
-    if (dynRemesh(hit.point.x, hit.point.y, hit.point.z, r, L, hit.normal.x, hit.normal.y, hit.normal.z)) stroke.changed = true;
+    // (everything under the brush gets its triangles, also the sides turned away: what the brush then moves
+    // only a little must not be left coarse beside what it moves a lot)
+    if (dynRemesh(hit.point.x, hit.point.y, hit.point.z, r, L, hit.normal.x, hit.normal.y, hit.normal.z, false, false)) stroke.changed = true;
     copies.forEach((c, k) => {
       if (b.group) curGroup = stroke.groups && stroke.groups[k + 1] >= 0 ? stroke.groups[k + 1] : groupNear(c.p, r);
-      if (dynRemesh(c.p.x, c.p.y, c.p.z, r, L, c.n.x, c.n.y, c.n.z)) stroke.changed = true;
+      if (dynRemesh(c.p.x, c.p.y, c.p.z, r, L, c.n.x, c.n.y, c.n.z, false, false)) stroke.changed = true;
     });
     curGroup = -1;
   }
