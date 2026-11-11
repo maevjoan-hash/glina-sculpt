@@ -955,7 +955,7 @@ const S = {
   pcShape: 'sphere', pcCount: 12, pcSize: 0.04,   // shapes along a curve
   pattern: 'line',     // the last pattern chosen in „Шарки“
   bprSSS: 0.35, bprCavity: 0.35, bprRim: 0.25,   // the studio picture: light under the skin, pores, rim light (0: off)
-  stripRelax: 0.14, healPleats: true,   // (parts of the healer, kept as switches for measuring)
+  stripRelax: 0.14, healPleats: true, dynSeg: true, dynBig: true, dynAll: true,   // (parts of the healer, kept as switches for measuring)
   heal: true,          // folds and spikes are smoothed away as they form (healVerts)
   thick: 0.05,         // Thick Skin: how far above or below the base, as a share of the model's radius
   wheel: true,         // the navigation wheel (AutoCAD: SteeringWheels) is shown
@@ -3080,7 +3080,7 @@ function pushEdge(P, v, w, cx, cy, cz, r2, split, lim2) {
   const l2 = edgeLen2(P, v, w);
   if (split ? l2 <= lim2 : l2 >= lim2) return;
   if (r2 !== Infinity) {
-    if (split) {
+    if (split && S.dynSeg) {
       // a long edge is split when any part of it is under the brush (a big triangle that only reaches
       // into the brush with one corner would otherwise be dragged out into a shard); its middle may be outside
       const ax = P[v * 3], ay = P[v * 3 + 1], az = P[v * 3 + 2], bx = P[w * 3] - ax, by = P[w * 3 + 1] - ay, bz = P[w * 3 + 2] - az;
@@ -3281,7 +3281,7 @@ function dynRemesh(cx, cy, cz, r, L, nx, ny, nz, all = false, front = curFront) 
   if (all) { verts = []; for (let v = 0; v < m.n; v++) if (m.vfA[v].length) verts.push(v); }
   else {
     const c = gather(cx, cy, cz, r, nx, ny, nz, front); verts = Array.from(m.gIdx.subarray(0, c));
-    if (doSplit) dynBigFaces(verts, cx, cy, cz, r, L);
+    if (doSplit && S.dynBig) dynBigFaces(verts, cx, cy, cz, r, L);
   }
   if (!verts.length) return false;
   const r2 = all ? Infinity : r * r, max2 = L * L, min2 = max2 * 0.16;
@@ -4360,10 +4360,10 @@ function dab(x, y, p, o = {}) {
     if (b.group) curGroup = stroke.groups && stroke.groups[0] >= 0 ? stroke.groups[0] : groupNear(hit.point, r);
     // (everything under the brush gets its triangles, also the sides turned away: what the brush then moves
     // only a little must not be left coarse beside what it moves a lot)
-    if (dynRemesh(hit.point.x, hit.point.y, hit.point.z, r, L, hit.normal.x, hit.normal.y, hit.normal.z, false, false)) stroke.changed = true;
+    if (dynRemesh(hit.point.x, hit.point.y, hit.point.z, r, L, hit.normal.x, hit.normal.y, hit.normal.z, false, S.dynAll ? false : curFront)) stroke.changed = true;
     copies.forEach((c, k) => {
       if (b.group) curGroup = stroke.groups && stroke.groups[k + 1] >= 0 ? stroke.groups[k + 1] : groupNear(c.p, r);
-      if (dynRemesh(c.p.x, c.p.y, c.p.z, r, L, c.n.x, c.n.y, c.n.z, false, false)) stroke.changed = true;
+      if (dynRemesh(c.p.x, c.p.y, c.p.z, r, L, c.n.x, c.n.y, c.n.z, false, S.dynAll ? false : curFront)) stroke.changed = true;
     });
     curGroup = -1;
   }
