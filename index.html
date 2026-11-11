@@ -3655,7 +3655,11 @@ function applyBrush(tool, c, n, r, s, sign, dab = {}) {
       const qx = px + ax * off, qy = py + ay * off, qz = pz + az * off;
       const k0 = fill ? s * 0.5 : tool === 'scrape' ? s * 0.6 : s * 0.35;
       for (let k = 0; k < count; k++) {
-        const i = G[k], w = F[k] * (1 - MK[i]); if (w <= 0) continue;
+        const i = G[k]; let w = F[k] * (1 - MK[i]); if (w <= 0) continue;
+        // clay is laid on (or cut from) what faces the brush, not on walls that stand upright to it: points
+        // on such a wall would each go a different way and crush it into crumbs (nothing below 0.15 of
+        // facing, all from 0.5)
+        if (fill) { const f = NR[i * 3] * ax + NR[i * 3 + 1] * ay + NR[i * 3 + 2] * az; if (f <= 0.15) continue; if (f < 0.5) { const q = (f - 0.15) / 0.35; w *= q * q * (3 - 2 * q); } }
         const d = (P[i * 3] - qx) * ax + (P[i * 3 + 1] - qy) * ay + (P[i * 3 + 2] - qz) * az;
         if (fill && d * sign > 0) continue;
         if (tool === 'scrape' && d * sign < 0) continue;

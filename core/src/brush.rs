@@ -77,9 +77,15 @@ pub fn dab(kind: u32, pos: &mut [f32], nrm: &[f32], mask: &[f32], fall: &[f32], 
             let k0 = if fill { s * 0.5 } else if kind == SCRAPE { s * 0.6 } else { s * 0.35 };
             let flip = if kind == FLATTEN && sign < 0.0 { -1.0 } else { 1.0 };
             for k in 0..n {
-                let w = fall[k] as f64 * (1.0 - mask[k] as f64);
+                let mut w = fall[k] as f64 * (1.0 - mask[k] as f64);
                 if w <= 0.0 { continue; }
                 let o = k * 3;
+                // clay is laid on (or cut from) what faces the brush, not on walls upright to it
+                if fill {
+                    let f = nrm[o] as f64 * ax + nrm[o + 1] as f64 * ay + nrm[o + 2] as f64 * az;
+                    if f <= 0.15 { continue; }
+                    if f < 0.5 { let q = (f - 0.15) / 0.35; w *= q * q * (3.0 - 2.0 * q); }
+                }
                 let d = (pos[o] as f64 - qx) * ax + (pos[o + 1] as f64 - qy) * ay + (pos[o + 2] as f64 - qz) * az;
                 if fill && d * sign > 0.0 { continue; }
                 if kind == SCRAPE && d * sign < 0.0 { continue; }
