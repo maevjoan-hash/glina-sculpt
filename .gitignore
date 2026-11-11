@@ -17,3 +17,4 @@ android/android/local.properties
 .DS_Store
 core/target/
 shot.png
+test/_*.mjs
