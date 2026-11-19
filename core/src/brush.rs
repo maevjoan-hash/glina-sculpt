@@ -290,6 +290,17 @@ pub const CLOTH_SLIDE: u32 = 1;
 pub const CLOTH_INFLATE: u32 = 2;
 pub const CLOTH_HOOK: u32 = 3;
 pub const CLOTH_TWIST: u32 = 4;
+/// (as Blender's Pinch Perpendicular) toward the stroke's line, the folds along it
+pub const CLOTH_PERP: u32 = 5;
+/// (as Blender's Expand) the cloth grows: its edges want to be longer, so it buckles into folds
+pub const CLOTH_EXPAND: u32 = 6;
+
+/// Across the stroke on the surface: the stroke's direction × the normal, of unit length (0 if they meet).
+fn across(dx: f64, dy: f64, dz: f64, ax: f64, ay: f64, az: f64) -> (f64, f64, f64) {
+    let (x, y, z) = (dy * az - dz * ay, dz * ax - dx * az, dx * ay - dy * ax);
+    let l = js_hypot(&[x, y, z]);
+    if l < 1e-12 { (0.0, 0.0, 0.0) } else { (x / l, y / l, z / l) }
+}
 
 /// The cloth brushes (ZBrush: ClothPinch, ClothSlide, ClothHook, ClothTwister, ClothInflate): the push,
 /// then the edges get back their length from the start of the stroke (a squeezed edge folds along the
@@ -328,9 +339,12 @@ pub fn cloth(kind: u32, count: usize, ids: &[u32], pos: &mut [f32], nrm: &[f32],
     let mut has_wv = vec![false; pos.len() / 3];
     for &k in &local {
         let (px, py, pz) = (p(pos, k, 0), p(pos, k, 1), p(pos, k, 2));
-        wv[k] = if kind == CLOTH_PINCH || kind == CLOTH_TWIST {
+        wv[k] = if kind == CLOTH_PINCH || kind == CLOTH_TWIST || kind == CLOTH_EXPAND {
             let (ox, oy, oz) = (px - cx, py - cy, pz - cz);
             (6.0 * (ox * vx + oy * vy + oz * vz).atan2(ox * ux + oy * uy + oz * uz)).sin()
+        } else if kind == CLOTH_PERP && has_dir {
+            let (ex, ey, ez) = across(dx, dy, dz, ax, ay, az);
+            ((2.0 * std::f64::consts::PI * ((px - cx) * ex + (py - cy) * ey + (pz - cz) * ez)) / lam).sin()
         } else if (kind == CLOTH_SLIDE || kind == CLOTH_HOOK) && has_dir {
             ((2.0 * std::f64::consts::PI * ((px - sx) * dx + (py - sy) * dy + (pz - sz) * dz)) / lam).sin()
         } else { 1.0 };
@@ -351,6 +365,14 @@ pub fn cloth(kind: u32, count: usize, ids: &[u32], pos: &mut [f32], nrm: &[f32],
                 let kk = r * 0.08 * s * wk; let h = r * 0.025 * s * wk * wv[k];
                 for (q, dv) in [dx, dy, dz].into_iter().enumerate() { let v = p(pos, k, q) + (dv * kk + nrm[o + q] as f64 * h); set(pos, k, q, v); }
             }
+            CLOTH_PERP => {
+                if !has_dir { continue; }
+                let (ex, ey, ez) = across(dx, dy, dz, ax, ay, az);
+                let t = (cx - p(pos, k, 0)) * ex + (cy - p(pos, k, 1)) * ey + (cz - p(pos, k, 2)) * ez;
+                let kk = 0.22 * s * wk * t; let h = r * 0.025 * s * wk * wv[k];
+                for (q, ev) in [ex, ey, ez].into_iter().enumerate() { let v = p(pos, k, q) + (ev * kk + nrm[o + q] as f64 * h); set(pos, k, q, v); }
+            }
+            CLOTH_EXPAND => {}
             CLOTH_HOOK => {
                 if !has_hook { continue; }
                 let kk = (s * 1.5).min(1.0) * wk;
@@ -380,7 +402,8 @@ pub fn cloth(kind: u32, count: usize, ids: &[u32], pos: &mut [f32], nrm: &[f32],
                 let j = j as usize;
                 let wj = if j < count { w[j] } else { 0.0 };
                 if ids[j] < ids[i] && wj > 0.0 { continue; }
-                let rest = js_hypot(&[orig[i * 3] as f64 - orig[j * 3] as f64, orig[i * 3 + 1] as f64 - orig[j * 3 + 1] as f64, orig[i * 3 + 2] as f64 - orig[j * 3 + 2] as f64]);
+                let mut rest = js_hypot(&[orig[i * 3] as f64 - orig[j * 3] as f64, orig[i * 3 + 1] as f64 - orig[j * 3 + 1] as f64, orig[i * 3 + 2] as f64 - orig[j * 3 + 2] as f64]);
+                if kind == CLOTH_EXPAND { rest *= 1.0 + 0.35 * s * (wi + wj) * 0.5; }
                 let (ex, ey, ez) = (p(pos, j, 0) - p(pos, i, 0), p(pos, j, 1) - p(pos, i, 1), p(pos, j, 2) - p(pos, i, 2));
                 let len = js_hypot(&[ex, ey, ez]);
                 if len < 1e-12 { continue; }

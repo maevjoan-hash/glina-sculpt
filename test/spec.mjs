@@ -312,6 +312,77 @@ const poseRun = async (opts) => {
 const poseR = await poseRun({ groups: false, mode: 'bend' }), poseG = await poseRun({ groups: true, mode: 'bend' }), poseT = await poseRun({ groups: true, mode: 'twist' });
 check('„Поза“ по групи: the whole group under the press turns (a small radius alone takes only a part of it), the rest stays', poseG.capMoved > 0.95 && poseR.capMoved < 0.6 && poseG.bodyMost < 1e-3, { radius: poseR, groups: poseG });
 check('„Усукване около оста“: the part turns about its own axis — no point rises or leaves the axis', poseT.capMoved > 0.5 && poseT.dy < 0.01 && poseT.dr < 0.01 && poseT.bodyMost < 1e-3, poseT);
+// ---------- round blob (as Blender's Blob): out along the normal, spread apart ----------
+const blR = await (async () => {
+  await G(() => { const W = window.__glina; document.getElementById('bNew').click(); [...document.querySelectorAll('#menu button')].find((b) => b.textContent.startsWith('Сфера, по-лека')).click(); W.S.sym = false; W.syncSym(); W.cam.q.set(0, 0, 0, 1); W.orbit(0, 0); W.selectTool('blobround'); W.brush().radius = 40; });
+  const b0 = await G(() => Array.from(window.__glina.mesh.pos.subarray(0, window.__glina.mesh.n * 3)));
+  const e = await G(() => { const W = window.__glina, r = document.getElementById('gl').getBoundingClientRect(), v = new W.cam.target.constructor(0, 0, 1).project(W.camera); return { x: r.left + (v.x * 0.5 + 0.5) * r.width, y: r.top + (-v.y * 0.5 + 0.5) * r.height }; });
+  await drag(e.x - 40, e.y, e.x + 40, e.y, 12);
+  return G((b0) => { const m = window.__glina.mesh, P = m.pos; let rise = 0, spread = 0, n = 0; for (let i = 0; i < m.n; i++) { const y0 = b0[i * 3 + 1], z0 = b0[i * 3 + 2]; if (z0 < 0.9) continue; rise = Math.max(rise, Math.hypot(P[i * 3], P[i * 3 + 1], P[i * 3 + 2]) - 1); if (Math.abs(y0) > 0.01 && Math.abs(y0) < 0.08 && Math.abs(b0[i * 3]) < 0.1) { spread += Math.sign(y0) * (P[i * 3 + 1] - y0); n++; } } return { rise, spread: spread / n }; }, b0);
+})();
+check('„Кръгла буца“ rises along the normal and spreads apart from the stroke (Blender\'s Blob: the crease turned round)', blR.rise > 0.005 && blR.spread > 0, blR);
+// ---------- Smear: the colour is dragged along the stroke ----------
+const smRes = await (async () => {
+  await G(() => { const W = window.__glina; document.getElementById('bNew').click(); [...document.querySelectorAll('#menu button')].find((b) => b.textContent.startsWith('Сфера, по-лека')).click(); W.S.sym = false; W.syncSym(); W.cam.q.set(0, 0, 0, 1); W.orbit(0, 0);
+    // the left half red, the right half white
+    const m = W.mesh; for (let i = 0; i < m.n; i++) { const red = m.pos[i * 3] < 0; m.col[i * 3] = 1; m.col[i * 3 + 1] = red ? 0 : 1; m.col[i * 3 + 2] = red ? 0 : 1; }
+    W.selectTool('smear'); W.brush().radius = 50; W.brush().strength = 0.8; });
+  const red = () => G(() => { const m = window.__glina.mesh; let n = 0, s = 0; for (let i = 0; i < m.n; i++) { const x = m.pos[i * 3], z = m.pos[i * 3 + 2]; if (z > 0.9 && x > 0.05 && x < 0.2 && Math.abs(m.pos[i * 3 + 1]) < 0.05) { s += 1 - m.col[i * 3 + 1]; n++; } } return { red: s / n, n, undo: window.__glina.undoStack.length }; });
+  const a = await red();
+  const e = await G(() => { const W = window.__glina, r = document.getElementById('gl').getBoundingClientRect(), v = new W.cam.target.constructor(0, 0, 1).project(W.camera); return { x: r.left + (v.x * 0.5 + 0.5) * r.width, y: r.top + (-v.y * 0.5 + 0.5) * r.height }; });
+  await drag(e.x - 60, e.y, e.x + 60, e.y, 20);
+  const b = await red();
+  await G(() => window.__glina.undo());
+  return { a, b, c: await red() };
+})();
+check('„Размазване на цвета“: dragging from the red half into the white drags red along; undo takes it back', smRes.a.red === 0 && smRes.b.red > 0.15 && smRes.b.undo === smRes.a.undo + 1 && smRes.c.red === 0, smRes);
+// ---------- cloth: pinch toward the line, and expand (as Blender) ----------
+const clothRun = async (id) => {
+  await G((id) => { const W = window.__glina; document.getElementById('bNew').click(); [...document.querySelectorAll('#menu button')].find((b) => b.textContent.startsWith('Сфера, по-лека')).click(); W.S.sym = false; W.syncSym(); W.cam.q.set(0, 0, 0, 1); W.orbit(0, 0); W.selectTool(id); W.brush().radius = 60; W.brush().strength = 0.8; }, id);
+  const b0 = await G(() => Array.from(window.__glina.mesh.pos.subarray(0, window.__glina.mesh.n * 3)));
+  const e = await G(() => { const W = window.__glina, r = document.getElementById('gl').getBoundingClientRect(), v = new W.cam.target.constructor(0, 0, 1).project(W.camera); return { x: r.left + (v.x * 0.5 + 0.5) * r.width, y: r.top + (-v.y * 0.5 + 0.5) * r.height }; });
+  for (let k = 0; k < 2; k++) await drag(e.x - 70, e.y, e.x + 70, e.y, 16);
+  return G((b0) => { const m = window.__glina.mesh, P = m.pos; let across = 0, along = 0, up = 0, down = 0, nan = 0;
+    for (let i = 0; i < m.n; i++) { if (!Number.isFinite(P[i * 3])) nan++; const x0 = b0[i * 3], y0 = b0[i * 3 + 1], z0 = b0[i * 3 + 2]; if (z0 < 0.8) continue;
+      // (along the surface only: the folds' lift along the normal is left out)
+      const l0 = Math.hypot(x0, y0, z0), nx = x0 / l0, ny = y0 / l0, nz = z0 / l0, ex = P[i * 3] - x0, ey = P[i * 3 + 1] - y0, ez = P[i * 3 + 2] - z0, en = ex * nx + ey * ny + ez * nz;
+      across -= Math.sign(y0) * (ey - ny * en); along += Math.abs(ex - nx * en); const dr = Math.hypot(P[i * 3], P[i * 3 + 1], P[i * 3 + 2]) - 1; up = Math.max(up, dr); down = Math.min(down, dr); }
+    return { across, along, up, down, nan }; }, b0);
+};
+const cP = await clothRun('clothperp'), cE = await clothRun('clothexpand'), cQ = await clothRun('clothpinch');
+check('„Плат: гънки по линия“ draws the cloth in toward the stroke\'s line far more than pinching to points does', cP.across > cQ.across * 1.5 && cP.across > 0 && cP.nan === 0, { perp: cP, pinch: cQ });
+check('„Плат: разширяване“ buckles into folds: some up, some down', cE.up > 0.002 && cE.down < -0.002 && cE.nan === 0, cE);
+// ---------- elastic grab: one, two or three scales (as Blender) ----------
+const kelRun = async (sc) => {
+  await G((sc) => { const W = window.__glina; document.getElementById('bNew').click(); [...document.querySelectorAll('#menu button')].find((b) => b.textContent.startsWith('Сфера, по-лека')).click(); W.S.sym = false; W.syncSym(); W.cam.q.set(0, 0, 0, 1); W.orbit(0, 0); W.selectTool('elastic'); W.brush().radius = 60; W.brush().strength = 1; W.brush().kelScale = sc; }, sc);
+  const b0 = await G(() => Array.from(window.__glina.mesh.pos.subarray(0, window.__glina.mesh.n * 3)));
+  const e = await G(() => { const W = window.__glina, r = document.getElementById('gl').getBoundingClientRect(), v = new W.cam.target.constructor(0, 0, 1).project(W.camera); return { x: r.left + (v.x * 0.5 + 0.5) * r.width, y: r.top + (-v.y * 0.5 + 0.5) * r.height }; });
+  await drag(e.x, e.y, e.x, e.y - 25, 6);
+  return G((b0) => { const m = window.__glina.mesh, P = m.pos, ring = (a, b) => { let s = 0, n = 0; for (let i = 0; i < m.n; i++) { const x = b0[i * 3], y = b0[i * 3 + 1], z = b0[i * 3 + 2], d = Math.hypot(x, y); if (z < 0 || d < a || d >= b) continue; s += Math.hypot(P[i * 3] - x, P[i * 3 + 1] - y, P[i * 3 + 2] - z); n++; } return s / n; };
+    const c = ring(0, 0.03); return { centre: c, near: ring(0.15, 0.2) / c, far: ring(0.35, 0.4) / c }; }, b0);
+};
+const kS = await kelRun('single'), kB = await kelRun('bi'), kT = await kelRun('tri');
+await G(() => { window.__glina.brush().kelScale = 'bi'; });
+check('elastic grab: „Широко“ reaches furthest, „Стегнато“ least; the grabbed point follows the pen in all three', kS.far > kB.far * 1.3 && kB.far > kT.far * 1.3 && kS.near > kT.near && Math.abs(kS.centre - kB.centre) < 0.3 * kB.centre && Math.abs(kT.centre - kB.centre) < 0.3 * kB.centre, { single: kS, bi: kB, tri: kT });
+// ---------- Rotate: the clay in the circle turns with the pen, as a dial ----------
+const rotRes = await (async () => {
+  await G(() => { const W = window.__glina; document.getElementById('bNew').click(); [...document.querySelectorAll('#menu button')].find((b) => b.textContent.startsWith('Сфера, по-лека')).click(); W.S.sym = false; W.syncSym(); W.cam.q.set(0, 0, 0, 1); W.orbit(0, 0); W.selectTool('rotate'); W.brush().radius = 80; W.brush().strength = 1; });
+  const b0 = await G(() => Array.from(window.__glina.mesh.pos.subarray(0, window.__glina.mesh.n * 3))), u0 = await G(() => window.__glina.undoStack.length);
+  const e = await G(() => { const W = window.__glina, r = document.getElementById('gl').getBoundingClientRect(), v = new W.cam.target.constructor(0, 0, 1).project(W.camera); return { x: r.left + (v.x * 0.5 + 0.5) * r.width, y: r.top + (-v.y * 0.5 + 0.5) * r.height }; });
+  // press in the middle, out to the right, then a quarter turn round to the top (anticlockwise on screen)
+  await page.mouse.move(e.x, e.y); await page.mouse.down();
+  for (let k = 1; k <= 4; k++) { await page.mouse.move(e.x + 10 * k, e.y); await frames(1); }
+  for (let k = 1; k <= 12; k++) { const t = (k / 12) * Math.PI / 2; await page.mouse.move(e.x + 40 * Math.cos(t), e.y - 40 * Math.sin(t)); await frames(1); }
+  await page.mouse.up(); await frames(3);
+  return G(([b0, u0]) => {
+    const m = window.__glina.mesh, P = m.pos; let turn = 0, n = 0, drift = 0, outside = 0;
+    for (let i = 0; i < m.n; i++) { const x0 = b0[i * 3], y0 = b0[i * 3 + 1], z0 = b0[i * 3 + 2]; if (z0 < 0) continue; const d0 = Math.hypot(x0, y0);
+      if (d0 > 0.02 && d0 < 0.06 && z0 > 0.99) { let da = Math.atan2(P[i * 3 + 1], P[i * 3]) - Math.atan2(y0, x0); if (da > Math.PI) da -= 2 * Math.PI; if (da < -Math.PI) da += 2 * Math.PI; turn += da; n++; drift = Math.max(drift, Math.abs(Math.hypot(P[i * 3], P[i * 3 + 1]) - d0), Math.abs(P[i * 3 + 2] - z0)); }
+      if (d0 > 0.6) outside = Math.max(outside, Math.hypot(P[i * 3] - x0, P[i * 3 + 1] - y0, P[i * 3 + 2] - z0)); }
+    return { turn: turn / n, n, drift, outside, undo: window.__glina.undoStack.length - u0 };
+  }, [b0, u0]);
+})();
+check('„Завъртане“: the clay in the middle turns with the pen (a quarter turn anticlockwise), about its axis, the rest stays', rotRes.turn > 1.0 && rotRes.turn < 1.7 && rotRes.drift < 0.002 && rotRes.outside < 1e-6 && rotRes.undo === 1, rotRes);
 // ---------- Draw Face Sets: a new group where the brush goes ----------
 const fsRes = await (async () => {
   await G(() => { const W = window.__glina; document.getElementById('bNew').click(); [...document.querySelectorAll('#menu button')].find((b) => b.textContent.startsWith('Сфера, по-лека')).click(); W.S.sym = false; W.syncSym(); W.cam.q.set(0, 0, 0, 1); W.orbit(0, 0); W.selectTool('drawgroups'); W.brush().radius = 40; });

@@ -450,6 +450,7 @@ input[type=range] { width: 100%; height: 26px; accent-color: var(--wax); backgro
         </div>
         <div class="row" id="modRow"><label for="sMod">Притискане ↔ надуване (Brush Mod)</label><output id="oMod"></output><input type="range" id="sMod" min="-1" max="1" step="0.05"></div>
         <label class="toggle" id="frontRow">Само видимата страна <input type="checkbox" id="tFront"></label>
+        <div class="grp" id="kelScaleGrp"><div class="note lab">Колко далеч стига еластичното дърпане</div><div class="chips" id="kelScaleChips"></div></div>
         <div class="grp" id="bndGrp"><div class="note lab">Отвореният ръб</div><div class="chips" id="bndChips"></div></div>
         <div class="grp" id="mpGrp"><div class="note lab">Ъгъл между двете равнини</div><div class="chips" id="mpChips"></div></div>
         <div class="grp" id="relaxGrp"><div class="note lab">Мрежата по повърхността</div><div class="chips" id="relaxChips"></div></div>
@@ -789,8 +790,10 @@ const ICON = {
   smooth: '<path d="M3 14c3-5 6 3 9-2s6 3 9-2"/><path d="M3 19h18" opacity=".45"/>',
   relax: '<path d="M4 5v14M9 5v14M14 5v14M19 5v14M3 9h18M3 15h18" opacity=".55"/><circle cx="11.5" cy="12" r="4"/>',
   claythumb: '<path d="M3 17c3 0 5-3 9-3s5 1 9-3" opacity=".5"/><path d="M6 13c0-4 3-8 7-8 3 0 4 2 4 5"/>',
+  smear: '<path d="M3 15c3-4 6-4 9-1s6 3 9-1"/><circle cx="6" cy="8" r="2.5"/><path d="M10 8h9" opacity=".5"/>',
   fsets: '<path d="M4 4h7v7H4zM13 13h7v7h-7z" opacity=".5"/><path d="M5 19c3-1 4-6 8-7s4-5 6-8"/>',
   enhance: '<path d="M3 16l3-5 3 4 3-8 3 6 3-3 3 6"/><path d="M3 20h18" opacity=".45"/>',
+  rotatebrush: '<path d="M20 12a8 8 0 1 1-3-6.2"/><path d="M17 2v4h-4"/><circle cx="12" cy="12" r="2.5"/>',
   boundary: '<path d="M4 20V9c0-3 2-5 5-5h11" opacity=".5"/><path d="M4 9c4 0 5-5 9-5"/><path d="M15 13l4-4M15 9h4v4"/>',
   mpscrape: '<path d="M3 18l9-10 9 10"/><path d="M3 21h18" opacity=".45"/><path d="M12 8v-4" opacity=".55"/>',
   nudge: '<path d="M3 16c4-1 7-4 9-4s5 2 9 2" opacity=".5"/><path d="M7 11c0-3 2-6 5-6s4 2 4 4v3"/><path d="M13 15l5-3"/>',
@@ -850,7 +853,7 @@ const curvePts = (id) => CURVES.find((c) => c.id === id).pts.map((p) => p.slice(
 const BASES = [
   { id: 'draw', name: 'Рисуване (Standard)' }, { id: 'clay', name: 'Глина (Clay)' }, { id: 'claystrips', name: 'Глина на ивици (ClayBuildup)' },
   { id: 'inflate', name: 'Надуване (Inflate)' }, { id: 'flatten', name: 'Изравняване (hPolish)' }, { id: 'scrape', name: 'Подрязване (TrimDynamic)' },
-  { id: 'pinch', name: 'Притискане (Pinch)' }, { id: 'crease', name: 'Гънка' }, { id: 'smooth', name: 'Изглаждане (Smooth)' }, { id: 'relax', name: 'Отпускане и плъзгане на мрежата (Relax, Slide)' }, { id: 'enhance', name: 'Изостряне на детайла (Enhance Details)' }, { id: 'mpscrape', name: 'Ръб от две равнини (Multiplane Scrape)' }, { id: 'claythumb', name: 'Глина с палец (Clay Thumb)' }, { id: 'boundary', name: 'Отворен ръб: огъва, разтяга, надува (Boundary)' }, { id: 'fsets', name: 'Рисуване на групи (Draw Face Sets)' },
+  { id: 'pinch', name: 'Притискане (Pinch)' }, { id: 'crease', name: 'Гънка' }, { id: 'smooth', name: 'Изглаждане (Smooth)' }, { id: 'relax', name: 'Отпускане и плъзгане на мрежата (Relax, Slide)' }, { id: 'enhance', name: 'Изостряне на детайла (Enhance Details)' }, { id: 'mpscrape', name: 'Ръб от две равнини (Multiplane Scrape)' }, { id: 'claythumb', name: 'Глина с палец (Clay Thumb)' }, { id: 'boundary', name: 'Отворен ръб: огъва, разтяга, надува (Boundary)' }, { id: 'rotate', name: 'Завъртане (Rotate)' }, { id: 'fsets', name: 'Рисуване на групи (Draw Face Sets)' }, { id: 'smear', name: 'Размазване на цвета (Smear)' },
   { id: 'grab', name: 'Хващане (Move)' }, { id: 'nudge', name: 'Побутване по повърхността (Thumb, Nudge)' }, { id: 'kelvin', name: 'Еластично усукване, раздуване, прищипване (Kelvinlets)' }, { id: 'array', name: 'Масив с влачене (Array Mesh)' }, { id: 'snake', name: 'Издърпване (SnakeHook)' }, { id: 'vdm', name: 'Векторна форма (VDM)' }, { id: 'shadowbox', name: 'Силуети (ShadowBox)' }, { id: 'topology', name: 'Топология (Topology)' }, { id: 'pose', name: 'Поза (Pose)' }, { id: 'insert', name: 'Вмъкване на форма (InsertMesh)' }, { id: 'gizmo', name: 'Местене, завъртане, мащаб (Gizmo 3D)' }, { id: 'cloth', name: 'Плат (Cloth brushes)' }, { id: 'groom', name: 'Сресване на косми (Groom)' }, { id: 'ffd', name: 'Клетка (FFD)' }, { id: 'zmodel', name: 'Полигони (ZModeler)' }, { id: 'planar', name: 'Равнина (Planar)' }, { id: 'morph', name: 'Връщане към запомнената форма (Morph)' }, { id: 'layer', name: 'Слой (Layer)' }, { id: 'slice', name: 'Разделяне на групи (SliceCurve)' }, { id: 'tube', name: 'Тръба по крива (CurveTube)' }, { id: 'clip', name: 'Отсичане (ClipCurve)' }, { id: 'cut', name: 'Отрязване (TrimCurve)' }, { id: 'mask', name: 'Маска' }, { id: 'paint', name: 'Боя' },
 ];
 // a complete brush; presets only list what differs
@@ -860,6 +863,7 @@ const BRUSH_DEFAULTS = {
   stroke: 'dots', spacing: 0.15, mod: 0, front: true, topo: false, grab: 'soft', volume: 0.4,
   poseGroups: false,   // pose: the polygroup under the press is the part (Blender: Pose Origin Face Sets)
   poseMode: 'bend',    // pose: bend | twist (about the part's own axis)
+  kelScale: 'bi',      // elastic grab (Blender: Grab, Bi-scale, Tri-scale): single (wide) | bi | tri (tight)
   bnd: 'bend',         // boundary (Blender: Boundary): bend | expand | inflate
   mpAngle: '60',       // multiplane scrape: the angle between its two planes, in degrees
   relax: 'relax',      // relax brushes (Blender: Relax, Topology Slide): relax | drag (along the stroke) | pinch (toward the brush)
@@ -902,6 +906,7 @@ const PRESETS = [
   { id: 'snakecurve', name: 'Издърпване по крива', short: 'Змия', base: 'snake', icon: 'snakecurve', stroke: 'curve', radius: 40, strength: 0.9, front: false, zb: 'Snake Curve (CurveSnakeHook)' },
   { id: 'vdm', name: 'Векторна форма (VDM)', short: 'VDM', base: 'vdm', radius: 40, strength: 1, front: false, zb: 'VDM brush (Vector Displacement Mesh)' },
   { id: 'dimple', name: 'Вдлъбнатина', short: 'Трапчина', base: 'draw', icon: 'dimple', dir: -1, radius: 30, strength: 1, curve: 'dome', stroke: 'dragdot', zb: 'Dimple' },
+  { id: 'rotate', name: 'Завъртане', short: 'Завърти', base: 'rotate', icon: 'rotatebrush', radius: 60, strength: 1, front: false, zb: 'Blender: Rotate' },
   { id: 'boundary', name: 'Отворен ръб', short: 'Ръб', base: 'boundary', radius: 70, strength: 1, front: false, zb: 'Blender: Boundary' },
   { id: 'pose', name: 'Поза', short: 'Поза', key: 'q', base: 'pose', radius: 70, strength: 1, front: false, zb: 'Transpose / Pose' },
   { id: 'claythumb', name: 'Глина с палец', short: 'Палец', base: 'claythumb', icon: 'claythumb', radius: 40, strength: 0.5, zb: 'Blender: Clay Thumb' },
@@ -911,6 +916,8 @@ const PRESETS = [
   { id: 'layer', name: 'Слой', short: 'Слой', base: 'layer', radius: 45, strength: 0.4, curve: 'flat', zb: 'Layer' },
   { id: 'magnify', name: 'Раздалечаване', short: 'Разд.', base: 'pinch', icon: 'magnify', dir: -1, radius: 40, zb: 'Magnify' },
   { id: 'blob', name: 'Буци', short: 'Буци', base: 'inflate', icon: 'blob', radius: 30, strength: 0.5, alpha: 'noise', alphaRot: 'random', spacing: 0.12, zb: 'Blob' },
+  // (as Blender's Blob: the crease turned round — out along the normal and spread apart, a round lump with steep sides)
+  { id: 'blobround', name: 'Кръгла буца', short: 'Буца', base: 'crease', icon: 'blob', dir: -1, radius: 30, strength: 0.5, zb: 'Blender: Blob' },
   { id: 'movedeep', name: 'Хващане в дълбочина', short: 'Дълб.', base: 'grab', icon: 'movedeep', deep: true, radius: 90, strength: 1, curve: 'move', front: false, zb: 'Move Infinite Depth' },
   { id: 'curvedam', name: 'Гънка по крива', short: 'Крива', icon: 'curve', radius: 12, strength: 0.6, dir: -1, curve: 'sharp', focal: 0.3, mod: 0.6, spacing: 0.08, stroke: 'curve', taper: 0.7, zb: 'Curve Mode + Dam_Standard' },
   { id: 'clothpinch', name: 'Плат: събиране', short: 'Гънки', base: 'cloth', icon: 'cloth', cloth: 'pinch', radius: 50, strength: 0.6, zb: 'ClothPinch' },
@@ -918,6 +925,8 @@ const PRESETS = [
   { id: 'clothhook', name: 'Плат: кука', short: 'Кука', base: 'cloth', icon: 'cloth', cloth: 'hook', radius: 60, strength: 0.8, front: false, zb: 'ClothHook' },
   { id: 'clothtwist', name: 'Плат: усукване', short: 'Вихър', base: 'cloth', icon: 'cloth', cloth: 'twist', radius: 50, strength: 0.6, zb: 'ClothTwister' },
   { id: 'groom', name: 'Сресване на косми', short: 'Среши', base: 'groom', radius: 60, strength: 0.6, front: false, zb: 'GroomHairToss / GroomBlower' },
+  { id: 'clothperp', name: 'Плат: гънки по линия', short: 'Линия', base: 'cloth', icon: 'cloth', cloth: 'perp', radius: 45, strength: 0.6, zb: 'Blender: Cloth Pinch Perpendicular' },
+  { id: 'clothexpand', name: 'Плат: разширяване', short: 'Набери', base: 'cloth', icon: 'cloth', cloth: 'expand', radius: 50, strength: 0.6, zb: 'Blender: Cloth Expand' },
   { id: 'clothinflate', name: 'Плат: надуване', short: 'Възгл.', base: 'cloth', icon: 'cloth', cloth: 'inflate', radius: 50, strength: 0.5, zb: 'ClothInflate' },
   { id: 'zmodel', name: 'Полигони: изтегли или вдлъбни групата', short: 'ZModel', base: 'zmodel', zb: 'ZModeler: Extrude / Inset (Polygroup All)' },
   { id: 'ffd', name: 'Клетка (FFD)', short: 'FFD', base: 'ffd', zb: 'Gizmo Deformer: FFD' },
@@ -930,6 +939,7 @@ const PRESETS = [
   { id: 'clip', name: 'Отсичане', short: 'Отсечи', key: 'y', base: 'clip', zb: 'ClipCurve' },
   { id: 'cut', name: 'Отрязване', short: 'Отрежи', key: 'u', base: 'cut', zb: 'TrimCurve' },
   { id: 'slice', name: 'Разделяне на групи', short: 'Групи', key: 'a', base: 'slice', zb: 'SliceCurve' },
+  { id: 'smear', name: 'Размазване на цвета', short: 'Размажи', base: 'smear', icon: 'smear', radius: 40, strength: 0.7, zb: 'Blender: Smear' },
   { id: 'drawgroups', name: 'Рисуване на групи', short: 'Групи', base: 'fsets', icon: 'fsets', radius: 40, strength: 1, zb: 'Blender: Draw Face Sets' },
   { id: 'mask', name: 'Маска', short: 'Маска', key: 'm', base: 'mask', radius: 45, strength: 0.8, zb: 'MaskPen' },
   { id: 'paint', name: 'Боя', short: 'Боя', key: 'v', base: 'paint', radius: 40, strength: 0.6, front: true },
@@ -1018,7 +1028,7 @@ try { savedSettings = JSON.parse(localStorage.getItem('glina.settings') || 'null
 if (savedSettings) for (const k of Object.keys(savedSettings)) if (k in S && k !== 'penSeen' && k !== 'brushes') S[k] = savedSettings[k];
 // one brush field from settings or a file: right type and range, or undefined
 const ENUMS = { tip: ['round', 'square'], alphaRot: ['fixed', 'stroke', 'random'], stroke: ['dots', 'dragrect', 'dragdot', 'spray', 'line', 'curve'], grab: ['soft', 'elastic'],
-  imm: ['sphere', 'cube', 'cylinder', 'cone', 'torus', 'file'], gz: ['move', 'rotate', 'scale'], cloth: ['pinch', 'slide', 'inflate', 'hook', 'twist'], kel: ['twist', 'scale', 'pinch'], arr: ['move', 'turn', 'scale', 'count'], zm: ['extrude', 'inset', 'bevel'], ffdMode: ['cage', 'curve'], poseMode: ['bend', 'twist'], relax: ['relax', 'drag', 'pinch'], mpAngle: ['40', '60', '90', '120'], bnd: ['bend', 'expand', 'inflate'] };
+  imm: ['sphere', 'cube', 'cylinder', 'cone', 'torus', 'file'], gz: ['move', 'rotate', 'scale'], cloth: ['pinch', 'slide', 'inflate', 'hook', 'twist', 'perp', 'expand'], kel: ['twist', 'scale', 'pinch'], arr: ['move', 'turn', 'scale', 'count'], zm: ['extrude', 'inset', 'bevel'], ffdMode: ['cage', 'curve'], poseMode: ['bend', 'twist'], relax: ['relax', 'drag', 'pinch'], mpAngle: ['40', '60', '90', '120'], bnd: ['bend', 'expand', 'inflate'], kelScale: ['single', 'bi', 'tri'] };
 const RANGES = { radius: [4, 320], strength: [0.01, 1], focal: [-1, 1], alphaMid: [0, 1], alphaAngle: [0, 360], spacing: [0.03, 0.6], mod: [-1, 1], volume: [0, 0.49], taper: [0, 1], ffdN: [2, 5] };
 function brushField(k, v) {
   if (k === 'curve') return Array.isArray(v) && v.length >= 2 && v.length <= 32 && v.every((p) => Array.isArray(p) && p.length === 2 && p.every((x) => Number.isFinite(x) && x >= 0 && x <= 1)) ? v.map((p) => p.slice()) : undefined;
@@ -3450,18 +3460,22 @@ const KEL_EPS = 0.8;      // ε as a share of the brush radius: the ring shows w
 const KEL_REACH = 3.5;    // vertices up to 3.5ε move; the last ε fades out, so there is no visible edge
 const KEL_GROW = 0.5;     // elastic pull: ε grows by half the distance pulled so far …
 const KEL_GROW_MAX = 3;   // … up to 3× its starting size, so a very long pull does not slide the whole model
-function kelvinlet(eps, nu) {
+// (as Blender's elastic grab: one, two or three scales) one Kelvinlet reaches far (it fades as 1/r); the
+// difference of two (ε, 1.1ε) fades as 1/r³; three (ε, 1.1ε, 1.2ε) weighed so that the 1/r and the next
+// term both cancel (Σw = 0 and Σw·ε² = 0: 1, −1.913, 0.913) fade faster still — a tighter pull
+const KEL_SCALES = { single: [[1, 1]], bi: [[1, 1], [1.1, -1]], tri: [[1, 1], [1.1, -(1.44 - 1) / (1.44 - 1.21)], [1.2, (1.21 - 1) / (1.44 - 1.21)]] };
+function kelvinlet(eps, nu, scale = 'bi') {
   const a = 1 / (4 * Math.PI), b = a / (4 * (1 - Math.min(0.49, Math.max(0, nu))));
-  const e1 = eps, e2 = eps * 1.1, e1s = e1 * e1, e2s = e2 * e2;
+  const S3 = (KEL_SCALES[scale] || KEL_SCALES.bi).map(([k, w]) => [eps * k, (eps * k) * (eps * k), w]);
   const raw0 = (e) => (a - b) / e + a / (2 * e);
-  const norm = 1 / (raw0(e1) - raw0(e2));
+  let n0 = 0; for (const [e, , w] of S3) n0 += w * raw0(e);
+  const norm = 1 / n0;
   const fadeIn = eps * (KEL_REACH - 1), fadeOut = eps * KEL_REACH;
   const K = { u: [0, 0, 0] };
   K.apply = (rx, ry, rz, fx, fy, fz) => {
     const r2 = rx * rx + ry * ry + rz * rz, rf = rx * fx + ry * fy + rz * fz;
-    const q1 = Math.sqrt(r2 + e1s), q2 = Math.sqrt(r2 + e2s), q13 = q1 * q1 * q1, q23 = q2 * q2 * q2;
-    let A = (a - b) * (1 / q1 - 1 / q2) + (a / 2) * (e1s / q13 - e2s / q23);
-    let B = b * (1 / q13 - 1 / q23);
+    let A = 0, B = 0;
+    for (const [, es, w] of S3) { const q = Math.sqrt(r2 + es), q3 = q * q * q; A += w * ((a - b) / q + (a / 2) * es / q3); B += w * b / q3; }
     let w = norm;
     const d = Math.sqrt(r2);
     if (d > fadeIn) { const t = Math.min(1, (d - fadeIn) / (fadeOut - fadeIn)); w *= 1 - t * t * (3 - 2 * t); }
@@ -3941,6 +3955,32 @@ function applyBrush(tool, c, n, r, s, sign, dab = {}) {
       break;
     }
     case 'smooth': smoothVerts(G, F, count, Math.min(1, s * 1.2)); break;
+    case 'smear': {
+      // (as Blender's Smear) the colour is dragged along the stroke: each point takes on the colour of its
+      // neighbours behind it (those the stroke comes from), as they were before this dab
+      const dd = dab.dir; if (!dd) return;
+      const d0 = dd.x * ax + dd.y * ay + dd.z * az; let tx = dd.x - ax * d0, ty = dd.y - ay * d0, tz = dd.z - az * d0; const tl = Math.hypot(tx, ty, tz);
+      if (tl < 1e-9) return;
+      tx /= tl; ty /= tl; tz /= tl;
+      const C0 = new Float32Array(count * 3), slot = new Map();
+      for (let k = 0; k < count; k++) { const i = G[k]; slot.set(i, k); C0[k * 3] = CL[i * 3]; C0[k * 3 + 1] = CL[i * 3 + 1]; C0[k * 3 + 2] = CL[i * 3 + 2]; }
+      const k0 = Math.min(1, s);
+      for (let k = 0; k < count; k++) {
+        const i = G[k], w = F[k] * (1 - MK[i]) * k0; if (w <= 0) continue;
+        let r0 = 0, g0 = 0, b0 = 0, ws = 0;
+        forNeighbors(m, i, (u) => {
+          const ex = P[u * 3] - P[i * 3], ey = P[u * 3 + 1] - P[i * 3 + 1], ez = P[u * 3 + 2] - P[i * 3 + 2], el = Math.hypot(ex, ey, ez); if (el < 1e-12) return;
+          const back = -(ex * tx + ey * ty + ez * tz) / el; if (back <= 0) return;
+          const j = slot.get(u), cr = j === undefined ? CL[u * 3] : C0[j * 3], cg = j === undefined ? CL[u * 3 + 1] : C0[j * 3 + 1], cb = j === undefined ? CL[u * 3 + 2] : C0[j * 3 + 2];
+          r0 += cr * back; g0 += cg * back; b0 += cb * back; ws += back;
+        });
+        if (ws <= 0) continue;
+        touchVert(i);
+        CL[i * 3] += (r0 / ws - CL[i * 3]) * w; CL[i * 3 + 1] += (g0 / ws - CL[i * 3 + 1]) * w; CL[i * 3 + 2] += (b0 / ws - CL[i * 3 + 2]) * w;
+      }
+      frame_.colors = true;
+      break;
+    }
     case 'fsets': {
       // (as Blender's Draw Face Sets) what the brush passes over becomes one group: a new one, or with Alt
       // the group the stroke began on, grown. Undone in one step with the stroke (see endStroke).
@@ -4099,6 +4139,8 @@ function applyBrush(tool, c, n, r, s, sign, dab = {}) {
 // pushed together cannot shrink, so it folds, along the normals. Real cloth buckles into several folds;
 // here their places come from a wave: around the centre for pinching (folds that run to the middle),
 // across the push for sliding (folds that pile up in front). The rim of the brush holds.
+// across the stroke on the surface (the direction × the normal), of unit length; [0, 0, 0] if they meet
+function clothAcross(d, ax, ay, az) { const x = d.y * az - d.z * ay, y = d.z * ax - d.x * az, z = d.x * ay - d.y * ax, l = Math.hypot(x, y, z); return l < 1e-12 ? [0, 0, 0] : [x / l, y / l, z / l]; }
 function clothDab(G, F, count, c, r, s, sign, kind, dab) {
   const m = mesh, P = m.pos, NR = m.nrm, MK = m.mask;
   if (!stroke.clothOrig) stroke.clothOrig = new Map();
@@ -4124,7 +4166,7 @@ function clothDab(G, F, count, c, r, s, sign, kind, dab) {
     for (let k = 0; k < count; k++) w[k] = local.get(G[k]) || 0;
     const d = dab.dir, st = stroke.clothStart;
     const par = Float64Array.from([c.x, c.y, c.z, r, s, sign, d ? d.x : 0, d ? d.y : 0, d ? d.z : 0, d ? 1 : 0, st.x, st.y, st.z, ...hook]);
-    const KIND = { pinch: 0, slide: 1, inflate: 2, hook: 3, twist: 4 };
+    const KIND = { pinch: 0, slide: 1, inflate: 2, hook: 3, twist: 4, perp: 5, expand: 6 };
     const at = coreBlock(X, [['par', par], ['w', w], ['pos', pos], ['nrm', nrm], ['orig', orig], ['ids', ids], ['off', nbOff], ['nb', nb]]);
     if (X.brush_cloth_raw(KIND[kind] ?? 2, count, E, at.ids, at.pos, at.nrm, at.orig, at.w, at.off, at.nb, nb.length, at.par) === 0) {
       const OUT = new Float32Array(X.memory.buffer, at.pos, E * 3);
@@ -4146,7 +4188,8 @@ function clothDab(G, F, count, c, r, s, sign, kind, dab) {
   const lam = r * 0.42, st = stroke.clothStart;
   const wave = (i) => {
     const px = P[i * 3], py = P[i * 3 + 1], pz = P[i * 3 + 2];
-    if (kind === 'pinch' || kind === 'twist') { const ox = px - c.x, oy = py - c.y, oz = pz - c.z; return Math.sin(6 * Math.atan2(ox * vx + oy * vy + oz * vz, ox * ux + oy * uy + oz * uz)); }
+    if (kind === 'pinch' || kind === 'twist' || kind === 'expand') { const ox = px - c.x, oy = py - c.y, oz = pz - c.z; return Math.sin(6 * Math.atan2(ox * vx + oy * vy + oz * vz, ox * ux + oy * uy + oz * uz)); }
+    if (kind === 'perp' && dir) { const [ex, ey, ez] = clothAcross(dir, ax, ay, az); return Math.sin((2 * Math.PI * ((px - c.x) * ex + (py - c.y) * ey + (pz - c.z) * ez)) / lam); }
     if ((kind === 'slide' || kind === 'hook') && dir) return Math.sin((2 * Math.PI * ((px - st.x) * dir.x + (py - st.y) * dir.y + (pz - st.z) * dir.z)) / lam);
     return 1;
   };
@@ -4166,6 +4209,14 @@ function clothDab(G, F, count, c, r, s, sign, kind, dab) {
       if (!dir) continue;
       const k = r * 0.08 * s * w, h = r * 0.025 * s * w * wv.get(i);
       P[o] += dir.x * k + NR[o] * h; P[o + 1] += dir.y * k + NR[o + 1] * h; P[o + 2] += dir.z * k + NR[o + 2] * h;
+    } else if (kind === 'perp') {
+      // (as Blender's Pinch Perpendicular) toward the stroke's line, across it only: the folds run along it
+      if (!dir) continue;
+      const [ex, ey, ez] = clothAcross(dir, ax, ay, az), t = (c.x - P[o]) * ex + (c.y - P[o + 1]) * ey + (c.z - P[o + 2]) * ez;
+      const k = 0.22 * s * w * t, h = r * 0.025 * s * w * wv.get(i);
+      P[o] += ex * k + NR[o] * h; P[o + 1] += ey * k + NR[o + 1] * h; P[o + 2] += ez * k + NR[o + 2] * h;
+    } else if (kind === 'expand') {
+      // (as Blender's Expand) no push: the edges below want to be longer, and the cloth buckles
     } else if (kind === 'hook') {
       // follows the pen: what was under the brush moves as far as the brush has since the last dab
       const d = hookDelta; if (!d) continue;
@@ -4189,10 +4240,12 @@ function clothDab(G, F, count, c, r, s, sign, kind, dab) {
       forNeighbors(m, i, (j) => {
         if (j < i && local.has(j)) return;   // (each edge once when both ends move)
         const oj = O.get(j) || [P[j * 3], P[j * 3 + 1], P[j * 3 + 2]];
-        const rest = Math.hypot(oi[0] - oj[0], oi[1] - oj[1], oi[2] - oj[2]);
+        let rest = Math.hypot(oi[0] - oj[0], oi[1] - oj[1], oi[2] - oj[2]);
+        const wj = local.get(j) || 0;
+        if (kind === 'expand') rest *= 1 + 0.35 * s * (wi + wj) * 0.5;
         const dx = P[j * 3] - P[i * 3], dy = P[j * 3 + 1] - P[i * 3 + 1], dz = P[j * 3 + 2] - P[i * 3 + 2];
         const len = Math.hypot(dx, dy, dz); if (len < 1e-12) return;
-        const wj = local.get(j) || 0, ws = wi + wj; if (ws <= 0) return;
+        const ws = wi + wj; if (ws <= 0) return;
         const k = (len - rest) / len / ws * 0.5;
         P[i * 3] += dx * k * wi; P[i * 3 + 1] += dy * k * wi; P[i * 3 + 2] += dz * k * wi;
         P[j * 3] -= dx * k * wj; P[j * 3 + 1] -= dy * k * wj; P[j * 3 + 2] -= dz * k * wj;
@@ -4470,6 +4523,33 @@ function beginStroke(e, x, y, b, sign) {
     placeRing(hit.point, hit.normal, r);
     return true;
   }
+  if (tool === 'rotate') {
+    // (as Blender's Rotate) the clay in the circle turns about the surface's normal at the press, by the
+    // angle the pen goes round the press point on screen (a dial), each point by its falloff
+    const hit = pick(x, y);
+    if (!hit) { stroke = null; return false; }
+    const r = radiusPxFor(1, b) * worldPerPx(hit.point), toEye = new THREE.Vector3(0, 0, 1).applyQuaternion(camera.quaternion);
+    const parts = [];
+    [IDENT, ...SYM.map((t) => t.m)].forEach((M, k) => {
+      const c = k ? symV(M, hit.point) : hit.point.clone();
+      const cnt = gather(c.x, c.y, c.z, r, 0, 0, 0, false); if (!cnt) return;
+      const idx = mesh.gIdx.slice(0, cnt), fall = mesh.gFall.slice(0, cnt), P = mesh.pos, NR = mesh.nrm;
+      let nx = 0, ny = 0, nz = 0; for (let j = 0; j < cnt; j++) { const i = idx[j], w = fall[j]; nx += NR[i * 3] * w; ny += NR[i * 3 + 1] * w; nz += NR[i * 3 + 2] * w; }
+      let ax = new THREE.Vector3(nx, ny, nz); if (ax.lengthSq() < 1e-16) ax = hit.normal.clone();
+      ax.normalize();
+      if (k === 0 && ax.dot(toEye) < 0) ax.negate();
+      // a mirror turns the other way: its axis is the mirrored one, and the angle changes sign
+      const det = M[0] * (M[4] * M[8] - M[5] * M[7]) - M[1] * (M[3] * M[8] - M[5] * M[6]) + M[2] * (M[3] * M[7] - M[4] * M[6]);
+      if (k) { const a0 = parts[0] ? parts[0].axis : ax; ax = symV(M, a0).normalize(); }
+      const orig = new Float32Array(cnt * 3); for (let j = 0; j < cnt; j++) { const i = idx[j]; orig[j * 3] = P[i * 3]; orig[j * 3 + 1] = P[i * 3 + 1]; orig[j * 3 + 2] = P[i * 3 + 2]; }
+      parts.push({ c, axis: ax, turn: det < 0 ? -1 : 1, idx, fall, orig });
+    });
+    if (!parts.length) { stroke = null; return false; }
+    stroke.rot = { x0: x, y0: y, a0: null, parts, strength: b.strength };
+    stroke.queue.length = 0;
+    placeRing(hit.point, hit.normal, r);
+    return true;
+  }
   if (tool === 'boundary') {
     const hit = pick(x, y);
     if (!hit) { stroke = null; return false; }
@@ -4520,7 +4600,8 @@ function beginStroke(e, x, y, b, sign) {
         const cnt = b.topo ? gatherConnected(pt, reach) : b.deep ? gatherDeep(pt, reach) : gather(pt.x, pt.y, pt.z, reach, nn.x, nn.y, nn.z, false);
         return { idx: mesh.gIdx.slice(0, cnt), fall: mesh.gFall.slice(0, cnt) };
       };
-      stroke.grab.elastic = elastic ? kelvinlet(r * KEL_EPS, b.volume) : null;
+      stroke.grab.elastic = elastic ? kelvinlet(r * KEL_EPS, b.volume, b.kelScale) : null;
+      stroke.grab.kelScale = b.kelScale;
       stroke.grab.cur = hit.point.clone();
       stroke.grab.pulled = 0; stroke.grab.volume = b.volume;
       stroke.grab.topo = b.topo;
@@ -4595,6 +4676,31 @@ function processStroke() {
     if (X.kelvin_raw(g.kind === 'twist' ? 0 : g.kind === 'scale' ? 1 : 2, N, at.orig, at.free, Ms.length, at.cp, at.out) !== 0) return;
     const out = new Float32Array(X.memory.buffer, at.out, N * 3), P = mesh.pos;
     for (let j = 0; j < N; j++) { const i = g.idx[j]; touchVert(i); P[i * 3] = out[j * 3]; P[i * 3 + 1] = out[j * 3 + 1]; P[i * 3 + 2] = out[j * 3 + 2]; }
+    frame_.positions = true;
+    return;
+  }
+  if (stroke.tool === 'rotate') {
+    const s = q[q.length - 1]; q.length = 0;
+    const g = stroke.rot, dx = s.x - g.x0, dy = s.y - g.y0;
+    // the dial starts once the pen is a little way from the press point
+    if (dx * dx + dy * dy < 64) return;
+    const a = Math.atan2(dy, dx);
+    if (g.a0 === null) { g.a0 = a; g.turned = 0; g.last = a; return; }
+    let da = a - g.last; if (da > Math.PI) da -= 2 * Math.PI; if (da < -Math.PI) da += 2 * Math.PI;
+    g.turned += da; g.last = a;
+    // the screen's y goes down, so a turn the pen makes clockwise on screen is a turn about the axis toward
+    // the eye the other way round: the clay turns with the pen
+    const ang = -g.turned * g.strength * stroke.sign, P = mesh.pos, MK = mesh.mask;
+    for (const part of g.parts) {
+      const k = part.axis, O = part.orig, c = part.c;
+      for (let j = 0; j < part.idx.length; j++) {
+        const i = part.idx[j], w = part.fall[j] * (1 - MK[i]); touchVert(i);
+        const t = ang * w * part.turn, co = Math.cos(t), sn = Math.sin(t);
+        const px = O[j * 3] - c.x, py = O[j * 3 + 1] - c.y, pz = O[j * 3 + 2] - c.z, kd = k.x * px + k.y * py + k.z * pz;
+        const cx = k.y * pz - k.z * py, cy = k.z * px - k.x * pz, cz = k.x * py - k.y * px;
+        P[i * 3] = c.x + px * co + cx * sn + k.x * kd * (1 - co); P[i * 3 + 1] = c.y + py * co + cy * sn + k.y * kd * (1 - co); P[i * 3 + 2] = c.z + pz * co + cz * sn + k.z * kd * (1 - co);
+      }
+    }
     frame_.positions = true;
     return;
   }
@@ -4746,7 +4852,7 @@ function processStroke() {
       }
       const mainF = groups[0].f;   // the identity is always first
       for (let sub = 0; sub < nSub; sub++) {
-        const eps = epsAt(g.pulled), K = kelvinlet(eps, g.volume);
+        const eps = epsAt(g.pulled), K = kelvinlet(eps, g.volume, g.kelScale);
         g.pulled += Math.hypot(fx, fy, fz);
         for (const grp of groups) {
           const c = centre(grp);   // the members' images of the current centre, averaged
@@ -4896,7 +5002,7 @@ function dab(x, y, p, o = {}) {
     curGroup = -1;
   }
   // keep the picking structure in step with what this dab moved (mask and paint move nothing)
-  const moves = tool !== 'mask' && tool !== 'paint' && tool !== 'fsets';
+  const moves = tool !== 'mask' && tool !== 'paint' && tool !== 'fsets' && tool !== 'smear';
   // (with "only one group" each copy keeps the group it started the stroke on)
   // (a copy that starts off the model tries again at the next dab)
   const lockGroup = (k, p) => { if (!b.group) return -1; if (!stroke.groups) stroke.groups = []; if (!(stroke.groups[k] >= 0)) stroke.groups[k] = groupNear(p, r); return stroke.groups[k]; };
@@ -4974,7 +5080,7 @@ function endStroke(commit = true) {
   curGroup = -1;   // (in case a brush threw halfway)
   processStroke(); flushFrame();
   if (commit && stroke.tool === 'grab' && mesh.dyn && stroke.changed) { refineAfterGrab(); flushFrame(); }
-  if (commit && stroke.changed && stroke.tool !== 'mask' && stroke.tool !== 'paint') healStroke();
+  if (commit && stroke.changed && stroke.tool !== 'mask' && stroke.tool !== 'paint' && stroke.tool !== 'smear') healStroke();
   if (commit) journalStroke();
   if (stroke.snap) {
     const { snap, changed } = stroke;
@@ -10053,12 +10159,12 @@ const rail = $('rail');
 // opens its own panel of settings.
 const RAIL_DEFAULT = ['draw', 'clay', 'claybuild', 'dam', 'inflate', 'pinch', 'flatten', 'smooth', 'grab', 'snake', 'mask', 'paint'];
 const PAL_CATS = [
-  ['Скулптиране', ['draw', 'clay', 'claybuild', 'dam', 'inflate', 'pinch', 'crease', 'flatten', 'trim', 'smooth', 'enhance', 'relax', 'slide', 'mpscrape', 'claythumb', 'planar', 'layer', 'magnify', 'blob', 'dimple', 'vdm', 'morph']],
-  ['Местене и издърпване', ['grab', 'nudge', 'elastic', 'grabtopo', 'movedeep', 'ktwist', 'kscale', 'kpinch', 'snake', 'snakecurve', 'pose', 'boundary', 'gizmo']],
+  ['Скулптиране', ['draw', 'clay', 'claybuild', 'dam', 'inflate', 'pinch', 'crease', 'flatten', 'trim', 'smooth', 'enhance', 'relax', 'slide', 'mpscrape', 'claythumb', 'planar', 'layer', 'magnify', 'blob', 'blobround', 'dimple', 'vdm', 'morph']],
+  ['Местене и издърпване', ['grab', 'nudge', 'elastic', 'grabtopo', 'movedeep', 'ktwist', 'kscale', 'kpinch', 'snake', 'snakecurve', 'pose', 'boundary', 'rotate', 'gizmo']],
   ['По линия', ['curvedam', 'tube', 'clip', 'cut', 'slice']],
-  ['Плат и косми', ['clothpinch', 'clothslide', 'clothhook', 'clothtwist', 'clothinflate', 'groom']],
+  ['Плат и косми', ['clothpinch', 'clothslide', 'clothhook', 'clothtwist', 'clothinflate', 'clothperp', 'clothexpand', 'groom']],
   ['Моделиране', ['zmodel', 'ffd', 'imm', 'array', 'topology', 'shadowbox']],
-  ['Маска и боя', ['mask', 'paint', 'drawgroups']],
+  ['Маска и боя', ['mask', 'paint', 'smear', 'drawgroups']],
 ];
 const pinned = () => (S.rail || RAIL_DEFAULT).filter((id) => brushById(id));
 function railIds() {
@@ -10733,12 +10839,13 @@ brushSyncs.push(
   brushChips('ffdChips', [2, 3, 4, 5].map((k) => ({ id: k, name: k + '×' + k + '×' + k })), 'ffdN', () => { lattice = null; drawOverlay(); }),
   brushChips('ffdModeChips', [{ id: 'cage', name: 'Клетка (FFD)' }, { id: 'curve', name: 'Крива (Bend Curve)' }], 'ffdMode', () => { lattice = null; drawOverlay(); }),
   brushChips('poseChips', [{ id: 'bend', name: 'Сгъване' }, { id: 'twist', name: 'Усукване около оста' }], 'poseMode'),
+  brushChips('kelScaleChips', [{ id: 'single', name: 'Широко' }, { id: 'bi', name: 'Средно' }, { id: 'tri', name: 'Стегнато' }], 'kelScale'),
   brushChips('bndChips', [{ id: 'bend', name: 'Огъва' }, { id: 'expand', name: 'Разтяга навън' }, { id: 'inflate', name: 'Надува' }], 'bnd'),
   brushChips('mpChips', [{ id: '40', name: '40°' }, { id: '60', name: '60°' }, { id: '90', name: '90°' }, { id: '120', name: '120°' }], 'mpAngle'),
   brushChips('relaxChips', [{ id: 'relax', name: 'Отпуска (Relax)' }, { id: 'drag', name: 'Плъзга по щриха' }, { id: 'pinch', name: 'Плъзга към центъра (Alt: навън)' }], 'relax'),
   brushChips('arrDragChips', [{ id: 'move', name: 'Мести (разстояние)' }, { id: 'turn', name: 'Върти' }, { id: 'scale', name: 'Мащаб' }, { id: 'count', name: 'Брой' }], 'arr'),
   brushChips('kelChips', [{ id: 'twist', name: 'Усукване (Twist)' }, { id: 'scale', name: 'Раздуване ↔ свиване (Scale)' }, { id: 'pinch', name: 'Прищипване (Pinch)' }], 'kel'),
-  brushChips('clothChips', [{ id: 'pinch', name: 'Събира (ClothPinch)' }, { id: 'slide', name: 'Бута по щриха (ClothSlide)' }, { id: 'inflate', name: 'Надува (ClothInflate)' }, { id: 'hook', name: 'Кука: тегли след писалката (ClothHook)' }, { id: 'twist', name: 'Усуква (ClothTwister)' }], 'cloth'),
+  brushChips('clothChips', [{ id: 'pinch', name: 'Събира (ClothPinch)' }, { id: 'slide', name: 'Бута по щриха (ClothSlide)' }, { id: 'inflate', name: 'Надува (ClothInflate)' }, { id: 'hook', name: 'Кука: тегли след писалката (ClothHook)' }, { id: 'twist', name: 'Усуква (ClothTwister)' }, { id: 'perp', name: 'Гънки по линията (Blender: Pinch Perpendicular)' }, { id: 'expand', name: 'Разширява се и се набира (Blender: Expand)' }], 'cloth'),
   brushChips('gzChips', [{ id: 'move', name: 'Местене' }, { id: 'rotate', name: 'Завъртане' }, { id: 'scale', name: 'Мащаб' }], 'gz', () => { gizmoCache = null; syncGizmoBar(); drawOverlay(); }),
   brushChips('immChips', IMM.map((x) => ({ id: x.id, name: x.name, title: x.id === 'file' ? 'Своя форма от файл .obj или .stl (за тази сесия)' : '' })), 'imm', () => { if (brush().imm === 'file') $('immIn').click(); }),
   brushChips('grabChips', [{ id: 'soft', name: 'Меко (Move)' }, { id: 'elastic', name: 'Еластично (Move Elastic)' }], 'grab'),
@@ -10769,8 +10876,11 @@ const BRUSH_ABOUT = {
   snake: 'Изтегля рога и пипала след писалката.', snakecurve: 'Начертайте линия от модела навън: повърхността се издърпва по нея.',
   vdm: 'Щракване слага цяла форма (и с надвиснали части); влачене задава размера и посоката.', dimple: 'Натиснете: кръгла трапчинка.',
   pose: 'Сгъва като става: натиснете ставата и дърпайте.', planar: 'Изравнява до равнината, в която е започнал щрихът.', morph: 'Връща към запомнената форма, където минете.',
+  blobround: 'Кръгла буца със стръмни страни.',
+  smear: 'Размазва боята по посоката на щриха.',
   drawgroups: 'Рисува нова група там, където минете (Alt: разширява групата, от която започвате).',
   enhance: 'Изостря детайла: буците стават по-високи, гънките по-дълбоки (обратното на изглаждане).',
+  rotate: 'Натиснете и въртете писалката около точката: глината в кръга се завърта, най-много в средата.',
   boundary: 'Натиснете до отворен ръб и влачете навън: ивицата до ръба се огъва (или разтяга, надува).',
   claythumb: 'Бута глината пред себе си като палец: отпред се трупа, отзад остава вдлъбнатина.',
   mpscrape: 'Изрязва остър ръб по щриха: две равнини под ъгъл (Alt: вдлъбнат ъгъл).',
@@ -10778,6 +10888,7 @@ const BRUSH_ABOUT = {
   relax: 'Изравнява разтеглените и сбити полигони, без да мени формата.', slide: 'Плъзга полигоните по повърхността след писалката, формата остава.',
   layer: 'Слой с еднаква височина, колкото и пъти да минете.', magnify: 'Раздалечава от щриха.', blob: 'Буци и неравности.', movedeep: 'Хваща всичко под кръга, и отзад.',
   curvedam: 'Начертайте линия: по нея минава гънка; после я огънете.', clothpinch: 'Плат: събира на гънки.', clothslide: 'Плат: бута гънките пред четката.',
+  clothperp: 'Плат: събира към линията на щриха, гънките вървят по нея.', clothexpand: 'Плат: разширява се и се набира на гънки.',
   clothhook: 'Плат: тегли след писалката и го набира.', clothtwist: 'Плат: завърта като вихър.', clothinflate: 'Плат: надува като възглавница.',
   groom: 'Реши космите (FiberMesh) по щриха: върховете най-много.', zmodel: 'Натиснете група и дърпайте: изтегля, вдлъбва или скосява.',
   ffd: 'Клетка или крива около незамаскираното: влачете точките.', topology: 'Линии по модела; затворените клетки стават нов подобект.',
@@ -10785,11 +10896,11 @@ const BRUSH_ABOUT = {
   imm: 'Натиснете и влачете: вмъква форма върху модела.', tube: 'Начертайте линия по модела: по нея става тръба.', clip: 'Линия: всичко от едната страна се изравнява до нея.',
   cut: 'Линия: отрязва модела от едната страна и затваря среза.', slice: 'Линия: разделя модела на групи по нея.', mask: 'Рисува маска: маскираното не се променя.', paint: 'Рисува с цвят (полипейнт).',
 };
-const BASE_ABOUT = { draw: 'draw', clay: 'clay', claystrips: 'claybuild', inflate: 'inflate', pinch: 'pinch', crease: 'crease', flatten: 'flatten', scrape: 'trim', smooth: 'smooth', enhance: 'enhance', relax: 'relax', mpscrape: 'mpscrape', claythumb: 'claythumb', fsets: 'drawgroups', grab: 'grab', nudge: 'nudge', snake: 'snake', vdm: 'vdm', pose: 'pose', boundary: 'boundary', planar: 'planar', morph: 'morph', layer: 'layer', cloth: 'clothpinch', groom: 'groom', zmodel: 'zmodel', ffd: 'ffd', topology: 'topology', shadowbox: 'shadowbox', gizmo: 'gizmo', insert: 'imm', tube: 'tube', clip: 'clip', cut: 'cut', slice: 'slice', mask: 'mask', paint: 'paint' };
+const BASE_ABOUT = { draw: 'draw', clay: 'clay', claystrips: 'claybuild', inflate: 'inflate', pinch: 'pinch', crease: 'crease', flatten: 'flatten', scrape: 'trim', smooth: 'smooth', enhance: 'enhance', relax: 'relax', mpscrape: 'mpscrape', claythumb: 'claythumb', fsets: 'drawgroups', smear: 'smear', grab: 'grab', nudge: 'nudge', snake: 'snake', vdm: 'vdm', pose: 'pose', boundary: 'boundary', rotate: 'rotate', planar: 'planar', morph: 'morph', layer: 'layer', cloth: 'clothpinch', groom: 'groom', zmodel: 'zmodel', ffd: 'ffd', topology: 'topology', shadowbox: 'shadowbox', gizmo: 'gizmo', insert: 'imm', tube: 'tube', clip: 'clip', cut: 'cut', slice: 'slice', mask: 'mask', paint: 'paint' };
 // per kind of brush: which of the common settings it has
 const NO_SIZE = new Set(['array', 'gizmo', 'ffd', 'zmodel', 'topology', 'shadowbox', 'clip', 'cut', 'slice']);
 const NO_STRENGTH = new Set([...NO_SIZE, 'insert', 'tube', 'fsets']);
-const NO_INVERT = new Set([...NO_STRENGTH, 'grab', 'nudge', 'boundary', 'enhance', 'kelvin', 'snake', 'pose', 'groom', 'smooth', 'paint', 'cloth']);
+const NO_INVERT = new Set([...NO_STRENGTH, 'grab', 'nudge', 'boundary', 'rotate', 'smear', 'enhance', 'kelvin', 'snake', 'pose', 'groom', 'smooth', 'paint', 'cloth']);
 function syncBrushBox(b) {
   const base = b.base;
   $('bbIcon').innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">${ICON[b.icon] || ICON[b.id] || ICON[base] || ICON.draw}</svg>`;
@@ -10813,14 +10924,15 @@ function syncBrushBox(b) {
 function syncBrushUI() {
   syncRadius(); syncStrength();
   const b = brush(), base = b.base;
-  const moves = base === 'grab' || base === 'array' || base === 'kelvin' || base === 'snake' || base === 'vdm' || base === 'shadowbox' || base === 'topology' || base === 'pose' || base === 'boundary' || base === 'clip' || base === 'cut' || base === 'slice' || base === 'insert' || base === 'tube' || base === 'gizmo' || base === 'ffd' || base === 'zmodel';
+  const moves = base === 'grab' || base === 'array' || base === 'kelvin' || base === 'snake' || base === 'vdm' || base === 'shadowbox' || base === 'topology' || base === 'pose' || base === 'boundary' || base === 'rotate' || base === 'clip' || base === 'cut' || base === 'slice' || base === 'insert' || base === 'tube' || base === 'gizmo' || base === 'ffd' || base === 'zmodel';
   $('bName').value = b.name; $('bName').disabled = b.builtin;
   $('bName').title = b.builtin ? 'Готовите четки не се преименуват; „Нова от тази“ прави ваше копие' : '';
   $('bBase').value = base;
-  $('dirGrp').hidden = moves || base === 'fsets' || base === 'smooth' || base === 'enhance' || base === 'relax' || base === 'nudge' || base === 'paint';
+  $('dirGrp').hidden = moves || base === 'fsets' || base === 'smear' || base === 'smooth' || base === 'enhance' || base === 'relax' || base === 'nudge' || base === 'paint';
   $('relaxGrp').hidden = base !== 'relax';
   $('mpGrp').hidden = base !== 'mpscrape';
   $('bndGrp').hidden = base !== 'boundary';
+  $('kelScaleGrp').hidden = !(base === 'grab' && b.grab === 'elastic');
   $('tipGrp').hidden = $('alphaGrp').hidden = moves;
   $('strokeGrp').hidden = moves;
   $('modRow').hidden = base !== 'draw';
