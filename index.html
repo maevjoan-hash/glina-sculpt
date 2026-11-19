@@ -3124,7 +3124,9 @@ function gatherDeep(pt, r) {
 }
 
 /* ---------- dynamic topology: split long edges, collapse short ones inside the brush ---------- */
-const DYN_TOOLS = new Set(['draw', 'clay', 'claystrips', 'smooth', 'relax', 'nudge', 'mpscrape', 'claythumb', 'enhance', 'inflate', 'flatten', 'scrape', 'pinch', 'crease', 'snake', 'planar', 'layer']);
+// (Enhance Details is left out: splitting triangles as it sharpens would sharpen the splitting's own small
+// noise too — thirty passes left 21 folds and 232 spikes with it, none and 19 without)
+const DYN_TOOLS = new Set(['draw', 'clay', 'claystrips', 'smooth', 'relax', 'nudge', 'mpscrape', 'claythumb', 'inflate', 'flatten', 'scrape', 'pinch', 'crease', 'snake', 'planar', 'layer']);
 // (Morph is not here: in dynamic topology the points change, so a stored shape cannot match)
 const DYN_FRAME_SPLITS = 5000;      // keeps a fast stroke with a huge brush and tiny detail interactive
 const DYN_FRAME_COLLAPSES = 5000;   // the same for coarse detail on a dense mesh
