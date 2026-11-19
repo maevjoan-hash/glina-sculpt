@@ -450,6 +450,10 @@ input[type=range] { width: 100%; height: 26px; accent-color: var(--wax); backgro
         </div>
         <div class="row" id="modRow"><label for="sMod">Притискане ↔ надуване (Brush Mod)</label><output id="oMod"></output><input type="range" id="sMod" min="-1" max="1" step="0.05"></div>
         <label class="toggle" id="frontRow">Само видимата страна <input type="checkbox" id="tFront"></label>
+        <div class="grp" id="poseGrp"><div class="note lab">Поза</div><div class="chips" id="poseChips"></div>
+          <label class="toggle" title="Като Pose Origin: Face Sets в Blender: частта е цялата група под натиска (пръст, ухо, опашка), а ставата е границата ѝ със съседната група">По групи <input type="checkbox" id="tPoseGroups"></label></div>
+        <label class="toggle" id="silRow" title="Като Grab Silhouette в Blender: дърпа се само страната, обърната към посоката на дърпането — ръбът на силуета излиза, задната страна остава">Само страната към дърпането <input type="checkbox" id="tSil"></label>
+        <label class="toggle" id="keepVolRow" title="Като Surface Smooth в Blender: неравностите изчезват, но формата не се свива — тънки пръсти и ръбове остават с дебелината си">Без свиване <input type="checkbox" id="tKeepVol"></label>
         <label class="toggle" id="groupRow">Само групата под четката <input type="checkbox" id="tGroupOnly"></label>
         <div class="two"><button class="btn wide" id="bBrushNew">Нова от тази</button><button class="btn wide" id="bBrushReset">Нулирай</button></div>
         <div class="two"><button class="btn wide" id="bBrushExport">Изнеси</button><button class="btn wide" id="bBrushImport">Внеси</button></div>
@@ -608,6 +612,7 @@ input[type=range] { width: 100%; height: 26px; accent-color: var(--wax); backgro
       <label class="toggle">Натискът променя силата <input type="checkbox" id="tPrStrength" checked></label>
       <div class="row"><label for="sCurve">Крива на натиска</label><output id="oCurve"></output><input type="range" id="sCurve" min="0.3" max="3" step="0.05"></div>
       <div class="row"><label for="sStab">Стабилизация на линията</label><output id="oStab"></output><input type="range" id="sStab" min="0" max="0.95" step="0.05"></div>
+      <div class="row" title="Като Tilt Strength в Blender: накъдето наклоните писалката, натам бута четката (Рисуване, Глина на ивици, Изравняване, Подрязване). 0 — наклонът не влияе"><label for="sPenTilt">Наклонът на писалката насочва четката</label><output id="oPenTilt"></output><input type="range" id="sPenTilt" min="0" max="1" step="0.05"></div>
       <div>
         <div class="note" style="margin-bottom:6px">Пръст по екрана</div>
         <div class="chips" id="fingerChips"></div>
@@ -842,6 +847,10 @@ const BRUSH_DEFAULTS = {
   base: 'draw', radius: 50, strength: 0.5, dir: 1, curve: 'smooth', focal: 0, tip: 'round',
   alpha: 'none', alphaMid: 0, alphaRot: 'fixed', alphaAngle: 0,
   stroke: 'dots', spacing: 0.15, mod: 0, front: true, topo: false, grab: 'soft', volume: 0.4,
+  poseGroups: false,   // pose: the polygroup under the press is the part (Blender: Pose Origin Face Sets)
+  poseMode: 'bend',    // pose: bend | twist (about the part's own axis)
+  silhouette: false,   // grab: only the side facing the pull (Blender: Grab Silhouette)
+  keepVol: false,      // smoothing keeps the volume (Blender: Surface Smooth)
   group: false,        // only the polygroup under the brush (ZBrush: Auto Masking > Mask By Polygroups)
   gz: 'move',          // Gizmo: move | rotate | scale
   cloth: 'pinch',      // cloth brushes: pinch | slide | inflate
@@ -970,6 +979,9 @@ const S = {
   stripRelax: 0.14, healPleats: true, dynSeg: true, dynBig: true, dynAll: true,   // (parts of the healer, kept as switches for measuring)
   journal: true,       // the journal of what is done and what went wrong (kept on this device only)
   journalHints: true,  // a hint on the screen when a tool is used in a way that will not work well
+  pinchLine: true,     // pinch draws toward the stroke's line, not its point (as Blender)
+  penTilt: 0,          // how much the pen's lean steers draw, clay strips and the planes (0: not at all)
+  smoothHC: true,      // (the switch for measuring: keepVol brushes smooth with the HC Laplacian)
   smoothRims: true,    // smoothing also smooths open edges along themselves (borderPair)
   decPaint: true,      // decimation keeps painted borders (Decimation Master: Use Polypaint)
   heal: true,          // folds and spikes are smoothed away as they form (healVerts)
@@ -984,7 +996,7 @@ try { savedSettings = JSON.parse(localStorage.getItem('glina.settings') || 'null
 if (savedSettings) for (const k of Object.keys(savedSettings)) if (k in S && k !== 'penSeen' && k !== 'brushes') S[k] = savedSettings[k];
 // one brush field from settings or a file: right type and range, or undefined
 const ENUMS = { tip: ['round', 'square'], alphaRot: ['fixed', 'stroke', 'random'], stroke: ['dots', 'dragrect', 'dragdot', 'spray', 'line', 'curve'], grab: ['soft', 'elastic'],
-  imm: ['sphere', 'cube', 'cylinder', 'cone', 'torus', 'file'], gz: ['move', 'rotate', 'scale'], cloth: ['pinch', 'slide', 'inflate', 'hook', 'twist'], kel: ['twist', 'scale', 'pinch'], arr: ['move', 'turn', 'scale', 'count'], zm: ['extrude', 'inset', 'bevel'], ffdMode: ['cage', 'curve'] };
+  imm: ['sphere', 'cube', 'cylinder', 'cone', 'torus', 'file'], gz: ['move', 'rotate', 'scale'], cloth: ['pinch', 'slide', 'inflate', 'hook', 'twist'], kel: ['twist', 'scale', 'pinch'], arr: ['move', 'turn', 'scale', 'count'], zm: ['extrude', 'inset', 'bevel'], ffdMode: ['cage', 'curve'], poseMode: ['bend', 'twist'] };
 const RANGES = { radius: [4, 320], strength: [0.01, 1], focal: [-1, 1], alphaMid: [0, 1], alphaAngle: [0, 360], spacing: [0.03, 0.6], mod: [-1, 1], volume: [0, 0.49], taper: [0, 1], ffdN: [2, 5] };
 function brushField(k, v) {
   if (k === 'curve') return Array.isArray(v) && v.length >= 2 && v.length <= 32 && v.every((p) => Array.isArray(p) && p.length === 2 && p.every((x) => Number.isFinite(x) && x >= 0 && x <= 1)) ? v.map((p) => p.slice()) : undefined;
@@ -3452,22 +3464,37 @@ function inGroup(b, p, r, fn) {
 // Pose (Blender's Pose brush, ZBrush's Transpose in one gesture): the connected surface within r of
 // the press point is the part that turns; the first ring of vertices outside r is the joint, and its
 // average the pivot. Weights are 1 on the part and fade over two rings beyond it (4 smoothing passes).
-function poseRegion(pt, r) {
+// byGroups (as Blender's Pose Origin: Face Sets): the part is the whole polygroup under the press, however
+// far it reaches, and the joint is its border with the neighbouring group it shares the most edge with
+// (the body a finger grows from). `axis` points from the joint to the middle of the part, for twisting.
+function poseRegion(pt, r, byGroups = false) {
   const m = mesh, P = m.pos, r2 = r * r;
   const cnt = gather(pt.x, pt.y, pt.z, r, 0, 0, 0, false);
-  if (!cnt) return { idx: [], w: [], origin: pt.clone() };
+  if (!cnt) return { idx: [], w: [], origin: pt.clone(), axis: new THREE.Vector3(0, 1, 0) };
   let seed = -1, bd = Infinity;
   for (let k = 0; k < cnt; k++) { const d = dist2(P, m.gIdx[k], pt.x, pt.y, pt.z); if (d < bd) { bd = d; seed = m.gIdx[k]; } }
+  const g0 = m.grp[seed];
   const region = [seed], inR = new Set([seed]), ring = new Set();
   for (let h = 0; h < region.length; h++) {
     forNeighbors(m, region[h], (u) => {
       if (inR.has(u) || ring.has(u)) return;
-      if (dist2(P, u, pt.x, pt.y, pt.z) <= r2 && (curGroup < 0 || m.grp[u] === curGroup)) { inR.add(u); region.push(u); } else ring.add(u);
+      const inside = byGroups ? m.grp[u] === g0 : dist2(P, u, pt.x, pt.y, pt.z) <= r2 && (curGroup < 0 || m.grp[u] === curGroup);
+      if (inside) { inR.add(u); region.push(u); } else ring.add(u);
     });
   }
-  const origin = new THREE.Vector3();
-  if (ring.size) { for (const u of ring) origin.x += P[u * 3], origin.y += P[u * 3 + 1], origin.z += P[u * 3 + 2]; origin.multiplyScalar(1 / ring.size); }
-  else { for (const u of region) origin.x += P[u * 3], origin.y += P[u * 3 + 1], origin.z += P[u * 3 + 2]; origin.multiplyScalar(1 / region.length); }
+  let joint = [...ring];
+  if (byGroups && ring.size) {
+    // the border with the group it shares the most of
+    const by = new Map(); for (const u of ring) by.set(m.grp[u], (by.get(m.grp[u]) || 0) + 1);
+    let best = -1, bc = -1; for (const [gg, c] of by) if (c > bc) { bc = c; best = gg; }
+    joint = joint.filter((u) => m.grp[u] === best);
+  }
+  const origin = new THREE.Vector3(), centre = new THREE.Vector3();
+  for (const u of region) centre.x += P[u * 3], centre.y += P[u * 3 + 1], centre.z += P[u * 3 + 2];
+  centre.multiplyScalar(1 / region.length);
+  if (joint.length) { for (const u of joint) origin.x += P[u * 3], origin.y += P[u * 3 + 1], origin.z += P[u * 3 + 2]; origin.multiplyScalar(1 / joint.length); }
+  else origin.copy(centre);
+  const axis = centre.clone().sub(origin); if (axis.lengthSq() < 1e-16) axis.set(0, 1, 0); axis.normalize();
   // two more rings outside for a soft joint
   const all = region.slice(), inAll = new Set(region);
   let front = [...ring];
@@ -3486,7 +3513,7 @@ function poseRegion(pt, r) {
     }
     [w, nw] = [nw, w];
   }
-  return { idx: all, w, origin };
+  return { idx: all, w, origin, axis };
 }
 // vertices within r of pt that are connected to the surface under pt (ZBrush: Move Topological);
 // the other lip of a mouth or a neighbouring finger stays where it is
@@ -3573,6 +3600,7 @@ function rustBrushDab(tool, c, r, s, sign, b, dab, count, A, Pc, V) {
   let auxN = 0, auxSrc = null;
   const par = new Float64Array(28);
   par.set([c.x, c.y, c.z, A[0], A[1], A[2], Pc[0], Pc[1], Pc[2], V[0], V[1], V[2], r, s, sign, b.mod || 0]);
+  if (tool === 'pinch' && dab.dir && S.pinchLine) par[16] = 1;
   if (tool === 'planar') {
     if (!stroke.planes) stroke.planes = [];
     const pl = stroke.planes[dab.copy || 0] || (stroke.planes[dab.copy || 0] = [Pc[0], Pc[1], Pc[2], A[0], A[1], A[2]]);
@@ -3637,6 +3665,16 @@ function rustBrushDab(tool, c, r, s, sign, b, dab, count, A, Pc, V) {
   else frame_.positions = true;
   return true;
 }
+function tiltNormal(ax, ay, az, tilt, strength, mirror) {
+  const rot = (Math.PI / 2) * Math.min(1, strength) * 0.7;
+  let v = new THREE.Vector3(ax, ay, az);
+  // (a symmetric copy leans as the mirror image of the pen)
+  const right = new THREE.Vector3(1, 0, 0).applyQuaternion(cam.q), up = new THREE.Vector3(0, 1, 0).applyQuaternion(cam.q);
+  const R = mirror ? symV(mirror, right) : right, U = mirror ? symV(mirror, up) : up;
+  const det = mirror ? mirror[0] * (mirror[4] * mirror[8] - mirror[5] * mirror[7]) - mirror[1] * (mirror[3] * mirror[8] - mirror[5] * mirror[6]) + mirror[2] * (mirror[3] * mirror[7] - mirror[4] * mirror[6]) : 1;
+  v.applyAxisAngle(R, tilt[1] * rot * (det < 0 ? -1 : 1)).applyAxisAngle(U, tilt[0] * rot * (det < 0 ? -1 : 1)).normalize();
+  return [v.x, v.y, v.z];
+}
 function applyBrush(tool, c, n, r, s, sign, dab = {}) {
   const m = mesh, b = dab.b || BRUSH_DEFAULTS;
   const front = curFront && tool !== 'smooth';
@@ -3656,11 +3694,14 @@ function applyBrush(tool, c, n, r, s, sign, dab = {}) {
   if (al < 1e-8) { ax = n.x; ay = n.y; az = n.z; al = 1; }
   ax /= al; ay /= al; az /= al;
   if (wsum > 0) { px /= wsum; py /= wsum; pz /= wsum; } else { px = c.x; py = c.y; pz = c.z; }
+  // the pen's lean steers the direction of the push (as Blender's Tilt Strength): up to 63° at a full lean
+  // and full setting, about the view's axes, for the brushes that push one way (draw, clay strips, the planes)
+  if (S.penTilt > 0 && (penTilt[0] || penTilt[1]) && (tool === 'draw' || tool === 'claystrips' || tool === 'flatten' || tool === 'scrape')) [ax, ay, az] = tiltNormal(ax, ay, az, penTilt, S.penTilt, dab.copy ? SYM[dab.copy - 1].m : null);
 
   // brush plane: u along the stroke (or the screen's x), v across, both tangent to the area normal
   let ux = 0, uy = 0, uz = 0, vx = 0, vy = 0, vz = 0;
   const A = alphaData(b.alpha, requestRender);
-  if (square || A || b.mod) {
+  if (square || A || b.mod || (tool === 'pinch' && dab.dir && S.pinchLine)) {
     let dx = 1, dy = 0, dz = 0;
     // the stamp turns with the stroke only if asked (Roll); Brush Mod's pinch always works across the stroke
     if (dab.uv) { dx = dab.uv.u[0]; dy = dab.uv.u[1]; dz = dab.uv.u[2]; }
@@ -3830,12 +3871,19 @@ function applyBrush(tool, c, n, r, s, sign, dab = {}) {
     case 'smooth': smoothVerts(G, F, count, Math.min(1, s * 1.2)); break;
     case 'pinch': case 'crease': {
       const kp = (tool === 'pinch' ? 0.18 : 0.14) * s * sign;
+      const pinchLine = tool === 'pinch' && !!dab.dir && S.pinchLine, qvx = vx, qvy = vy, qvz = vz;
       const dd = tool === 'crease' ? -r * 0.07 * s * sign : 0;
       for (let k = 0; k < count; k++) {
         const i = G[k], w = F[k] * (1 - MK[i]); if (w <= 0) continue; touchVert(i);
         let vx = c.x - P[i * 3], vy = c.y - P[i * 3 + 1], vz = c.z - P[i * 3 + 2];
         const along = vx * ax + vy * ay + vz * az;           // keep pinch tangent to the surface
         vx -= ax * along; vy -= ay * along; vz -= az * along;
+        if (pinchLine) {
+          // (as Blender's pinch) toward the stroke's line, not its point: only the part across the stroke, so
+          // the points do not bunch up into beads along the crease
+          const across = vx * qvx + vy * qvy + vz * qvz;
+          vx = qvx * across; vy = qvy * across; vz = qvz * across;
+        }
         const wc = w * w;
         P[i * 3] += vx * kp * w + ax * dd * wc; P[i * 3 + 1] += vy * kp * w + ay * dd * wc; P[i * 3 + 2] += vz * kp * w + az * dd * wc;
       }
@@ -4066,7 +4114,38 @@ function borderPair(m, v) {
   for (let j = 0; j < seen.length; j++) if (cnt[j] === 1) { if (a < 0) a = seen[j]; else if (b < 0) b = seen[j]; else return null; }
   return b >= 0 ? [a, b] : null;
 }
+// Smoothing that keeps the volume (Vollmer, Mencl & Müller 1999, the HC Laplacian; Blender's Surface
+// Smooth): the plain average first, then each point is pushed back by how much it and its neighbours were
+// pulled in, so bumps and noise go but the form does not shrink.
+function smoothVertsHC(G, F, count, s) {
+  const m = mesh, P = m.pos, MK = m.mask, T = m.tmp, n = count;
+  const avg = new Float32Array(n * 3), bd = new Float32Array(n * 3), slot = new Map();
+  for (let k = 0; k < n; k++) slot.set(G[k], k);
+  const ring = (i) => { const out = []; forNeighbors(m, i, (u) => { if (out.indexOf(u) < 0) out.push(u); }); return out; };
+  const rings = new Array(n);
+  for (let k = 0; k < n; k++) {
+    const i = G[k], R = rings[k] = (m.dyn ? (!m.vfA[i].length || m.isBoundary(i)) : (m.boundary[i] || m.vvOff[i + 1] === m.vvOff[i])) ? null : ring(i);
+    if (!R || !R.length) { avg[k * 3] = P[i * 3]; avg[k * 3 + 1] = P[i * 3 + 1]; avg[k * 3 + 2] = P[i * 3 + 2]; continue; }
+    let x = 0, y = 0, z = 0; for (const u of R) { x += P[u * 3]; y += P[u * 3 + 1]; z += P[u * 3 + 2]; }
+    avg[k * 3] = x / R.length; avg[k * 3 + 1] = y / R.length; avg[k * 3 + 2] = z / R.length;
+    // how far the average pulled it (the point's own position stands for the original: α = 1)
+    bd[k * 3] = avg[k * 3] - P[i * 3]; bd[k * 3 + 1] = avg[k * 3 + 1] - P[i * 3 + 1]; bd[k * 3 + 2] = avg[k * 3 + 2] - P[i * 3 + 2];
+  }
+  const beta = 0.6;
+  for (let k = 0; k < n; k++) {
+    const R = rings[k]; let bx = 0, by = 0, bz = 0, c = 0;
+    if (R) for (const u of R) { const j = slot.get(u); if (j === undefined) continue; bx += bd[j * 3]; by += bd[j * 3 + 1]; bz += bd[j * 3 + 2]; c++; }
+    if (c) { bx /= c; by /= c; bz /= c; }
+    T[k * 3] = avg[k * 3] - (beta * bd[k * 3] + (1 - beta) * bx); T[k * 3 + 1] = avg[k * 3 + 1] - (beta * bd[k * 3 + 1] + (1 - beta) * by); T[k * 3 + 2] = avg[k * 3 + 2] - (beta * bd[k * 3 + 2] + (1 - beta) * bz);
+  }
+  for (let k = 0; k < n; k++) {
+    const i = G[k], w = Math.min(1, F[k] * s) * (1 - MK[i]); if (w <= 0 || !rings[k]) continue; touchVert(i);
+    P[i * 3] += (T[k * 3] - P[i * 3]) * w; P[i * 3 + 1] += (T[k * 3 + 1] - P[i * 3 + 1]) * w; P[i * 3 + 2] += (T[k * 3 + 2] - P[i * 3 + 2]) * w;
+  }
+  frame_.positions = true;
+}
 function smoothVerts(G, F, count, s) {
+  if (stroke && stroke.b && stroke.b.base === 'smooth' && stroke.b.keepVol && S.smoothHC !== false) { smoothVertsHC(G, F, count, s); return; }
   if (rustBrushes && coreSync && count && rustSmooth(G, F, count, s)) return;
   const m = mesh, P = m.pos, T = m.tmp, MK = m.mask;
   for (let k = 0; k < count; k++) {
@@ -4155,7 +4234,7 @@ function beginStroke(e, x, y, b, sign) {
     const hit = pick(x, y);
     if (!hit) { stroke = null; return false; }
     const r = radiusPxFor(1, b) * worldPerPx(hit.point);
-    const parts = [hit.point, ...SYM.map(({ m }) => symV(m, hit.point))].map((c, k) => ({ m: k ? SYM[k - 1].m : IDENT, ...inGroup(b, c, r, () => poseRegion(c, r)) }));
+    const parts = [hit.point, ...SYM.map(({ m }) => symV(m, hit.point))].map((c, k) => ({ m: k ? SYM[k - 1].m : IDENT, ...inGroup(b, c, r, () => poseRegion(c, r, b.poseGroups)) }));
     // all parts share one list of vertices; where copies overlap (a part on the symmetry plane) each
     // vertex blends their turns by weight, so the overlap bends smoothly instead of tearing
     const slot = new Map(), all = [];
@@ -4165,7 +4244,7 @@ function beginStroke(e, x, y, b, sign) {
     stroke.pose = {
       start: hit.point.clone(), camN: new THREE.Vector3(0, 0, 1).applyQuaternion(camera.quaternion), r, strength: b.strength,
       idx: Uint32Array.from(all), orig, acc: new Float64Array(all.length * 5),
-      parts: parts.map((pt) => ({ m: pt.m, origin: pt.origin, slots: pt.slots, w: pt.w })),
+      parts: parts.map((pt) => ({ m: pt.m, origin: pt.origin, axis: pt.axis, slots: pt.slots, w: pt.w })), twist: b.poseMode === 'twist', x0: x,
     };
     stroke.queue.length = 0;
     placeRing(hit.point, hit.normal, r);
@@ -4208,7 +4287,10 @@ function beginStroke(e, x, y, b, sign) {
         });
         const P = mesh.pos, orig = new Float32Array(idx.length * 3);
         for (let k = 0; k < idx.length; k++) { const i = idx[k]; orig[k * 3] = P[i * 3]; orig[k * 3 + 1] = P[i * 3 + 1]; orig[k * 3 + 2] = P[i * 3 + 2]; }
-        stroke.grab.soft = { idx: Uint32Array.from(idx), orig, eSlot: Uint32Array.from(eSlot), eT: Uint16Array.from(eT), eW: Float32Array.from(eW), Ms, acc: new Float64Array(idx.length * 5) };
+        // (for „Само страната към дърпането“: the normals from before the stroke)
+        const NR0 = mesh.nrm, on = new Float32Array(b.silhouette ? idx.length * 3 : 0);
+        if (b.silhouette) for (let k = 0; k < idx.length; k++) { const i = idx[k]; on[k * 3] = NR0[i * 3]; on[k * 3 + 1] = NR0[i * 3 + 1]; on[k * 3 + 2] = NR0[i * 3 + 2]; }
+        stroke.grab.soft = { idx: Uint32Array.from(idx), orig, on, eSlot: Uint32Array.from(eSlot), eT: Uint16Array.from(eT), eW: Float32Array.from(eW), Ms, acc: new Float64Array(idx.length * 5) };
       }
       stroke.grab.start = hit.point.clone();
     }
@@ -4267,11 +4349,18 @@ function processStroke() {
     // turn each part about its joint so that the grabbed point points at the pen
     const s = q[q.length - 1]; q.length = 0;
     const g = stroke.pose, main = g.parts[0];
-    const to = screenToPlane(s.x, s.y, g.start, g.camN);
-    if (!to) return;
-    const a = g.start.clone().sub(main.origin), bv = to.clone().sub(main.origin);
-    if (a.lengthSq() < 1e-12 || bv.lengthSq() < 1e-12) return;
-    const rot = new THREE.Quaternion().setFromUnitVectors(a.normalize(), bv.normalize());
+    let rot;
+    if (g.twist) {
+      // Twist (as Blender's Pose: Rotate/Twist): left and right turn the part about its own axis, from the
+      // joint to its middle; for the main part, a mirrored copy turns the mirror way through M·R·Mᵀ below
+      rot = new THREE.Quaternion().setFromAxisAngle(main.axis, (s.x - g.x0) * 0.012);
+    } else {
+      const to = screenToPlane(s.x, s.y, g.start, g.camN);
+      if (!to) return;
+      const a = g.start.clone().sub(main.origin), bv = to.clone().sub(main.origin);
+      if (a.lengthSq() < 1e-12 || bv.lengthSq() < 1e-12) return;
+      rot = new THREE.Quaternion().setFromUnitVectors(a.normalize(), bv.normalize());
+    }
     if (g.strength < 1) rot.slerp(new THREE.Quaternion(), 1 - g.strength);
     const R = new THREE.Matrix3().setFromMatrix4(new THREE.Matrix4().makeRotationFromQuaternion(rot)).elements;   // column-major
     const P = mesh.pos, MK = mesh.mask, A = g.acc, O = g.orig;
@@ -4407,11 +4496,19 @@ function processStroke() {
         const j = eSlot[e], f = F[eT[e]], w = eW[e];
         A[j * 5] += f[0] * w; A[j * 5 + 1] += f[1] * w; A[j * 5 + 2] += f[2] * w; A[j * 5 + 3] += w; if (w > A[j * 5 + 4]) A[j * 5 + 4] = w;
       }
+      // Grab Silhouette (as in Blender): only the side that faces the pull goes with it, so the edge of a
+      // silhouette can be pulled out without dragging the back of the form along
+      let sil = null;
+      if (g.soft.on.length) {
+        const tl = Math.hypot(tx, ty, tz);
+        if (tl > 1e-12) { const sg = Math.sign(tx * g.normal.x + ty * g.normal.y + tz * g.normal.z) || 1; sil = [tx / tl * sg, ty / tl * sg, tz / tl * sg]; }
+      }
       for (let k = 0; k < idx.length; k++) {
         const i = idx[k], free = 1 - MK[i];
         if (free <= 0) continue;
         touchVert(i);
-        const sum = A[k * 5 + 3], sc = sum > 0 ? (A[k * 5 + 4] / sum) * free : 0;
+        let sc = A[k * 5 + 3] > 0 ? (A[k * 5 + 4] / A[k * 5 + 3]) * free : 0;
+        if (sil) { const on = g.soft.on; sc *= Math.max(0, sil[0] * on[k * 3] + sil[1] * on[k * 3 + 1] + sil[2] * on[k * 3 + 2]); }
         P[i * 3] = O[k * 3] + A[k * 5] * sc; P[i * 3 + 1] = O[k * 3 + 1] + A[k * 5 + 1] * sc; P[i * 3 + 2] = O[k * 3 + 2] + A[k * 5 + 2] * sc;
       }
     }
@@ -4902,7 +4999,11 @@ let gesture = null;   // Ctrl + press: becomes a mask stroke, a mask click or a 
 let hoverXY = null;
 let lastPressure = 0;
 
+// the pen's lean (−1…1 each way, from the tilt in degrees), for brushes whose direction it can steer
+let penTilt = [0, 0];
 function readPressure(e) {
+  if (e.pointerType === 'pen' && Number.isFinite(e.tiltX) && Number.isFinite(e.tiltY)) penTilt = [Math.max(-1, Math.min(1, e.tiltX / 90)), Math.max(-1, Math.min(1, e.tiltY / 90))];
+  else if (e.pointerType !== 'pen') penTilt = [0, 0];
   if (e.pointerType === 'mouse') return 1;
   if (e.pointerType === 'touch') return e.pressure > 0 && e.pressure !== 0.5 ? e.pressure : 1;   // most fingers report 0.5 or 0
   return e.pressure || 0;
@@ -10303,6 +10404,7 @@ const syncRadius = bindRange('sRadius', 'oRadius', () => brush().radius, (v) => 
 const syncStrength = bindRange('sStrength', 'oStrength', () => Math.sqrt(Math.max(0, brush().strength)), (v) => (brush().strength = Math.round(v * v * 10000) / 10000), (v) => Math.round(v * 100) + '%');
 bindRange('sCurve', 'oCurve', () => S.curve, (v) => (S.curve = v), (v) => (v < 1 ? 'мека ' : v > 1 ? 'твърда ' : 'права ') + v.toFixed(2));
 bindRange('sStab', 'oStab', () => S.stab, (v) => (S.stab = v), pct);
+bindRange('sPenTilt', 'oPenTilt', () => S.penTilt, (v) => (S.penTilt = v), (v) => (v ? pct(v) : 'не'));
 bindRange('sDetail', 'oDetail', () => S.detail, (v) => { S.detail = v; syncDynUI(); }, (v) => v + ' px');
 const brushSyncs = [
   bindRange('sFocal', 'oFocal', () => brush().focal, (v) => { brush().focal = v; drawCurve(); }, (v) => (v > 0 ? '+' : '') + Math.round(v * 100)),
@@ -10339,6 +10441,7 @@ brushSyncs.push(
   brushChips('zmChips', [{ id: 'extrude', name: 'Изтегли (Extrude)' }, { id: 'inset', name: 'Вдлъбни ръба (Inset)' }, { id: 'bevel', name: 'Скос (Bevel)' }], 'zm'),
   brushChips('ffdChips', [2, 3, 4, 5].map((k) => ({ id: k, name: k + '×' + k + '×' + k })), 'ffdN', () => { lattice = null; drawOverlay(); }),
   brushChips('ffdModeChips', [{ id: 'cage', name: 'Клетка (FFD)' }, { id: 'curve', name: 'Крива (Bend Curve)' }], 'ffdMode', () => { lattice = null; drawOverlay(); }),
+  brushChips('poseChips', [{ id: 'bend', name: 'Сгъване' }, { id: 'twist', name: 'Усукване около оста' }], 'poseMode'),
   brushChips('arrDragChips', [{ id: 'move', name: 'Мести (разстояние)' }, { id: 'turn', name: 'Върти' }, { id: 'scale', name: 'Мащаб' }, { id: 'count', name: 'Брой' }], 'arr'),
   brushChips('kelChips', [{ id: 'twist', name: 'Усукване (Twist)' }, { id: 'scale', name: 'Раздуване ↔ свиване (Scale)' }, { id: 'pinch', name: 'Прищипване (Pinch)' }], 'kel'),
   brushChips('clothChips', [{ id: 'pinch', name: 'Събира (ClothPinch)' }, { id: 'slide', name: 'Бута по щриха (ClothSlide)' }, { id: 'inflate', name: 'Надува (ClothInflate)' }, { id: 'hook', name: 'Кука: тегли след писалката (ClothHook)' }, { id: 'twist', name: 'Усуква (ClothTwister)' }], 'cloth'),
@@ -10437,13 +10540,16 @@ function syncBrushUI() {
   $('sAngle').closest('.row').hidden = b.alphaRot === 'random';
   $('bBrushReset').textContent = b.builtin ? 'Нулирай' : 'Изтрий';
   for (const f of brushSyncs) f();
-  $('tFront').checked = b.front; $('tTopo').checked = b.topo; $('tDeep').checked = b.deep; $('tGroupOnly').checked = b.group;
+  $('tFront').checked = b.front; $('tKeepVol').checked = !!b.keepVol; $('keepVolRow').hidden = base !== 'smooth'; $('tSil').checked = !!b.silhouette; $('poseGrp').hidden = base !== 'pose'; $('tPoseGroups').checked = !!b.poseGroups; $('silRow').hidden = !(base === 'grab' && b.grab !== 'elastic'); $('tTopo').checked = b.topo; $('tDeep').checked = b.deep; $('tGroupOnly').checked = b.group;
   syncBrushBox(b);
   renderAlphas(); drawCurve();
 }
 $('tDynSize').checked = S.dynSize;
 $('tDynSize').addEventListener('change', () => { S.dynSize = $('tDynSize').checked; S.dynRef = cam.dist; saveSettings(); requestRender(); });
 $('tFront').addEventListener('change', () => { brush().front = $('tFront').checked; saveSettings(); });
+$('tKeepVol').addEventListener('change', () => { brush().keepVol = $('tKeepVol').checked; saveSettings(); });
+$('tPoseGroups').addEventListener('change', () => { brush().poseGroups = $('tPoseGroups').checked; saveSettings(); });
+$('tSil').addEventListener('change', () => { brush().silhouette = $('tSil').checked; saveSettings(); });
 $('tTopo').addEventListener('change', () => { brush().topo = $('tTopo').checked; saveSettings(); });
 $('tDeep').addEventListener('change', () => { brush().deep = $('tDeep').checked; saveSettings(); });
 $('tGroupOnly').addEventListener('change', () => { brush().group = $('tGroupOnly').checked; saveSettings(); });
@@ -11027,5 +11133,5 @@ loadAutosave().then((d) => {
     toast('Продължавате последния модел. „Нов“ започва отначало.');
   }
 });
-window.__glina = { get journal() { return journal; }, journalFile, logEv, gatherConnected, arrayDrag, foldPanel, arraySize, tposeStart, tposeApply, get TP() { return TP; }, setThick, thickOf, get rustMR() { return rustMR; }, set rustMR(v) { rustMR = v; }, mrEncode, mrDecode, mrLower, mrFrames, setWheel, camHist, camHistGo, get wheelOp() { return wheelOp; }, frameView, arrayMatrices, arrayPreview, get arrPrev() { return arrPrev; }, resetPanels, applySecLayout, get rustDyn() { return rustDyn; }, set rustDyn(v) { rustDyn = v; }, get mrPending() { return mrPending; }, openPatterns, closePatterns, selectPattern, patternAlongCurve, armPatternCurve, beginStroke, processStroke, endStroke, get rustBrushes() { return rustBrushes; }, set rustBrushes(v) { rustBrushes = v; }, openBrushPanel, closeBrushPanel, openPalette, closePalette, setDrawerTab, railIds, microPoly, topoAdd, topoBuild, topoMake, get topoLines() { return topoLines; }, set topoLines(v) { topoLines = v; }, shadowAdd, shadowMake, get shadows() { return shadows; }, set shadows(v) { shadows = v; }, earClip, shadowPrism, viewAxis, bendBuild, vdmCapture, vdmReset, get vdmField() { return vdmField; }, set vdmField(v) { vdmField = v; }, vdmDefault, snakeAlongCurve, quadRemesh, quadRemeshArrays, surfaceStats, get coreSync() { return coreSync; }, set subdivCore(v) { subdivCore = v; }, polyTris, studioPNG, setCustomMatcap, dropCustomMatcap, get customMatcap() { return customMatcap; }, matcapTextures, material, get gmesh() { return gmesh; }, renderer, makeCube, polishFeatures, sliceGroups, makeGear, makeTube, makeRing, revolve, meshToAxis, straighten, transformTools, gizmoTools, eigenSym3, subdivideArrays, slimeBridge, nanoMesh, maskIslands, texturedFiles, zipMany, levelArrays, zmBuild, quadsOf, exportSTL, renderPrintInfo, decimate, decimateArrays, printScale, projectBytes, saveProject, openProject, packValue, unpackValue, panelLoops, balloonTool, shellFrom, refOpen, refState, refColourAt, refLayout, smoothViewUpdate, get smoothViewObj() { return smoothViewObj; }, recallFrom, makeFibers, fiberArrays, projectAll, storeMorph, switchMorph, dropMorph, morphOf, fillColour, cavityColour, zsOpen, zsClose, zsSkin, get zs() { return zs; }, xtract, latticeLive, latticeScreen, get lattice() { return lattice; }, surfaceContrast, snapshotPNG, maskHidden, startCloth, stopCloth, get clothRun() { return clothRun; }, hideSelection, hideGroup, showAll, invertVisibility, hideMasked, deleteHidden, hiddenCount, setHiddenUndoable, deform, makeArray, arrayArrays, setGizmoMode, get gizmoPin() { return gizmoPin; }, set gizmoPin(v) { gizmoPin = v; }, exportOBJ, scheduleAutosave, get TOOLS() { return TOOLS; }, get curTool() { return curTool; }, activateTool, addTool, appendPrimitive, duplicateTool, deleteTool, moveTool, mergeDown, splitGroups, extractTool, extractShell, makeBoolean, newScene, gizmoHandle, gizmoScreen, get solo() { return solo; }, set solo(v) { solo = v; renderOthers(); }, toolArrays, voxelCombine, voxelRemesh, coreStart, get working() { return working; }, sliceByPlane, mirrorWeldArrays, mirrorWeld, mirrorFlip, applyNoise, snapView, setOrtho, historyJump, polyframe, get cam() { return cam; }, trimByPlane, applyCut, tubeArrays, immShape, hasOpenEdges, get curve() { return liveCurve(); }, dropCurve, get immFile() { return immFile; }, set immFile(v) { immFile = v; }, get LAYERS() { return LAYERS; }, get recLayer() { return recLayer; }, addLayer, deleteLayer, toggleLayer, recordLayer, setLayerStrength, bakeLayers, groupOp, maskAllBut, groupNear, get mesh() { return mesh; }, get stroke() { return stroke; }, get gesture() { return gesture; }, get nav() { return nav; }, get MR() { return MR; }, syncSym, get SYM() { return SYM; }, setLevel, divide, deleteLower, deleteHigher, camera, orbit, pick, selectTool, brush, brushById, maskOp, remesh, undo, redo, subdivide, setDyntopo, floodDetail, S, get undoStack() { return undoStack; } };
+window.__glina = { tiltNormal, set penTiltNow(v) { penTilt = v; }, get journal() { return journal; }, journalFile, logEv, gatherConnected, arrayDrag, foldPanel, arraySize, tposeStart, tposeApply, get TP() { return TP; }, setThick, thickOf, get rustMR() { return rustMR; }, set rustMR(v) { rustMR = v; }, mrEncode, mrDecode, mrLower, mrFrames, setWheel, camHist, camHistGo, get wheelOp() { return wheelOp; }, frameView, arrayMatrices, arrayPreview, get arrPrev() { return arrPrev; }, resetPanels, applySecLayout, get rustDyn() { return rustDyn; }, set rustDyn(v) { rustDyn = v; }, get mrPending() { return mrPending; }, openPatterns, closePatterns, selectPattern, patternAlongCurve, armPatternCurve, beginStroke, processStroke, endStroke, get rustBrushes() { return rustBrushes; }, set rustBrushes(v) { rustBrushes = v; }, openBrushPanel, closeBrushPanel, openPalette, closePalette, setDrawerTab, railIds, microPoly, topoAdd, topoBuild, topoMake, get topoLines() { return topoLines; }, set topoLines(v) { topoLines = v; }, shadowAdd, shadowMake, get shadows() { return shadows; }, set shadows(v) { shadows = v; }, earClip, shadowPrism, viewAxis, bendBuild, vdmCapture, vdmReset, get vdmField() { return vdmField; }, set vdmField(v) { vdmField = v; }, vdmDefault, snakeAlongCurve, quadRemesh, quadRemeshArrays, surfaceStats, get coreSync() { return coreSync; }, set subdivCore(v) { subdivCore = v; }, polyTris, studioPNG, setCustomMatcap, dropCustomMatcap, get customMatcap() { return customMatcap; }, matcapTextures, material, get gmesh() { return gmesh; }, renderer, makeCube, polishFeatures, sliceGroups, makeGear, makeTube, makeRing, revolve, meshToAxis, straighten, transformTools, gizmoTools, eigenSym3, subdivideArrays, slimeBridge, nanoMesh, maskIslands, texturedFiles, zipMany, levelArrays, zmBuild, quadsOf, exportSTL, renderPrintInfo, decimate, decimateArrays, printScale, projectBytes, saveProject, openProject, packValue, unpackValue, panelLoops, balloonTool, shellFrom, refOpen, refState, refColourAt, refLayout, smoothViewUpdate, get smoothViewObj() { return smoothViewObj; }, recallFrom, makeFibers, fiberArrays, projectAll, storeMorph, switchMorph, dropMorph, morphOf, fillColour, cavityColour, zsOpen, zsClose, zsSkin, get zs() { return zs; }, xtract, latticeLive, latticeScreen, get lattice() { return lattice; }, surfaceContrast, snapshotPNG, maskHidden, startCloth, stopCloth, get clothRun() { return clothRun; }, hideSelection, hideGroup, showAll, invertVisibility, hideMasked, deleteHidden, hiddenCount, setHiddenUndoable, deform, makeArray, arrayArrays, setGizmoMode, get gizmoPin() { return gizmoPin; }, set gizmoPin(v) { gizmoPin = v; }, exportOBJ, scheduleAutosave, get TOOLS() { return TOOLS; }, get curTool() { return curTool; }, activateTool, addTool, appendPrimitive, duplicateTool, deleteTool, moveTool, mergeDown, splitGroups, extractTool, extractShell, makeBoolean, newScene, gizmoHandle, gizmoScreen, get solo() { return solo; }, set solo(v) { solo = v; renderOthers(); }, toolArrays, voxelCombine, voxelRemesh, coreStart, get working() { return working; }, sliceByPlane, mirrorWeldArrays, mirrorWeld, mirrorFlip, applyNoise, snapView, setOrtho, historyJump, polyframe, get cam() { return cam; }, trimByPlane, applyCut, tubeArrays, immShape, hasOpenEdges, get curve() { return liveCurve(); }, dropCurve, get immFile() { return immFile; }, set immFile(v) { immFile = v; }, get LAYERS() { return LAYERS; }, get recLayer() { return recLayer; }, addLayer, deleteLayer, toggleLayer, recordLayer, setLayerStrength, bakeLayers, groupOp, maskAllBut, groupNear, get mesh() { return mesh; }, get stroke() { return stroke; }, get gesture() { return gesture; }, get nav() { return nav; }, get MR() { return MR; }, syncSym, get SYM() { return SYM; }, setLevel, divide, deleteLower, deleteHigher, camera, orbit, pick, selectTool, brush, brushById, maskOp, remesh, undo, redo, subdivide, setDyntopo, floodDetail, S, get undoStack() { return undoStack; } };
 </script>

@@ -254,6 +254,64 @@ const rimOff = await rimRun(true, false), rimR = await rimRun(true, true), rimJ 
 check('„Изглаждане“ smooths a jagged open rim along itself (it stayed jagged before)', rimR.n > 10 && rimR.jag1 < rimR.jag0 * 0.35 && rimOff.jag1 > rimOff.jag0 * 0.9, { before: rimR.jag0, now: rimR.jag1, without: rimOff.jag1 });
 check('… without pulling the rim in from the side', Math.abs(rimR.inward) < 0.004, { inward: rimR.inward });
 check('… the same to the bit in Rust and in JavaScript', rimR.pos.length === rimJ.pos.length && rimR.pos.every((v, k) => v === rimJ.pos[k]));
+// ---------- pen tilt steers the push (as Blender's Tilt Strength) ----------
+const tl = await G(() => { const W = window.__glina; W.cam.q.set(0, 0, 0, 1); W.orbit(0, 0); const a = W.tiltNormal(0, 0, 1, [0.5, 0], 1, null), c = W.tiltNormal(0, 0, 1, [0, 0.5], 1, null), z = W.tiltNormal(0, 0, 1, [0, 0], 1, null); return { a, c, z }; });
+check('the pen leaning right turns the push right, leaning down turns it down, upright leaves it', tl.a[0] > 0.4 && Math.abs(tl.a[1]) < 1e-6 && tl.c[1] < -0.4 && Math.abs(tl.c[0]) < 1e-6 && Math.abs(tl.z[2] - 1) < 1e-9, tl);
+// ---------- pinch toward the stroke's line (as Blender) ----------
+const pinchRun = async (line) => {
+  await G(() => { const W = window.__glina; document.getElementById('bNew').click(); [...document.querySelectorAll('#menu button')].find((b) => b.textContent.startsWith('Сфера, по-лека')).click(); W.S.sym = false; W.syncSym(); W.orbit(0, 0); });
+  const b0 = await G(() => Array.from(window.__glina.mesh.pos.subarray(0, window.__glina.mesh.n * 3)));
+  await G((line) => { const W = window.__glina; W.S.pinchLine = line; W.selectTool('pinch'); W.brush().radius = 50; W.brush().strength = 1; }, line);
+  for (let k = 0; k < 4; k++) await drag(cx - 130, cy, cx + 130, cy);
+  const r = await G((b0) => { const P = window.__glina.mesh.pos; let along = 0, across = 0, c = 0; for (let i = 0; i < P.length / 3; i++) { const d = Math.hypot(P[i*3]-b0[i*3], P[i*3+1]-b0[i*3+1], P[i*3+2]-b0[i*3+2]); if (d < 1e-4 || b0[i*3+2] < 0.5) continue; along += Math.abs(P[i*3] - b0[i*3]); across += Math.abs(P[i*3+1] - b0[i*3+1]); c++; } return { along: along / c, across: across / c }; }, b0);
+  await G(() => { window.__glina.S.pinchLine = true; });
+  return r;
+};
+const pOld = await pinchRun(false), pNew = await pinchRun(true);
+check('„Притискане“ draws toward the stroke\'s line: much less movement along the stroke, as much across it', pNew.along < pOld.along * 0.5 && pNew.across > pOld.across * 0.7, { before: pOld, now: pNew });
+// ---------- smoothing that keeps the volume (as Blender's Surface Smooth) ----------
+const hcRun = async (keep) => {
+  await G(() => { const W = window.__glina; document.getElementById('bNew').click(); [...document.querySelectorAll('#menu button')].find((b) => b.textContent.startsWith('Сфера, по-лека')).click(); W.S.sym = false; W.syncSym(); W.orbit(0, 0); });
+  const rad = () => G(() => { const m = window.__glina.mesh, P = m.pos; let s = 0, c = 0; for (let i = 0; i < m.n; i++) { if (P[i*3+2] < 0.9) continue; s += Math.hypot(P[i*3], P[i*3+1], P[i*3+2]); c++; } return s / c; });
+  const r0 = await rad();
+  await G((keep) => { const W = window.__glina; W.selectTool('smooth'); W.brush().keepVol = keep; W.brush().radius = 120; W.brush().strength = 1; }, keep);
+  for (let k = 0; k < 6; k++) await drag(cx - 60, cy - 30 + k * 12, cx + 60, cy - 30 + k * 12);
+  const r1 = await rad();
+  await G(() => { window.__glina.brush().keepVol = false; });
+  return 1 - r1 / r0;
+};
+const shrinkPlain = await hcRun(false), shrinkHC = await hcRun(true);
+check('„Без свиване“: smoothing a coarse sphere does not shrink it (the plain smoothing does)', shrinkPlain > 0.002 && Math.abs(shrinkHC) < shrinkPlain * 0.05, { shrinkPlain, shrinkHC });
+check('the switch is in the smooth brush\'s box', await G(() => { const W = window.__glina; W.selectTool('smooth'); W.openBrushPanel(); const ok = !document.getElementById('keepVolRow').hidden && document.getElementById('silRow').hidden; W.closeBrushPanel(); return ok; }));
+// ---------- Grab Silhouette: only the side facing the pull ----------
+const silRun = async (sil) => {
+  await G(() => { const W = window.__glina, T = W.cam.target.constructor, M3 = W.camera.normalMatrix.constructor; document.getElementById('bNew').click(); [...document.querySelectorAll('#menu button')].find((b) => b.textContent.startsWith('Сфера, по-лека')).click(); W.S.sym = false; W.syncSym(); W.transformTools([W.TOOLS[W.curTool]], new M3().set(1, 0, 0, 0, 1, 0, 0, 0, 0.08), new T(0, 0, 0), new T(0, 0, 0)); W.cam.q.set(0, 0, 0, 1); W.orbit(0, 0); });
+  await frames(2);
+  const b0 = await G(() => Array.from(window.__glina.mesh.pos.subarray(0, window.__glina.mesh.n * 3)));
+  // pull the middle of the front outward, to the side (the side of a thin lens: its silhouette)
+  await G((sil) => { const W = window.__glina; W.selectTool('grab'); W.brush().silhouette = sil; W.brush().radius = 90; W.brush().strength = 1; }, sil);
+  const e = await G(() => { const W = window.__glina, r = document.getElementById('gl').getBoundingClientRect(), v = new W.cam.target.constructor(0.97, 0, 0).project(W.camera); return { x: r.left + (v.x * 0.5 + 0.5) * r.width, y: r.top + (-v.y * 0.5 + 0.5) * r.height }; });
+  await drag(e.x, e.y, e.x + 80, e.y);
+  const r = await G((b0) => { const P = window.__glina.mesh.pos; let mv = 0, back = 0, nb = 0; for (let i = 0; i < P.length / 3; i++) { const d = Math.hypot(P[i*3]-b0[i*3], P[i*3+1]-b0[i*3+1], P[i*3+2]-b0[i*3+2]); mv = Math.max(mv, d); if (b0[i*3] > 0.6 && b0[i*3] < 0.85 && Math.abs(b0[i*3+1]) < 0.15) { back += P[i*3] - b0[i*3]; nb++; } } return { most: mv, inner: back / nb }; }, b0);
+  await G(() => { window.__glina.brush().silhouette = false; });
+  return r;
+};
+const silOff = await silRun(false), silOn = await silRun(true);
+check('„Само страната към дърпането“: the rim still comes out, the clay further in follows much less', silOn.most > silOff.most * 0.6 && silOn.inner < silOff.inner * 0.6, { off: silOff, on: silOn });
+// ---------- Pose by groups, and twisting (as Blender's Pose) ----------
+const poseRun = async (opts) => {
+  await G(() => { const W = window.__glina, m = W.mesh; document.getElementById('bNew').click(); [...document.querySelectorAll('#menu button')].find((b) => b.textContent.startsWith('Сфера, по-лека')).click(); W.S.sym = false; W.syncSym(); W.cam.q.set(0, 0, 0, 1); W.orbit(0, 0); const M = W.mesh; for (let i = 0; i < M.n; i++) M.grp[i] = M.pos[i * 3 + 1] > 0.5 ? 1 : 0; });
+  const b0 = await G(() => Array.from(window.__glina.mesh.pos.subarray(0, window.__glina.mesh.n * 3)));
+  await G((o) => { const W = window.__glina; W.selectTool('pose'); W.brush().radius = 25; W.brush().strength = 1; W.brush().poseGroups = o.groups; W.brush().poseMode = o.mode; }, opts);
+  const e = await G(() => { const W = window.__glina, r = document.getElementById('gl').getBoundingClientRect(), v = new W.cam.target.constructor(0, 0.8, 0.6).project(W.camera); return { x: r.left + (v.x * 0.5 + 0.5) * r.width, y: r.top + (-v.y * 0.5 + 0.5) * r.height }; });
+  await drag(e.x, e.y, e.x + 120, e.y);
+  const res = await G((b0) => { const P = window.__glina.mesh.pos; let cap = 0, nc = 0, body = 0, nb = 0, dy = 0, dr = 0; for (let i = 0; i < P.length / 3; i++) { const d = Math.hypot(P[i*3]-b0[i*3], P[i*3+1]-b0[i*3+1], P[i*3+2]-b0[i*3+2]); if (b0[i*3+1] > 0.7) { cap += d > 1e-3 ? 1 : 0; nc++; dy = Math.max(dy, Math.abs(P[i*3+1]-b0[i*3+1])); dr = Math.max(dr, Math.abs(Math.hypot(P[i*3], P[i*3+2]) - Math.hypot(b0[i*3], b0[i*3+2]))); } else if (b0[i*3+1] < 0.3) { body = Math.max(body, d); nb++; } } return { capMoved: cap / nc, bodyMost: body, dy, dr }; }, b0);
+  await G(() => { const W = window.__glina; W.brush().poseGroups = false; W.brush().poseMode = 'bend'; });
+  return res;
+};
+const poseR = await poseRun({ groups: false, mode: 'bend' }), poseG = await poseRun({ groups: true, mode: 'bend' }), poseT = await poseRun({ groups: true, mode: 'twist' });
+check('„Поза“ по групи: the whole group under the press turns (a small radius alone takes only a part of it), the rest stays', poseG.capMoved > 0.95 && poseR.capMoved < 0.6 && poseG.bodyMost < 1e-3, { radius: poseR, groups: poseG });
+check('„Усукване около оста“: the part turns about its own axis — no point rises or leaves the axis', poseT.capMoved > 0.5 && poseT.dy < 0.01 && poseT.dr < 0.01 && poseT.bodyMost < 1e-3, poseT);
 check('no page errors', errors.length === 0, errors.slice(0, 5));
 await browser.close();
 const ok = results.filter(Boolean).length;

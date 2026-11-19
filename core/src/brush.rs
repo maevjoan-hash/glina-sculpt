@@ -146,6 +146,11 @@ pub fn dab(kind: u32, pos: &mut [f32], nrm: &[f32], mask: &[f32], fall: &[f32], 
                 let (mut wx, mut wy, mut wz) = (cx - pos[o] as f64, cy - pos[o + 1] as f64, cz - pos[o + 2] as f64);
                 let along = wx * ax + wy * ay + wz * az;
                 wx -= ax * along; wy -= ay * along; wz -= az * along;
+                if kind == PINCH && g(16) != 0.0 {
+                    // (toward the stroke's line: only the part across the stroke)
+                    let across = wx * vx + wy * vy + wz * vz;
+                    wx = vx * across; wy = vy * across; wz = vz * across;
+                }
                 let wc = w * w;
                 add(&mut pos[o], wx * kp * w + ax * dd * wc); add(&mut pos[o + 1], wy * kp * w + ay * dd * wc); add(&mut pos[o + 2], wz * kp * w + az * dd * wc);
             }
