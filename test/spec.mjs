@@ -312,6 +312,36 @@ const poseRun = async (opts) => {
 const poseR = await poseRun({ groups: false, mode: 'bend' }), poseG = await poseRun({ groups: true, mode: 'bend' }), poseT = await poseRun({ groups: true, mode: 'twist' });
 check('„Поза“ по групи: the whole group under the press turns (a small radius alone takes only a part of it), the rest stays', poseG.capMoved > 0.95 && poseR.capMoved < 0.6 && poseG.bodyMost < 1e-3, { radius: poseR, groups: poseG });
 check('„Усукване около оста“: the part turns about its own axis — no point rises or leaves the axis', poseT.capMoved > 0.5 && poseT.dy < 0.01 && poseT.dr < 0.01 && poseT.bodyMost < 1e-3, poseT);
+// ---------- Relax and Slide (as Blender's Relax and Topology Slide) ----------
+const meshRun = async (tool, opts = {}) => {
+  await G(() => { const W = window.__glina; document.getElementById('bNew').click(); [...document.querySelectorAll('#menu button')].find((b) => b.textContent.startsWith('Сфера, по-лека')).click(); W.S.sym = false; W.syncSym(); W.cam.q.set(0, 0, 0, 1); W.orbit(0, 0); });
+  if (opts.jitter) await G(() => {
+    // the polygons in front, stretched and bunched: every point pushed sideways (along the surface) at random
+    const m = window.__glina.mesh, P = m.pos; let seed = 7; const rnd = () => ((seed = (seed * 16807) % 2147483647) / 2147483647) - 0.5;
+    for (let i = 0; i < m.n; i++) { const x = P[i * 3], y = P[i * 3 + 1], z = P[i * 3 + 2]; if (z < 0.5) continue; let tx = rnd(), ty = rnd(), tz = rnd(); const d = tx * x + ty * y + tz * z; tx -= x * d; ty -= y * d; tz -= z * d; const nx = x + tx * 0.025, ny = y + ty * 0.025, nz = z + tz * 0.025, l = Math.hypot(nx, ny, nz); P[i * 3] = nx / l; P[i * 3 + 1] = ny / l; P[i * 3 + 2] = nz / l; }
+    const all = new Uint32Array(m.n); for (let i = 0; i < m.n; i++) all[i] = i; m.updateNormals(all, m.n);
+  });
+  const stat = () => G(() => {
+    const m = window.__glina.mesh, P = m.pos, I = m.idx, L = []; let rr = 0, nr = 0, flip = 0;
+    for (let t = 0; t < m.f; t++) { const a = I[t * 3], b = I[t * 3 + 1], c = I[t * 3 + 2]; if (P[a * 3 + 2] < 0.95 || P[b * 3 + 2] < 0.95 || P[c * 3 + 2] < 0.95) continue;
+      for (const [u, v] of [[a, b], [b, c], [c, a]]) L.push(Math.hypot(P[u * 3] - P[v * 3], P[u * 3 + 1] - P[v * 3 + 1], P[u * 3 + 2] - P[v * 3 + 2]));
+      const ux = P[b * 3] - P[a * 3], uy = P[b * 3 + 1] - P[a * 3 + 1], uz = P[b * 3 + 2] - P[a * 3 + 2], vx = P[c * 3] - P[a * 3], vy = P[c * 3 + 1] - P[a * 3 + 1], vz = P[c * 3 + 2] - P[a * 3 + 2];
+      if ((uy * vz - uz * vy) * P[a * 3] + (uz * vx - ux * vz) * P[a * 3 + 1] + (ux * vy - uy * vx) * P[a * 3 + 2] <= 0) flip++; }
+    for (let i = 0; i < m.n; i++) if (P[i * 3 + 2] > 0.95) { rr += Math.abs(Math.hypot(P[i * 3], P[i * 3 + 1], P[i * 3 + 2]) - 1); nr++; }
+    const mean = L.reduce((a, b) => a + b, 0) / L.length, cv = Math.sqrt(L.reduce((a, b) => a + (b - mean) ** 2, 0) / L.length) / mean;
+    return { cv, rad: rr / nr, flip, cx: (() => { let x = 0, k = 0; for (let i = 0; i < m.n; i++) if (P[i * 3 + 2] > 0.95) { x += P[i * 3]; k++; } return x / k; })() };
+  });
+  const s0 = await stat();
+  await G((o) => { const W = window.__glina; W.selectTool(o.tool); W.brush().radius = 90; W.brush().strength = 0.7; }, { tool });
+  const e = await G(() => { const W = window.__glina, r = document.getElementById('gl').getBoundingClientRect(), v = new W.cam.target.constructor(0, 0, 1).project(W.camera); return { x: r.left + (v.x * 0.5 + 0.5) * r.width, y: r.top + (-v.y * 0.5 + 0.5) * r.height }; });
+  for (let k = 0; k < (opts.passes || 3); k++) await drag(e.x - 70, e.y + (k % 3 - 1) * 20, e.x + 70, e.y + (k % 3 - 1) * 20, 16);
+  return { before: s0, after: await stat() };
+};
+const relaxR = await meshRun('relax', { jitter: true, passes: 5 }), relaxS = await meshRun('smooth', { jitter: true, passes: 5 }), slideR = await meshRun('slide', { passes: 2 });
+check('„Отпускане на мрежата“: the polygons even out (edge lengths far more alike) and the form stays — far less shrink than smoothing', relaxR.after.cv < relaxR.before.cv * 0.75 && relaxR.after.rad < 0.004 && relaxR.after.rad < relaxS.after.rad * 0.5 && relaxR.after.flip === 0, { relax: relaxR, smooth: relaxS });
+const nudgeR = await meshRun('nudge', { passes: 2 });
+check('„Побутване (палец)“: the clay goes with the pen along the surface — the form stays round, nothing folds', nudgeR.after.cx > nudgeR.before.cx + 0.02 && nudgeR.after.rad < 0.01 && nudgeR.after.flip === 0, nudgeR);
+check('„Плъзгане на мрежата“: the polygons slide along the stroke over the surface — the form stays, nothing folds', slideR.after.cx > slideR.before.cx + 0.005 && slideR.after.rad < 0.004 && slideR.after.flip === 0, slideR);
 check('no page errors', errors.length === 0, errors.slice(0, 5));
 await browser.close();
 const ok = results.filter(Boolean).length;

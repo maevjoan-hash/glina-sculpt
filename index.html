@@ -450,6 +450,7 @@ input[type=range] { width: 100%; height: 26px; accent-color: var(--wax); backgro
         </div>
         <div class="row" id="modRow"><label for="sMod">Притискане ↔ надуване (Brush Mod)</label><output id="oMod"></output><input type="range" id="sMod" min="-1" max="1" step="0.05"></div>
         <label class="toggle" id="frontRow">Само видимата страна <input type="checkbox" id="tFront"></label>
+        <div class="grp" id="relaxGrp"><div class="note lab">Мрежата по повърхността</div><div class="chips" id="relaxChips"></div></div>
         <div class="grp" id="poseGrp"><div class="note lab">Поза</div><div class="chips" id="poseChips"></div>
           <label class="toggle" title="Като Pose Origin: Face Sets в Blender: частта е цялата група под натиска (пръст, ухо, опашка), а ставата е границата ѝ със съседната група">По групи <input type="checkbox" id="tPoseGroups"></label></div>
         <label class="toggle" id="silRow" title="Като Grab Silhouette в Blender: дърпа се само страната, обърната към посоката на дърпането — ръбът на силуета излиза, задната страна остава">Само страната към дърпането <input type="checkbox" id="tSil"></label>
@@ -784,6 +785,9 @@ const ICON = {
   clay: '<path d="M3 18h18"/><path d="M5 15h14M7 12h10" /><path d="M9 9h6" opacity=".6"/>',
   claystrips: '<path d="M3 19h18"/><rect x="5" y="13" width="14" height="3" rx=".5"/><rect x="7" y="8" width="10" height="3" rx=".5" opacity=".6"/>',
   smooth: '<path d="M3 14c3-5 6 3 9-2s6 3 9-2"/><path d="M3 19h18" opacity=".45"/>',
+  relax: '<path d="M4 5v14M9 5v14M14 5v14M19 5v14M3 9h18M3 15h18" opacity=".55"/><circle cx="11.5" cy="12" r="4"/>',
+  nudge: '<path d="M3 16c4-1 7-4 9-4s5 2 9 2" opacity=".5"/><path d="M7 11c0-3 2-6 5-6s4 2 4 4v3"/><path d="M13 15l5-3"/>',
+  slide: '<path d="M4 5v14M10 5v14M16 5v14M3 9h18M3 15h18" opacity=".55"/><path d="M8 12h12M17 9l3 3-3 3"/>',
   inflate: '<circle cx="12" cy="12" r="4"/><path d="M12 2v4M12 18v4M2 12h4M18 12h4"/>',
   flatten: '<path d="M3 12h18"/><path d="M8 5l4 4 4-4M8 19l4-4 4 4"/>',
   scrape: '<path d="M3 15h18"/><path d="M5 15c1-4 3-6 5-6h4c2 0 4 2 5 6" opacity=".45"/><path d="M14 4l4 4"/>',
@@ -839,8 +843,8 @@ const curvePts = (id) => CURVES.find((c) => c.id === id).pts.map((p) => p.slice(
 const BASES = [
   { id: 'draw', name: 'Рисуване (Standard)' }, { id: 'clay', name: 'Глина (Clay)' }, { id: 'claystrips', name: 'Глина на ивици (ClayBuildup)' },
   { id: 'inflate', name: 'Надуване (Inflate)' }, { id: 'flatten', name: 'Изравняване (hPolish)' }, { id: 'scrape', name: 'Подрязване (TrimDynamic)' },
-  { id: 'pinch', name: 'Притискане (Pinch)' }, { id: 'crease', name: 'Гънка' }, { id: 'smooth', name: 'Изглаждане (Smooth)' },
-  { id: 'grab', name: 'Хващане (Move)' }, { id: 'kelvin', name: 'Еластично усукване, раздуване, прищипване (Kelvinlets)' }, { id: 'array', name: 'Масив с влачене (Array Mesh)' }, { id: 'snake', name: 'Издърпване (SnakeHook)' }, { id: 'vdm', name: 'Векторна форма (VDM)' }, { id: 'shadowbox', name: 'Силуети (ShadowBox)' }, { id: 'topology', name: 'Топология (Topology)' }, { id: 'pose', name: 'Поза (Pose)' }, { id: 'insert', name: 'Вмъкване на форма (InsertMesh)' }, { id: 'gizmo', name: 'Местене, завъртане, мащаб (Gizmo 3D)' }, { id: 'cloth', name: 'Плат (Cloth brushes)' }, { id: 'groom', name: 'Сресване на косми (Groom)' }, { id: 'ffd', name: 'Клетка (FFD)' }, { id: 'zmodel', name: 'Полигони (ZModeler)' }, { id: 'planar', name: 'Равнина (Planar)' }, { id: 'morph', name: 'Връщане към запомнената форма (Morph)' }, { id: 'layer', name: 'Слой (Layer)' }, { id: 'slice', name: 'Разделяне на групи (SliceCurve)' }, { id: 'tube', name: 'Тръба по крива (CurveTube)' }, { id: 'clip', name: 'Отсичане (ClipCurve)' }, { id: 'cut', name: 'Отрязване (TrimCurve)' }, { id: 'mask', name: 'Маска' }, { id: 'paint', name: 'Боя' },
+  { id: 'pinch', name: 'Притискане (Pinch)' }, { id: 'crease', name: 'Гънка' }, { id: 'smooth', name: 'Изглаждане (Smooth)' }, { id: 'relax', name: 'Отпускане и плъзгане на мрежата (Relax, Slide)' },
+  { id: 'grab', name: 'Хващане (Move)' }, { id: 'nudge', name: 'Побутване по повърхността (Thumb, Nudge)' }, { id: 'kelvin', name: 'Еластично усукване, раздуване, прищипване (Kelvinlets)' }, { id: 'array', name: 'Масив с влачене (Array Mesh)' }, { id: 'snake', name: 'Издърпване (SnakeHook)' }, { id: 'vdm', name: 'Векторна форма (VDM)' }, { id: 'shadowbox', name: 'Силуети (ShadowBox)' }, { id: 'topology', name: 'Топология (Topology)' }, { id: 'pose', name: 'Поза (Pose)' }, { id: 'insert', name: 'Вмъкване на форма (InsertMesh)' }, { id: 'gizmo', name: 'Местене, завъртане, мащаб (Gizmo 3D)' }, { id: 'cloth', name: 'Плат (Cloth brushes)' }, { id: 'groom', name: 'Сресване на косми (Groom)' }, { id: 'ffd', name: 'Клетка (FFD)' }, { id: 'zmodel', name: 'Полигони (ZModeler)' }, { id: 'planar', name: 'Равнина (Planar)' }, { id: 'morph', name: 'Връщане към запомнената форма (Morph)' }, { id: 'layer', name: 'Слой (Layer)' }, { id: 'slice', name: 'Разделяне на групи (SliceCurve)' }, { id: 'tube', name: 'Тръба по крива (CurveTube)' }, { id: 'clip', name: 'Отсичане (ClipCurve)' }, { id: 'cut', name: 'Отрязване (TrimCurve)' }, { id: 'mask', name: 'Маска' }, { id: 'paint', name: 'Боя' },
 ];
 // a complete brush; presets only list what differs
 const BRUSH_DEFAULTS = {
@@ -849,6 +853,7 @@ const BRUSH_DEFAULTS = {
   stroke: 'dots', spacing: 0.15, mod: 0, front: true, topo: false, grab: 'soft', volume: 0.4,
   poseGroups: false,   // pose: the polygroup under the press is the part (Blender: Pose Origin Face Sets)
   poseMode: 'bend',    // pose: bend | twist (about the part's own axis)
+  relax: 'relax',      // relax brushes (Blender: Relax, Topology Slide): relax | drag (along the stroke) | pinch (toward the brush)
   silhouette: false,   // grab: only the side facing the pull (Blender: Grab Silhouette)
   keepVol: false,      // smoothing keeps the volume (Blender: Surface Smooth)
   group: false,        // only the polygroup under the brush (ZBrush: Auto Masking > Mask By Polygroups)
@@ -874,7 +879,10 @@ const PRESETS = [
   { id: 'flatten', name: 'Изравняване', short: 'Равно', key: 't', base: 'flatten', radius: 60, tip: 'square', curve: 'dome', zb: 'hPolish' },
   { id: 'trim', name: 'Подрязване', short: 'Подр.', key: 'r', base: 'scrape', icon: 'scrape', radius: 55, strength: 0.5, curve: 'flat', zb: 'TrimDynamic' },
   { id: 'smooth', name: 'Изглаждане', short: 'Глад.', key: 's', base: 'smooth', radius: 60, strength: 0.6, front: false, zb: 'Smooth' },
+  { id: 'relax', name: 'Отпускане на мрежата', short: 'Отпусни', base: 'relax', relax: 'relax', radius: 60, strength: 0.6, front: false, zb: 'Blender: Relax' },
+  { id: 'slide', name: 'Плъзгане на мрежата', short: 'Плъзни', base: 'relax', icon: 'slide', relax: 'drag', radius: 50, strength: 0.5, front: false, zb: 'Blender: Topology Slide' },
   { id: 'grab', name: 'Хващане', short: 'Хвани', key: 'g', base: 'grab', radius: 90, strength: 1, curve: 'move', front: false, zb: 'Move' },
+  { id: 'nudge', name: 'Побутване (палец)', short: 'Палец', base: 'nudge', radius: 50, strength: 0.7, front: false, zb: 'Blender: Thumb / Nudge' },
   { id: 'elastic', name: 'Еластично хващане', short: 'Еласт.', key: 'e', base: 'grab', icon: 'elastic', grab: 'elastic', radius: 90, strength: 1, front: false, zb: 'Move Elastic' },
   { id: 'grabtopo', name: 'Хващане на част', short: 'Част', key: 'o', base: 'grab', icon: 'grabtopo', topo: true, radius: 90, strength: 1, curve: 'move', front: false, zb: 'Move Topological' },
   { id: 'ktwist', name: 'Еластично усукване', short: 'Усучи', base: 'kelvin', icon: 'ktwist', kel: 'twist', radius: 80, strength: 1, front: false, zb: 'Elastic Twist (Kelvinlet)' },
@@ -996,7 +1004,7 @@ try { savedSettings = JSON.parse(localStorage.getItem('glina.settings') || 'null
 if (savedSettings) for (const k of Object.keys(savedSettings)) if (k in S && k !== 'penSeen' && k !== 'brushes') S[k] = savedSettings[k];
 // one brush field from settings or a file: right type and range, or undefined
 const ENUMS = { tip: ['round', 'square'], alphaRot: ['fixed', 'stroke', 'random'], stroke: ['dots', 'dragrect', 'dragdot', 'spray', 'line', 'curve'], grab: ['soft', 'elastic'],
-  imm: ['sphere', 'cube', 'cylinder', 'cone', 'torus', 'file'], gz: ['move', 'rotate', 'scale'], cloth: ['pinch', 'slide', 'inflate', 'hook', 'twist'], kel: ['twist', 'scale', 'pinch'], arr: ['move', 'turn', 'scale', 'count'], zm: ['extrude', 'inset', 'bevel'], ffdMode: ['cage', 'curve'], poseMode: ['bend', 'twist'] };
+  imm: ['sphere', 'cube', 'cylinder', 'cone', 'torus', 'file'], gz: ['move', 'rotate', 'scale'], cloth: ['pinch', 'slide', 'inflate', 'hook', 'twist'], kel: ['twist', 'scale', 'pinch'], arr: ['move', 'turn', 'scale', 'count'], zm: ['extrude', 'inset', 'bevel'], ffdMode: ['cage', 'curve'], poseMode: ['bend', 'twist'], relax: ['relax', 'drag', 'pinch'] };
 const RANGES = { radius: [4, 320], strength: [0.01, 1], focal: [-1, 1], alphaMid: [0, 1], alphaAngle: [0, 360], spacing: [0.03, 0.6], mod: [-1, 1], volume: [0, 0.49], taper: [0, 1], ffdN: [2, 5] };
 function brushField(k, v) {
   if (k === 'curve') return Array.isArray(v) && v.length >= 2 && v.length <= 32 && v.every((p) => Array.isArray(p) && p.length === 2 && p.every((x) => Number.isFinite(x) && x >= 0 && x <= 1)) ? v.map((p) => p.slice()) : undefined;
@@ -3102,7 +3110,7 @@ function gatherDeep(pt, r) {
 }
 
 /* ---------- dynamic topology: split long edges, collapse short ones inside the brush ---------- */
-const DYN_TOOLS = new Set(['draw', 'clay', 'claystrips', 'smooth', 'inflate', 'flatten', 'scrape', 'pinch', 'crease', 'snake', 'planar', 'layer']);
+const DYN_TOOLS = new Set(['draw', 'clay', 'claystrips', 'smooth', 'relax', 'nudge', 'inflate', 'flatten', 'scrape', 'pinch', 'crease', 'snake', 'planar', 'layer']);
 // (Morph is not here: in dynamic topology the points change, so a stored shape cannot match)
 const DYN_FRAME_SPLITS = 5000;      // keeps a fast stroke with a huge brush and tiny detail interactive
 const DYN_FRAME_COLLAPSES = 5000;   // the same for coarse detail on a dense mesh
@@ -3677,7 +3685,7 @@ function tiltNormal(ax, ay, az, tilt, strength, mirror) {
 }
 function applyBrush(tool, c, n, r, s, sign, dab = {}) {
   const m = mesh, b = dab.b || BRUSH_DEFAULTS;
-  const front = curFront && tool !== 'smooth';
+  const front = curFront && tool !== 'smooth' && tool !== 'relax';
   const square = b.tip === 'square';
   // a square tip reaches into the corners of its square, √2 times the radius
   const count = gather(c.x, c.y, c.z, square ? r * 1.4143 : r, n.x, n.y, n.z, front);
@@ -3869,6 +3877,21 @@ function applyBrush(tool, c, n, r, s, sign, dab = {}) {
       break;
     }
     case 'smooth': smoothVerts(G, F, count, Math.min(1, s * 1.2)); break;
+    case 'relax': relaxVerts(G, F, count, c, s, sign, b.relax || 'relax', dab.dir); break;
+    case 'nudge': {
+      // (as Blender's Thumb and Nudge) what is under the brush goes with the pen, but only along the surface:
+      // the part of the pen's step since the last dab that lies in the brush's plane. Every dab takes what is
+      // under it now, so the clay is smeared along the stroke as with a thumb. (The step already shrinks with
+      // closer dabs, so the spacing's own evening-out is taken back out.)
+      const st = dab.step; if (!st) return;
+      const d = st.x * ax + st.y * ay + st.z * az, tx = st.x - ax * d, ty = st.y - ay * d, tz = st.z - az * d;
+      const k0 = Math.min(1, s / ((stroke && stroke.spComp) || 1));
+      for (let k = 0; k < count; k++) {
+        const i = G[k], w = F[k] * (1 - MK[i]) * k0; if (w <= 0) continue; touchVert(i);
+        P[i * 3] += tx * w; P[i * 3 + 1] += ty * w; P[i * 3 + 2] += tz * w;
+      }
+      break;
+    }
     case 'pinch': case 'crease': {
       const kp = (tool === 'pinch' ? 0.18 : 0.14) * s * sign;
       const pinchLine = tool === 'pinch' && !!dab.dir && S.pinchLine, qvx = vx, qvy = vy, qvz = vz;
@@ -4141,6 +4164,69 @@ function smoothVertsHC(G, F, count, s) {
   for (let k = 0; k < n; k++) {
     const i = G[k], w = Math.min(1, F[k] * s) * (1 - MK[i]); if (w <= 0 || !rings[k]) continue; touchVert(i);
     P[i * 3] += (T[k * 3] - P[i * 3]) * w; P[i * 3 + 1] += (T[k * 3 + 1] - P[i * 3 + 1]) * w; P[i * 3 + 2] += (T[k * 3 + 2] - P[i * 3 + 2]) * w;
+  }
+  frame_.positions = true;
+}
+// Relax and Slide (as Blender's Relax and Topology Slide): the polygons move along the surface, not off it.
+// Relax evens out stretched and bunched polygons where the stroke goes — each point goes toward the middle of
+// its ring, but only within its own tangent plane, so the form stays. Slide pushes the polygons along the
+// stroke (or in toward the brush, Alt: out of it): each point along those of its edges that lead that way.
+// Corners stay; on an open rim relax moves a point along the rim only, and slide leaves the rim alone.
+function relaxVerts(G, F, count, c, s, sign, mode, dir) {
+  const m = mesh, P = m.pos, NR = m.nrm, MK = m.mask, T = m.tmp;
+  if (mode === 'drag' && !dir) return;
+  const ring = [];
+  for (let it = 0; it < (mode === 'relax' ? 2 : 1); it++) {
+    for (let k = 0; k < count; k++) {
+      const i = G[k], o = k * 3; T[o] = T[o + 1] = T[o + 2] = 0;
+      if (F[k] * (1 - MK[i]) <= 0) continue;
+      ring.length = 0; forNeighbors(m, i, (u) => { if (ring.indexOf(u) < 0) ring.push(u); });
+      if (ring.length <= 2) continue;
+      const px = P[i * 3], py = P[i * 3 + 1], pz = P[i * 3 + 2], rim = m.dyn ? m.isBoundary(i) : m.boundary[i];
+      let nx = NR[i * 3], ny = NR[i * 3 + 1], nz = NR[i * 3 + 2];
+      if (mode === 'relax') {
+        let ax = 0, ay = 0, az = 0;
+        if (rim) {
+          const bp = borderPair(m, i); if (!bp) continue;
+          const [u, w] = bp;
+          ax = (P[u * 3] + P[w * 3]) * 0.5; ay = (P[u * 3 + 1] + P[w * 3 + 1]) * 0.5; az = (P[u * 3 + 2] + P[w * 3 + 2]) * 0.5;
+          // the plane it moves in is square to the rim's bend, so it slides along the rim and not in from it
+          const e1x = P[u * 3] - px, e1y = P[u * 3 + 1] - py, e1z = P[u * 3 + 2] - pz, l1 = Math.hypot(e1x, e1y, e1z) || 1;
+          const e2x = P[w * 3] - px, e2y = P[w * 3 + 1] - py, e2z = P[w * 3 + 2] - pz, l2 = Math.hypot(e2x, e2y, e2z) || 1;
+          nx = e1x / l1 + e2x / l2; ny = e1y / l1 + e2y / l2; nz = e1z / l1 + e2z / l2;
+        } else {
+          for (const u of ring) { ax += P[u * 3]; ay += P[u * 3 + 1]; az += P[u * 3 + 2]; }
+          ax /= ring.length; ay /= ring.length; az /= ring.length;
+        }
+        const nl = Math.hypot(nx, ny, nz);
+        let dx = ax - px, dy = ay - py, dz = az - pz;
+        if (nl > 1e-12) { nx /= nl; ny /= nl; nz /= nl; const d = dx * nx + dy * ny + dz * nz; dx -= nx * d; dy -= ny * d; dz -= nz * d; }
+        else if (rim) { dx = ax - px; dy = ay - py; dz = az - pz; }   // a straight rim: along it
+        else continue;
+        T[o] = dx; T[o + 1] = dy; T[o + 2] = dz;
+      } else {
+        if (rim) continue;
+        let dx, dy, dz;
+        if (mode === 'drag') { dx = dir.x * sign; dy = dir.y * sign; dz = dir.z * sign; }
+        else { dx = (c.x - px) * sign; dy = (c.y - py) * sign; dz = (c.z - pz) * sign; }
+        const nl = Math.hypot(nx, ny, nz);
+        if (nl > 1e-12) { nx /= nl; ny /= nl; nz /= nl; const d = dx * nx + dy * ny + dz * nz; dx -= nx * d; dy -= ny * d; dz -= nz * d; }
+        const dl = Math.hypot(dx, dy, dz); if (dl < 1e-12) continue;
+        dx /= dl; dy /= dl; dz /= dl;
+        let tx = 0, ty = 0, tz = 0;
+        for (const u of ring) {
+          const ex = P[u * 3] - px, ey = P[u * 3 + 1] - py, ez = P[u * 3 + 2] - pz, el = Math.hypot(ex, ey, ez); if (el < 1e-12) continue;
+          const along = ex * dx + ey * dy + ez * dz; if (along <= 0) continue;
+          tx += ex / el * along; ty += ey / el * along; tz += ez / el * along;
+        }
+        T[o] = tx; T[o + 1] = ty; T[o + 2] = tz;
+      }
+    }
+    const k0 = mode === 'relax' ? Math.min(1, s * 1.5) : Math.min(1, s) * 0.5;
+    for (let k = 0; k < count; k++) {
+      const i = G[k], o = k * 3, w = Math.min(1, F[k] * k0) * (1 - MK[i]); if (w <= 0 || !(T[o] || T[o + 1] || T[o + 2])) continue; touchVert(i);
+      P[i * 3] += T[o] * w; P[i * 3 + 1] += T[o + 1] * w; P[i * 3 + 2] += T[o + 2] * w;
+    }
   }
   frame_.positions = true;
 }
@@ -4601,6 +4687,8 @@ function dab(x, y, p, o = {}) {
   let angle = o.angle || 0;
   if (b.alphaRot === 'random' && o.angle === undefined) angle = Math.random() * Math.PI * 2;
   const info = { b, dir: stroke.dir, angle };
+  // (the nudge brush goes by the pen's step since the last dab)
+  if (tool === 'nudge') { const q = hit.point; info.step = stroke.nPrev ? new THREE.Vector3(q.x - stroke.nPrev.x, q.y - stroke.nPrev.y, q.z - stroke.nPrev.z) : null; stroke.nPrev = q.clone(); }
   const copies = SYM.map(({ m }) => ({ m, p: symV(m, hit.point), n: symV(m, hit.normal) }));
   if (mesh.dyn && stroke.snap && DYN_TOOLS.has(tool)) {
     const L = S.detail * wpp;
@@ -4632,7 +4720,7 @@ function dab(x, y, p, o = {}) {
   const frame = { u: lastFrame.u.slice(), v: lastFrame.v.slice() }, shaped = b.tip === 'square' || b.alpha !== 'none' || b.mod;
   copies.forEach((c, k) => {
     curGroup = lockGroup(k + 1, c.p);
-    applyBrush(tool, c.p, c.n, r, s, stroke.sign, { b, copy: k + 1, dir: info.dir ? symV(c.m, info.dir) : null, uv: shaped ? { u: symA(c.m, frame.u), v: symA(c.m, frame.v) } : null });
+    applyBrush(tool, c.p, c.n, r, s, stroke.sign, { b, copy: k + 1, dir: info.dir ? symV(c.m, info.dir) : null, step: info.step ? symV(c.m, info.step) : null, uv: shaped ? { u: symA(c.m, frame.u), v: symA(c.m, frame.v) } : null });
     if (relax && mesh.gCount) smoothVerts(mesh.gIdx, mesh.gFall, mesh.gCount, relax);
     if (mesh.dyn && moves) gridFollowBrush();
   });
@@ -8579,7 +8667,7 @@ function insertShape(g) {
    along the curve instead. */
 let curve = null;   // { brushId, pts: [{ p, n }], sign, r, serial }
 let undoSerial = 0;   // counts every change of the undo stack: a curve is editable only right after its stroke
-const CURVE_TOOLS = new Set(['draw', 'clay', 'claystrips', 'smooth', 'inflate', 'flatten', 'scrape', 'pinch', 'crease', 'planar', 'layer', 'cloth', 'mask', 'paint']);
+const CURVE_TOOLS = new Set(['draw', 'clay', 'claystrips', 'smooth', 'relax', 'inflate', 'flatten', 'scrape', 'pinch', 'crease', 'planar', 'layer', 'cloth', 'mask', 'paint']);
 const isCurveBrush = (b) => b.base === 'tube' || (b.stroke === 'curve' && (CURVE_TOOLS.has(b.base) || b.base === 'snake'));
 function liveCurve() { if (curve && curve.serial !== undoSerial) curve = null; return curve; }
 function dropCurve() { if (curve) { curve = null; drawOverlay(); } }
@@ -9762,8 +9850,8 @@ const rail = $('rail');
 // opens its own panel of settings.
 const RAIL_DEFAULT = ['draw', 'clay', 'claybuild', 'dam', 'inflate', 'pinch', 'flatten', 'smooth', 'grab', 'snake', 'mask', 'paint'];
 const PAL_CATS = [
-  ['Скулптиране', ['draw', 'clay', 'claybuild', 'dam', 'inflate', 'pinch', 'crease', 'flatten', 'trim', 'smooth', 'planar', 'layer', 'magnify', 'blob', 'dimple', 'vdm', 'morph']],
-  ['Местене и издърпване', ['grab', 'elastic', 'grabtopo', 'movedeep', 'ktwist', 'kscale', 'kpinch', 'snake', 'snakecurve', 'pose', 'gizmo']],
+  ['Скулптиране', ['draw', 'clay', 'claybuild', 'dam', 'inflate', 'pinch', 'crease', 'flatten', 'trim', 'smooth', 'relax', 'slide', 'planar', 'layer', 'magnify', 'blob', 'dimple', 'vdm', 'morph']],
+  ['Местене и издърпване', ['grab', 'nudge', 'elastic', 'grabtopo', 'movedeep', 'ktwist', 'kscale', 'kpinch', 'snake', 'snakecurve', 'pose', 'gizmo']],
   ['По линия', ['curvedam', 'tube', 'clip', 'cut', 'slice']],
   ['Плат и косми', ['clothpinch', 'clothslide', 'clothhook', 'clothtwist', 'clothinflate', 'groom']],
   ['Моделиране', ['zmodel', 'ffd', 'imm', 'array', 'topology', 'shadowbox']],
@@ -10442,6 +10530,7 @@ brushSyncs.push(
   brushChips('ffdChips', [2, 3, 4, 5].map((k) => ({ id: k, name: k + '×' + k + '×' + k })), 'ffdN', () => { lattice = null; drawOverlay(); }),
   brushChips('ffdModeChips', [{ id: 'cage', name: 'Клетка (FFD)' }, { id: 'curve', name: 'Крива (Bend Curve)' }], 'ffdMode', () => { lattice = null; drawOverlay(); }),
   brushChips('poseChips', [{ id: 'bend', name: 'Сгъване' }, { id: 'twist', name: 'Усукване около оста' }], 'poseMode'),
+  brushChips('relaxChips', [{ id: 'relax', name: 'Отпуска (Relax)' }, { id: 'drag', name: 'Плъзга по щриха' }, { id: 'pinch', name: 'Плъзга към центъра (Alt: навън)' }], 'relax'),
   brushChips('arrDragChips', [{ id: 'move', name: 'Мести (разстояние)' }, { id: 'turn', name: 'Върти' }, { id: 'scale', name: 'Мащаб' }, { id: 'count', name: 'Брой' }], 'arr'),
   brushChips('kelChips', [{ id: 'twist', name: 'Усукване (Twist)' }, { id: 'scale', name: 'Раздуване ↔ свиване (Scale)' }, { id: 'pinch', name: 'Прищипване (Pinch)' }], 'kel'),
   brushChips('clothChips', [{ id: 'pinch', name: 'Събира (ClothPinch)' }, { id: 'slide', name: 'Бута по щриха (ClothSlide)' }, { id: 'inflate', name: 'Надува (ClothInflate)' }, { id: 'hook', name: 'Кука: тегли след писалката (ClothHook)' }, { id: 'twist', name: 'Усуква (ClothTwister)' }], 'cloth'),
@@ -10475,6 +10564,8 @@ const BRUSH_ABOUT = {
   snake: 'Изтегля рога и пипала след писалката.', snakecurve: 'Начертайте линия от модела навън: повърхността се издърпва по нея.',
   vdm: 'Щракване слага цяла форма (и с надвиснали части); влачене задава размера и посоката.', dimple: 'Натиснете: кръгла трапчинка.',
   pose: 'Сгъва като става: натиснете ставата и дърпайте.', planar: 'Изравнява до равнината, в която е започнал щрихът.', morph: 'Връща към запомнената форма, където минете.',
+  nudge: 'Бута глината по повърхността след писалката, като с палец.',
+  relax: 'Изравнява разтеглените и сбити полигони, без да мени формата.', slide: 'Плъзга полигоните по повърхността след писалката, формата остава.',
   layer: 'Слой с еднаква височина, колкото и пъти да минете.', magnify: 'Раздалечава от щриха.', blob: 'Буци и неравности.', movedeep: 'Хваща всичко под кръга, и отзад.',
   curvedam: 'Начертайте линия: по нея минава гънка; после я огънете.', clothpinch: 'Плат: събира на гънки.', clothslide: 'Плат: бута гънките пред четката.',
   clothhook: 'Плат: тегли след писалката и го набира.', clothtwist: 'Плат: завърта като вихър.', clothinflate: 'Плат: надува като възглавница.',
@@ -10484,11 +10575,11 @@ const BRUSH_ABOUT = {
   imm: 'Натиснете и влачете: вмъква форма върху модела.', tube: 'Начертайте линия по модела: по нея става тръба.', clip: 'Линия: всичко от едната страна се изравнява до нея.',
   cut: 'Линия: отрязва модела от едната страна и затваря среза.', slice: 'Линия: разделя модела на групи по нея.', mask: 'Рисува маска: маскираното не се променя.', paint: 'Рисува с цвят (полипейнт).',
 };
-const BASE_ABOUT = { draw: 'draw', clay: 'clay', claystrips: 'claybuild', inflate: 'inflate', pinch: 'pinch', crease: 'crease', flatten: 'flatten', scrape: 'trim', smooth: 'smooth', grab: 'grab', snake: 'snake', vdm: 'vdm', pose: 'pose', planar: 'planar', morph: 'morph', layer: 'layer', cloth: 'clothpinch', groom: 'groom', zmodel: 'zmodel', ffd: 'ffd', topology: 'topology', shadowbox: 'shadowbox', gizmo: 'gizmo', insert: 'imm', tube: 'tube', clip: 'clip', cut: 'cut', slice: 'slice', mask: 'mask', paint: 'paint' };
+const BASE_ABOUT = { draw: 'draw', clay: 'clay', claystrips: 'claybuild', inflate: 'inflate', pinch: 'pinch', crease: 'crease', flatten: 'flatten', scrape: 'trim', smooth: 'smooth', relax: 'relax', grab: 'grab', nudge: 'nudge', snake: 'snake', vdm: 'vdm', pose: 'pose', planar: 'planar', morph: 'morph', layer: 'layer', cloth: 'clothpinch', groom: 'groom', zmodel: 'zmodel', ffd: 'ffd', topology: 'topology', shadowbox: 'shadowbox', gizmo: 'gizmo', insert: 'imm', tube: 'tube', clip: 'clip', cut: 'cut', slice: 'slice', mask: 'mask', paint: 'paint' };
 // per kind of brush: which of the common settings it has
 const NO_SIZE = new Set(['array', 'gizmo', 'ffd', 'zmodel', 'topology', 'shadowbox', 'clip', 'cut', 'slice']);
 const NO_STRENGTH = new Set([...NO_SIZE, 'insert', 'tube']);
-const NO_INVERT = new Set([...NO_STRENGTH, 'grab', 'kelvin', 'snake', 'pose', 'groom', 'smooth', 'paint', 'cloth']);
+const NO_INVERT = new Set([...NO_STRENGTH, 'grab', 'nudge', 'kelvin', 'snake', 'pose', 'groom', 'smooth', 'paint', 'cloth']);
 function syncBrushBox(b) {
   const base = b.base;
   $('bbIcon').innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">${ICON[b.icon] || ICON[b.id] || ICON[base] || ICON.draw}</svg>`;
@@ -10516,7 +10607,8 @@ function syncBrushUI() {
   $('bName').value = b.name; $('bName').disabled = b.builtin;
   $('bName').title = b.builtin ? 'Готовите четки не се преименуват; „Нова от тази“ прави ваше копие' : '';
   $('bBase').value = base;
-  $('dirGrp').hidden = moves || base === 'smooth' || base === 'paint';
+  $('dirGrp').hidden = moves || base === 'smooth' || base === 'relax' || base === 'nudge' || base === 'paint';
+  $('relaxGrp').hidden = base !== 'relax';
   $('tipGrp').hidden = $('alphaGrp').hidden = moves;
   $('strokeGrp').hidden = moves;
   $('modRow').hidden = base !== 'draw';

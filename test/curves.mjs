@@ -43,6 +43,7 @@ for (const s of shapes) check(`shape ${s.k}: closed, faces outward`, !s.open && 
 for (const dyn of [false, true]) {
   const D = dyn ? 'dyn ' : '';
   await page.evaluate((d) => { const G = window.__glina; G.setDyntopo(d); G.maskOp('clear'); G.S.sym = false; G.S.symY = false; G.S.symZ = false; G.S.radial = 0; G.syncSym(); }, dyn);
+  await page.waitForFunction((d) => !!window.__glina.mesh.dyn === d, dyn, { timeout: 30000 });
   // Insert: a sphere, dragged out from the middle
   await page.evaluate(() => { const G = window.__glina; G.selectTool('imm'); G.brush().imm = 'sphere'; });
   let a = await state();
