@@ -1076,10 +1076,33 @@ const lutCache = new Map();
 function brushLUT(b) {
   const key = JSON.stringify(b.curve) + '|' + b.focal;
   let L = lutCache.get(key);
-  if (!L) { L = curveLUT(b.curve, b.focal); if (lutCache.size > 64) lutCache.clear(); lutCache.set(key, L); }
+  if (!L) { L = curveLUT(b.curve, b.focal); L.key = key; if (lutCache.size > 64) lutCache.clear(); lutCache.set(key, L); }
   return L;
 }
 function lut(L, t) { const x = t * 256, i = x | 0; return i >= 256 ? 0 : L[i] + (L[i + 1] - L[i]) * (x - i); }
+// How much the dabs of a stroke pile up at one point (as Blender's spacing attenuation): along a line,
+// dabs every `spacing` radii, each with the falloff; the most any point under the line gets. Strength is
+// scaled by this for the brush's own spacing against its preset's, so that changing the spacing changes
+// how even a stroke is, not how strong it is.
+const overlapCache = new Map();
+function overlapSum(L, spacing) {
+  const h = Math.max(0.02, spacing), key = L.key + '|' + h.toFixed(4);
+  let v = overlapCache.get(key);
+  if (v === undefined) {
+    v = 0;
+    for (let j = 0; j < 10; j++) { let sum = 0; for (let x = -1 + (j / 10) * h; x < 1; x += h) sum += lut(L, Math.abs(x)); v = Math.max(v, sum); }
+    if (overlapCache.size > 256) overlapCache.clear();
+    overlapCache.set(key, v);
+  }
+  return v;
+}
+function spacingComp(b) {
+  if (b.stroke !== 'dots') return 1;
+  const p = PRESETS.find((q) => q.id === b.id), base = (p && p.spacing) || BRUSH_DEFAULTS.spacing;
+  if (Math.abs(b.spacing - base) < 1e-6) return 1;
+  const L = curLUT, a = overlapSum(L, base), c = overlapSum(L, b.spacing);
+  return a > 0 && c > 0 ? a / c : 1;
+}
 let curLUT = curveLUT(curvePts('smooth'), 0);   // the falloff gather() uses: the active stroke's brush
 let curFront = true;                            // only surfaces facing the brush (ZBrush: BackfaceMask)
 let curGroup = -1;                              // only this polygroup (-1: all); set around one gather
@@ -3689,7 +3712,8 @@ function applyBrush(tool, c, n, r, s, sign, dab = {}) {
       break;
     }
     case 'inflate': {
-      const d = r * 0.08 * s * sign;
+      // (inward half as strong as outward, as in Blender: carving wants the finer control)
+      const d = r * 0.08 * s * (sign < 0 ? 0.5 * sign : sign);
       for (let k = 0; k < count; k++) {
         const i = G[k], w = F[k] * (1 - MK[i]); if (w === 0) continue; touchVert(i);
         P[i * 3] += NR[i * 3] * d * w; P[i * 3 + 1] += NR[i * 3 + 1] * d * w; P[i * 3 + 2] += NR[i * 3 + 2] * d * w;
@@ -3710,6 +3734,18 @@ function applyBrush(tool, c, n, r, s, sign, dab = {}) {
         // facing, all from 0.5)
         if (fill) { const f = NR[i * 3] * ax + NR[i * 3 + 1] * ay + NR[i * 3 + 2] * az; if (f <= 0.15) continue; if (f < 0.5) { const q = (f - 0.15) / 0.35; w *= q * q * (3 - 2 * q); } }
         const d = (P[i * 3] - qx) * ax + (P[i * 3 + 1] - qy) * ay + (P[i * 3 + 2] - qz) * az;
+        if (tool === 'claystrips') {
+          // (as Blender's Clay Strips) everything is pushed the same way, along the plane's normal, by an
+          // amount that is greatest half a radius under the plane and nothing at the plane or a radius under
+          // it: the surface fills up to the plane and stops there smoothly, and what lies deeper (the walls
+          // and floor of a pit) is not touched — nothing is drawn together, so nothing is crushed
+          const z = -d * sign / r;
+          if (z <= 0 || z >= 1) continue;
+          touchVert(i);
+          const t = sign * r * s * 0.6 * z * (1 - z) * w;
+          P[i * 3] += ax * t; P[i * 3 + 1] += ay * t; P[i * 3 + 2] += az * t;
+          continue;
+        }
         if (fill && d * sign > 0) continue;
         if (tool === 'scrape' && d * sign < 0) continue;
         touchVert(i);
@@ -4398,7 +4434,7 @@ function dab(x, y, p, o = {}) {
   const wpp = worldPerPx(hit.point);
   const r = rpx * wpp;
   const tool = stroke.tool;
-  const s = b.strength * (S.prStrength ? pr : 1) * (o.sscale || 1);
+  const s = b.strength * (S.prStrength ? pr : 1) * (o.sscale || 1) * (stroke.spComp || (stroke.spComp = spacingComp(b)));
   // stroke direction on the surface, for alphas and tips that follow the stroke (ZBrush: Roll)
   if (stroke.prevHit) {
     const dx = hit.point.x - stroke.prevHit.x, dy = hit.point.y - stroke.prevHit.y, dz = hit.point.z - stroke.prevHit.z;

@@ -61,7 +61,8 @@ pub fn dab(kind: u32, pos: &mut [f32], nrm: &[f32], mask: &[f32], fall: &[f32], 
             }
         }
         INFLATE => {
-            let d = r * 0.08 * s * sign;
+            // (inward half as strong as outward, as in Blender)
+            let d = r * 0.08 * s * (if sign < 0.0 { 0.5 * sign } else { sign });
             for k in 0..n {
                 let w = fall[k] as f64 * (1.0 - mask[k] as f64);
                 if w == 0.0 { continue; }
@@ -87,6 +88,16 @@ pub fn dab(kind: u32, pos: &mut [f32], nrm: &[f32], mask: &[f32], fall: &[f32], 
                     if f < 0.5 { let q = (f - 0.15) / 0.35; w *= q * q * (3.0 - 2.0 * q); }
                 }
                 let d = (pos[o] as f64 - qx) * ax + (pos[o + 1] as f64 - qy) * ay + (pos[o + 2] as f64 - qz) * az;
+                if kind == STRIPS {
+                    // (as Blender's Clay Strips) pushed the same way along the plane's normal, most half a
+                    // radius under the plane, nothing at it or a radius under it
+                    let z = -d * sign / r;
+                    if z <= 0.0 || z >= 1.0 { continue; }
+                    changed[k] = 1; count += 1;
+                    let t = sign * r * s * 0.6 * z * (1.0 - z) * w;
+                    add(&mut pos[o], ax * t); add(&mut pos[o + 1], ay * t); add(&mut pos[o + 2], az * t);
+                    continue;
+                }
                 if fill && d * sign > 0.0 { continue; }
                 if kind == SCRAPE && d * sign < 0.0 { continue; }
                 changed[k] = 1; count += 1;
