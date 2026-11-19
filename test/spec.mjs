@@ -200,6 +200,19 @@ const dec = async (keep) => {
 const decPlain = await dec(false), decKeep = await dec(true);
 check('„При намаляване пази боята“: no point is a blend of the two colours; without it the border blurs', decKeep.grey === 0 && decPlain.grey > 0 && decKeep.f < 20480 * 0.1, { decPlain, decKeep });
 check('its switch is in „Геометрия“', await G(() => !!document.getElementById('tDecPaint')));
+// ---------- Layer rises along each point's own normal (as in Blender), not the brush's ----------
+const layerRun = async (rust) => {
+  await G(() => { const W = window.__glina; document.getElementById('bNew').click(); [...document.querySelectorAll('#menu button')].find((b) => b.textContent.startsWith('Сфера, по-лека')).click(); W.S.sym = false; W.syncSym(); W.orbit(0, 0); });
+  const b0 = await G(() => Array.from(window.__glina.mesh.pos.subarray(0, window.__glina.mesh.n * 3)));
+  await G((rust) => { const W = window.__glina; W.selectTool('layer'); W.brush().radius = 120; W.brush().strength = 1; W.rustBrushes = rust; }, rust);
+  await drag(cx - 160, cy, cx + 160, cy);
+  const r = await G((b0) => { const P = window.__glina.mesh.pos; let s = 0, c = 0; for (let i = 0; i < P.length / 3; i++) { const dx = P[i*3]-b0[i*3], dy = P[i*3+1]-b0[i*3+1], dz = P[i*3+2]-b0[i*3+2], d = Math.hypot(dx, dy, dz); if (d < 1e-4) continue; const x = b0[i*3], y = b0[i*3+1], z = b0[i*3+2], l = Math.hypot(x, y, z); s += Math.hypot((dy*z-dz*y)/l, (dz*x-dx*z)/l, (dx*y-dy*x)/l) / d; c++; } return { sideways: s / c, n: c, pos: Array.from(P.subarray(0, P.length)) }; }, b0);
+  await G(() => { window.__glina.rustBrushes = true; });
+  return r;
+};
+const layR = await layerRun(true), layJ = await layerRun(false);
+check('„Слой“ lifts each point straight out from the surface, not sideways (along its own normal)', layR.n > 100 && layR.sideways < 0.06, { sideways: layR.sideways, n: layR.n });
+check('… the same to the bit in Rust and in JavaScript', layR.pos.length === layJ.pos.length && layR.pos.every((v, k) => v === layJ.pos[k]));
 check('no page errors', errors.length === 0, errors.slice(0, 5));
 await browser.close();
 const ok = results.filter(Boolean).length;
