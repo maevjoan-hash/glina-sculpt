@@ -131,7 +131,8 @@ pub fn dab(kind: u32, pos: &mut [f32], nrm: &[f32], mask: &[f32], fall: &[f32], 
                 changed[k] = 1; count += 1;
                 aux[k] = (lh + step) as f32;
                 let o = k * 3;
-                add(&mut pos[o], ax * step); add(&mut pos[o + 1], ay * step); add(&mut pos[o + 2], az * step);
+                // (along each point's own normal from when the stroke first moved it: the page passes those)
+                add(&mut pos[o], nrm[o] as f64 * step); add(&mut pos[o + 1], nrm[o + 1] as f64 * step); add(&mut pos[o + 2], nrm[o + 2] as f64 * step);
             }
         }
         PINCH | CREASE => {
