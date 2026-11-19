@@ -23,10 +23,11 @@ const results = [];
 const check = (name, ok, ev) => { results.push(ok); console.log(`${ok ? 'PASS' : 'FAIL'}  ${name}${ev !== undefined ? '  ' + JSON.stringify(ev) : ''}`); };
 const ids = await page.evaluate(() => window.__glina.S.brushes.map((b) => b.id));
 for (const dyn of [false, true]) {
-  await page.evaluate((d) => { window.__glina.setDyntopo(d); window.__glina.maskOp('clear'); }, dyn);
+  // (the undo list keeps the newest 100 steps: each pass starts it empty, so every brush below can add its own)
+  await page.evaluate((d) => { window.__glina.setDyntopo(d); window.__glina.maskOp('clear'); window.__glina.undoStack.length = 0; }, dyn);
   await page.waitForFunction((d) => !!window.__glina.mesh.dyn === d, dyn);
   for (const id of ids) {
-    if (id === 'gizmo' || id === 'ffd' || id === 'morph' || id === 'groom' || id === 'zmodel' || id === 'topology' || id === 'shadowbox' || id === 'array') continue;   // (gizmo and cage: test/subtools.mjs, test/ffd.mjs; lines and silhouettes: test/topology.mjs, test/shadowbox.mjs; morph needs a stored shape: test/morph.mjs)
+    if (id === 'boundary' || id === 'drawgroups' || id === 'gizmo' || id === 'ffd' || id === 'morph' || id === 'groom' || id === 'zmodel' || id === 'topology' || id === 'shadowbox' || id === 'array') continue;   // (the open rim and drawing groups: test/spec.mjs; gizmo and cage: test/subtools.mjs, test/ffd.mjs; lines and silhouettes: test/topology.mjs, test/shadowbox.mjs; morph needs a stored shape: test/morph.mjs)
     await page.evaluate((i) => window.__glina.selectTool(i), id);
     const a = await state();
     if (id === 'mask' || id === 'paint') await drag(cx - 80, cy, cx + 60, cy + 20);

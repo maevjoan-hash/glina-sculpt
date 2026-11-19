@@ -312,6 +312,87 @@ const poseRun = async (opts) => {
 const poseR = await poseRun({ groups: false, mode: 'bend' }), poseG = await poseRun({ groups: true, mode: 'bend' }), poseT = await poseRun({ groups: true, mode: 'twist' });
 check('„Поза“ по групи: the whole group under the press turns (a small radius alone takes only a part of it), the rest stays', poseG.capMoved > 0.95 && poseR.capMoved < 0.6 && poseG.bodyMost < 1e-3, { radius: poseR, groups: poseG });
 check('„Усукване около оста“: the part turns about its own axis — no point rises or leaves the axis', poseT.capMoved > 0.5 && poseT.dy < 0.01 && poseT.dr < 0.01 && poseT.bodyMost < 1e-3, poseT);
+// ---------- Draw Face Sets: a new group where the brush goes ----------
+const fsRes = await (async () => {
+  await G(() => { const W = window.__glina; document.getElementById('bNew').click(); [...document.querySelectorAll('#menu button')].find((b) => b.textContent.startsWith('Сфера, по-лека')).click(); W.S.sym = false; W.syncSym(); W.cam.q.set(0, 0, 0, 1); W.orbit(0, 0); W.selectTool('drawgroups'); W.brush().radius = 40; });
+  const e = await G(() => { const W = window.__glina, r = document.getElementById('gl').getBoundingClientRect(), v = new W.cam.target.constructor(0, 0, 1).project(W.camera); return { x: r.left + (v.x * 0.5 + 0.5) * r.width, y: r.top + (-v.y * 0.5 + 0.5) * r.height }; });
+  const st = () => G(() => { const W = window.__glina, m = W.mesh, c = new Map(); for (let i = 0; i < m.n; i++) c.set(m.grp[i], (c.get(m.grp[i]) || 0) + 1); return { groups: [...c.entries()].sort((a, b) => a[0] - b[0]), undo: W.undoStack.length, pos: m.pos[0] }; });
+  const a = await st();
+  await drag(e.x - 60, e.y, e.x + 60, e.y, 12);
+  const b = await st();
+  await page.keyboard.down('Alt'); await drag(e.x, e.y, e.x, e.y + 60, 8); await page.keyboard.up('Alt');
+  const c = await st();
+  await G(() => { window.__glina.undo(); window.__glina.undo(); });
+  const d = await st();
+  return { a, b, c, d };
+})();
+check('„Рисуване на групи“: a stroke makes one new group; Alt from it grows the same group; undo takes each back', fsRes.a.groups.length === 1 && fsRes.b.groups.length === 2 && fsRes.b.undo === fsRes.a.undo + 1 && fsRes.c.groups.length === 2 && fsRes.c.groups[1][1] > fsRes.b.groups[1][1] && fsRes.d.groups.length === 1 && fsRes.d.pos === fsRes.a.pos, fsRes);
+// ---------- Enhance Details: smoothing turned round ----------
+const enhRes = await (async () => {
+  await G(() => { const W = window.__glina; document.getElementById('bNew').click(); [...document.querySelectorAll('#menu button')].find((b) => b.textContent.startsWith('Сфера, по-лека')).click(); W.S.sym = false; W.syncSym(); W.cam.q.set(0, 0, 0, 1); W.orbit(0, 0);
+    const m = W.mesh, P = m.pos; for (let i = 0; i < m.n; i++) { const x = P[i * 3], y = P[i * 3 + 1], z = P[i * 3 + 2], f = 1 + 0.006 * Math.sin(40 * x) * Math.sin(40 * y); P[i * 3] = x * f; P[i * 3 + 1] = y * f; P[i * 3 + 2] = z * f; }
+    const all = new Uint32Array(m.n); for (let i = 0; i < m.n; i++) all[i] = i; m.updateNormals(all, m.n); });
+  const stat = () => G(() => { const m = window.__glina.mesh, P = m.pos, I = m.idx; let s = 0, s2 = 0, n = 0, flip = 0, nan = 0;
+    for (let i = 0; i < m.n; i++) { const r = Math.hypot(P[i * 3], P[i * 3 + 1], P[i * 3 + 2]); if (!Number.isFinite(r)) nan++; if (P[i * 3 + 2] > 0.95) { s += r; s2 += r * r; n++; } }
+    for (let t = 0; t < m.f; t++) { const a = I[t * 3] * 3, b = I[t * 3 + 1] * 3, c = I[t * 3 + 2] * 3; const ux = P[b] - P[a], uy = P[b + 1] - P[a + 1], uz = P[b + 2] - P[a + 2], vx = P[c] - P[a], vy = P[c + 1] - P[a + 1], vz = P[c + 2] - P[a + 2]; if ((uy * vz - uz * vy) * P[a] + (uz * vx - ux * vz) * P[a + 1] + (ux * vy - uy * vx) * P[a + 2] <= 0) flip++; }
+    const mean = s / n; return { mean, bump: Math.sqrt(Math.max(0, s2 / n - mean * mean)), flip, nan }; });
+  const s0 = await stat();
+  await G(() => { const W = window.__glina; W.selectTool('enhance'); W.brush().radius = 90; W.brush().strength = 0.6; });
+  const e = await G(() => { const W = window.__glina, r = document.getElementById('gl').getBoundingClientRect(), v = new W.cam.target.constructor(0, 0, 1).project(W.camera); return { x: r.left + (v.x * 0.5 + 0.5) * r.width, y: r.top + (-v.y * 0.5 + 0.5) * r.height }; });
+  for (let k = 0; k < 3; k++) await drag(e.x - 70, e.y + (k - 1) * 20, e.x + 70, e.y + (k - 1) * 20, 16);
+  return { before: s0, after: await stat() };
+})();
+check('„Изостряне на детайла“: the bumps get higher, the form stays where it was, nothing folds', enhRes.after.bump > enhRes.before.bump * 1.3 && Math.abs(enhRes.after.mean - enhRes.before.mean) < 0.002 && enhRes.after.flip === 0 && enhRes.after.nan === 0, enhRes);
+// ---------- Boundary: the strip by an open rim bends ----------
+const bndRun = async (mode) => {
+  await G(() => { const W = window.__glina; document.getElementById('bNew').click(); [...document.querySelectorAll('#menu button')].find((b) => b.textContent.startsWith('Равнина')).click(); W.S.sym = false; W.syncSym(); W.cam.q.setFromAxisAngle(new W.cam.target.constructor(1, 0, 0), -Math.PI / 2); W.orbit(0, 0); });
+  await G((md) => { const W = window.__glina; W.selectTool('boundary'); W.brush().radius = 80; W.brush().strength = 1; W.brush().bnd = md; }, mode);
+  const b0 = await G(() => Array.from(window.__glina.mesh.pos.subarray(0, window.__glina.mesh.n * 3))), u0 = await G(() => window.__glina.undoStack.length);
+  // press on the right rim (x = +1) and drag out, away from the middle
+  const e = await G((md) => { const W = window.__glina, r = document.getElementById('gl').getBoundingClientRect(), T = W.cam.target.constructor; return [new T(0.98, 0, 0), new T(md === 'bend' ? 1.06 : 1.3, 0, 0)].map((v) => { v.project(W.camera); return [r.left + (v.x * 0.5 + 0.5) * r.width, r.top + (-v.y * 0.5 + 0.5) * r.height]; }); }, mode);
+  await drag(e[0][0], e[0][1], e[1][0], e[1][1], 10);
+  return G(([b0, u0]) => {
+    const m = window.__glina.mesh, P = m.pos; let rimUp = 0, rimOut = 0, nr = 0, far = 0, flip = 0, I = m.idx;
+    for (let i = 0; i < m.n; i++) { const x0 = b0[i * 3], z0 = b0[i * 3 + 2]; if (x0 > 0.99 && Math.abs(z0) < 0.03) { rimUp += P[i * 3 + 1]; rimOut += P[i * 3] - x0; nr++; } if (x0 < 0.3) far = Math.max(far, Math.hypot(P[i * 3] - x0, P[i * 3 + 1] - b0[i * 3 + 1], P[i * 3 + 2] - z0)); }
+    for (let t = 0; t < m.f; t++) { const a = I[t * 3] * 3, b = I[t * 3 + 1] * 3, c = I[t * 3 + 2] * 3; const ux = P[b] - P[a], uz = P[b + 2] - P[a + 2], vx = P[c] - P[a], vz = P[c + 2] - P[a + 2]; if ((uz * vx - ux * vz) <= 0) flip++; }
+    return { rimUp: rimUp / nr, rimOut: rimOut / nr, far, flip, undo: window.__glina.undoStack.length - u0 };
+  }, [b0, u0]);
+};
+const bndB = await bndRun('bend'), bndE = await bndRun('expand'), bndI = await bndRun('inflate');
+check('„Отворен ръб“: pressing by the rim and dragging out curls the strip up toward its normal; the far side stays', bndB.rimUp > 0.03 && bndB.rimOut < 0 && bndB.flip === 0 && bndB.far < 1e-6 && bndB.undo === 1, bndB);
+check('… „Разтяга навън“ pushes the rim out across itself, flat; „Надува“ lifts it along the normals', bndE.rimOut > 0.05 && Math.abs(bndE.rimUp) < 1e-4 && bndE.flip === 0 && bndI.rimUp > 0.05 && Math.abs(bndI.rimOut) < 1e-3, { expand: bndE, inflate: bndI });
+// ---------- Clay Thumb: the clay goes ahead of the thumb ----------
+const ctRes = await (async () => {
+  await G(() => { const W = window.__glina; document.getElementById('bNew').click(); [...document.querySelectorAll('#menu button')].find((b) => b.textContent.startsWith('Равнина')).click(); W.S.sym = false; W.syncSym(); W.cam.q.setFromAxisAngle(new W.cam.target.constructor(1, 0, 0), -Math.PI / 2); W.orbit(0, 0); });
+  await G(() => { const W = window.__glina; W.selectTool('claythumb'); W.brush().radius = 50; W.brush().strength = 0.6; });
+  const ends = await G(() => { const W = window.__glina, r = document.getElementById('gl').getBoundingClientRect(), T = W.cam.target.constructor; return [new T(-0.4, 0, 0), new T(0.3, 0, 0)].map((v) => { v.project(W.camera); return [r.left + (v.x * 0.5 + 0.5) * r.width, r.top + (-v.y * 0.5 + 0.5) * r.height]; }); });
+  await drag(ends[0][0], ends[0][1], ends[1][0], ends[1][1], 30);
+  return G(() => {
+    const m = window.__glina.mesh, P = m.pos; let behind = 0, nb = 0, front = -1, flip = 0, I = m.idx;
+    for (let i = 0; i < m.n; i++) { const x = P[i * 3], z = P[i * 3 + 2]; if (Math.abs(z) > 0.03) continue; if (x > -0.4 && x < -0.2) { behind += P[i * 3 + 1]; nb++; } if (x > 0.25 && x < 0.5) front = Math.max(front, P[i * 3 + 1]); }
+    for (let t = 0; t < m.f; t++) { const a = I[t * 3] * 3, b = I[t * 3 + 1] * 3, c = I[t * 3 + 2] * 3; const ux = P[b] - P[a], uz = P[b + 2] - P[a + 2], vx = P[c] - P[a], vz = P[c + 2] - P[a + 2]; if ((uz * vx - ux * vz) <= 0) flip++; }
+    return { behind: behind / nb, front, flip };
+  });
+})();
+check('„Глина с палец“: a hollow where the stroke began, the clay pushed along and piled up where it ended, nothing folds', ctRes.behind < -0.002 && ctRes.front > 0.004 && ctRes.flip === 0, ctRes);
+// ---------- Multiplane Scrape: a sharp ridge from two planes ----------
+const mpRun = async (sign) => {
+  await G(() => { const W = window.__glina; document.getElementById('bNew').click(); [...document.querySelectorAll('#menu button')].find((b) => b.textContent.startsWith('Равнина')).click(); W.S.sym = false; W.syncSym(); W.cam.q.setFromAxisAngle(new W.cam.target.constructor(1, 0, 0), -Math.PI / 2); W.orbit(0, 0); });
+  await G((sg) => { const W = window.__glina; W.selectTool('mpscrape'); W.brush().radius = 60; W.brush().strength = 1; W.brush().mpAngle = '60'; W.brush().dir = sg; }, sign);
+  const ends = await G(() => { const W = window.__glina, r = document.getElementById('gl').getBoundingClientRect(), T = W.cam.target.constructor; return [new T(-0.4, 0, 0), new T(0.4, 0, 0)].map((v) => { v.project(W.camera); return [r.left + (v.x * 0.5 + 0.5) * r.width, r.top + (-v.y * 0.5 + 0.5) * r.height]; }); });
+  for (let k = 0; k < 3; k++) await drag(ends[0][0], ends[0][1], ends[1][0], ends[1][1], 16);
+  const res = await G(() => {
+    const m = window.__glina.mesh, P = m.pos, band = (a, b) => { let y = 0, n = 0; for (let i = 0; i < m.n; i++) { const x = P[i * 3], z = P[i * 3 + 2]; if (Math.abs(x) > 0.2 || Math.abs(z) < a || Math.abs(z) >= b) continue; y += P[i * 3 + 1]; n++; } return n ? y / n : 0; };
+    const side = (sg) => { let y = 0, n = 0; for (let i = 0; i < m.n; i++) { const x = P[i * 3], z = P[i * 3 + 2] * sg; if (Math.abs(x) > 0.2 || z < 0.03 || z > 0.08) continue; y += P[i * 3 + 1]; n++; } return y / n; };
+    let maxDy = 0; for (let i = 0; i < m.n; i++) maxDy = Math.max(maxDy, Math.abs(P[i * 3 + 1]));
+    return { ridge: band(0, 0.012), slope: band(0.03, 0.08), left: side(-1), right: side(1), maxDy };
+  });
+  await G(() => { window.__glina.brush().dir = 1; });
+  return res;
+};
+const mpR = await mpRun(1), mpA = await mpRun(-1);
+check('„Ръб от две равнини“: a sharp ridge along the stroke — the top stays, both sides fall away alike', mpR.ridge > -0.004 && mpR.slope < mpR.ridge - 0.008 && Math.abs(mpR.left - mpR.right) < 0.35 * Math.abs(mpR.slope), mpR);
+check('… Alt (the angle turned over) leaves a flat surface as it is: it cuts only an inner corner', mpA.maxDy < 1e-6, mpA);
 // ---------- Relax and Slide (as Blender's Relax and Topology Slide) ----------
 const meshRun = async (tool, opts = {}) => {
   await G(() => { const W = window.__glina; document.getElementById('bNew').click(); [...document.querySelectorAll('#menu button')].find((b) => b.textContent.startsWith('Сфера, по-лека')).click(); W.S.sym = false; W.syncSym(); W.cam.q.set(0, 0, 0, 1); W.orbit(0, 0); });
@@ -340,7 +421,7 @@ const meshRun = async (tool, opts = {}) => {
 const relaxR = await meshRun('relax', { jitter: true, passes: 5 }), relaxS = await meshRun('smooth', { jitter: true, passes: 5 }), slideR = await meshRun('slide', { passes: 2 });
 check('„Отпускане на мрежата“: the polygons even out (edge lengths far more alike) and the form stays — far less shrink than smoothing', relaxR.after.cv < relaxR.before.cv * 0.75 && relaxR.after.rad < 0.004 && relaxR.after.rad < relaxS.after.rad * 0.5 && relaxR.after.flip === 0, { relax: relaxR, smooth: relaxS });
 const nudgeR = await meshRun('nudge', { passes: 2 });
-check('„Побутване (палец)“: the clay goes with the pen along the surface — the form stays round, nothing folds', nudgeR.after.cx > nudgeR.before.cx + 0.02 && nudgeR.after.rad < 0.01 && nudgeR.after.flip === 0, nudgeR);
+check('„Побутване“: the clay goes with the pen along the surface — the form stays round, nothing folds', nudgeR.after.cx > nudgeR.before.cx + 0.02 && nudgeR.after.rad < 0.01 && nudgeR.after.flip === 0, nudgeR);
 check('„Плъзгане на мрежата“: the polygons slide along the stroke over the surface — the form stays, nothing folds', slideR.after.cx > slideR.before.cx + 0.005 && slideR.after.rad < 0.004 && slideR.after.flip === 0, slideR);
 check('no page errors', errors.length === 0, errors.slice(0, 5));
 await browser.close();
