@@ -384,7 +384,7 @@ input[type=range] { width: 100%; height: 26px; accent-color: var(--wax); backgro
       <div class="bbHead"><span class="bbIcon" id="bbIcon" aria-hidden="true"></span><div class="bbTitle"><div class="bbKicker">Четка</div><div class="bbName" id="brushName">Рисуване</div><div class="bbZb" id="bbZb"></div></div></div>
       <p class="note" id="bbAbout"></p>
       <div class="row" id="radiusRow"><label for="sRadius">Радиус</label><output id="oRadius"></output><input type="range" id="sRadius" min="4" max="320" step="1"></div>
-      <div class="row" id="strengthRow"><label for="sStrength">Сила</label><output id="oStrength"></output><input type="range" id="sStrength" min="0.01" max="1" step="0.01"></div>
+      <div class="row" id="strengthRow" title="Плъзгачът е корен от силата, както в Blender: по-фин при слабите стойности (половината от плъзгача е една четвърт от силата)"><label for="sStrength">Сила</label><output id="oStrength"></output><input type="range" id="sStrength" min="0.1" max="1" step="0.005"></div>
       <label class="toggle" id="invRow">Обърната посока (Alt) <input type="checkbox" id="tInvert"></label>
       <label class="toggle" id="dynSizeRow" title="Dynamic: при приближаване четката остава със същия размер върху модела">Размерът следва модела <input type="checkbox" id="tDynSize"></label>
       <div class="grp" id="paintGrp"><div class="note lab">Цвят</div>
@@ -970,6 +970,7 @@ const S = {
   stripRelax: 0.14, healPleats: true, dynSeg: true, dynBig: true, dynAll: true,   // (parts of the healer, kept as switches for measuring)
   journal: true,       // the journal of what is done and what went wrong (kept on this device only)
   journalHints: true,  // a hint on the screen when a tool is used in a way that will not work well
+  smoothRims: true,    // smoothing also smooths open edges along themselves (borderPair)
   decPaint: true,      // decimation keeps painted borders (Decimation Master: Use Polypaint)
   heal: true,          // folds and spikes are smoothed away as they form (healVerts)
   thick: 0.05,         // Thick Skin: how far above or below the base, as a share of the model's radius
@@ -4019,12 +4020,25 @@ function coreBlock(X, parts) {
 }
 function rustSmooth(G, F, count, s) {
   const X = coreSync, m = mesh, P = m.pos, MK = m.mask;
-  const { ext, nbOff, nb } = corePatch(G, count), E = ext.length;
+  let { ext, nbOff, nb } = corePatch(G, count);
+  const E = ext.length;
   const pos = new Float32Array(E * 3), edge = new Uint8Array(count), mask = new Float32Array(count), fall = new Float32Array(count);
   for (let e = 0; e < E; e++) { const i = ext[e]; pos[e * 3] = P[i * 3]; pos[e * 3 + 1] = P[i * 3 + 1]; pos[e * 3 + 2] = P[i * 3 + 2]; }
+  let rims = null;
   for (let k = 0; k < count; k++) {
     const i = G[k]; mask[k] = MK[i]; fall[k] = F[k];
     edge[k] = m.dyn ? (!m.vfA[i].length || m.isBoundary(i) ? 1 : 0) : (m.boundary[i] || m.vvOff[i + 1] === m.vvOff[i] ? 1 : 0);
+    if (edge[k] && S.smoothRims && (m.dyn ? m.vfA[i].length : m.vvOff[i + 1] > m.vvOff[i])) { const bp = borderPair(m, i); if (bp) { (rims || (rims = new Map())).set(k, bp); edge[k] = 0; } }
+  }
+  if (rims) {
+    // (a rim point's list becomes its two neighbours along the rim; both are in the patch already)
+    const map = m.patchMap, off2 = new Uint32Array(count + 1), nb2 = [];
+    for (let k = 0; k < count; k++) {
+      const bp = rims.get(k);
+      if (bp) nb2.push(map[bp[0]], map[bp[1]]); else for (let j = nbOff[k]; j < nbOff[k + 1]; j++) nb2.push(nb[j]);
+      off2[k + 1] = nb2.length;
+    }
+    nbOff = off2; nb = Uint32Array.from(nb2);
   }
   const at = coreBlock(X, [['pos', pos], ['off', nbOff], ['nb', nb], ['edge', edge], ['mask', mask], ['fall', fall], ['out', new Float32Array(count * 3)], ['ch', new Uint8Array(count)]]);
   const n = X.brush_smooth_raw(count, E, at.pos, at.off, at.nb, nb.length, at.edge, at.mask, at.fall, s, at.out, at.ch);
@@ -4038,6 +4052,20 @@ function rustSmooth(G, F, count, s) {
   frame_.positions = true;
   return true;
 }
+// A point on an open edge (a plane's rim, a cut, an extracted shell): its two neighbours along that edge
+// — the ends of the edges it shares with one face only — in the order they come; null for an inner point,
+// a corner or where more than two such edges meet. Smoothing moves a rim point toward their middle (as
+// Blender's smooth does), so the rim gets smooth along itself instead of staying jagged, and does not
+// shrink in from the side.
+function borderPair(m, v) {
+  const I = m.idx, seen = [], cnt = [];
+  const add = (u) => { const j = seen.indexOf(u); if (j < 0) { seen.push(u); cnt.push(1); } else cnt[j]++; };
+  if (m.dyn) { const L = m.vfA[v]; if (!L || !L.length) return null; for (let j = 0; j < L.length; j++) { const o = L[j] * 3; for (let q = 0; q < 3; q++) if (I[o + q] !== v) add(I[o + q]); } }
+  else { for (let j = m.vfOff[v]; j < m.vfOff[v + 1]; j++) { const o = m.vf[j] * 3; for (let q = 0; q < 3; q++) if (I[o + q] !== v) add(I[o + q]); } }
+  let a = -1, b = -1;
+  for (let j = 0; j < seen.length; j++) if (cnt[j] === 1) { if (a < 0) a = seen[j]; else if (b < 0) b = seen[j]; else return null; }
+  return b >= 0 ? [a, b] : null;
+}
 function smoothVerts(G, F, count, s) {
   if (rustBrushes && coreSync && count && rustSmooth(G, F, count, s)) return;
   const m = mesh, P = m.pos, T = m.tmp, MK = m.mask;
@@ -4046,7 +4074,12 @@ function smoothVerts(G, F, count, s) {
     if (m.dyn) {
       // every interior neighbour appears in exactly two faces, so the face sum / (2·faces) is the ring average
       const L = m.vfA[i], I = m.idx;
-      if (!L.length || m.isBoundary(i)) { T[k * 3] = P[i * 3]; T[k * 3 + 1] = P[i * 3 + 1]; T[k * 3 + 2] = P[i * 3 + 2]; continue; }
+      if (!L.length || m.isBoundary(i)) {
+        const bp = L.length && S.smoothRims ? borderPair(m, i) : null;
+        if (bp) { const [u, w] = bp; T[k * 3] = (P[u * 3] + P[w * 3]) * 0.5; T[k * 3 + 1] = (P[u * 3 + 1] + P[w * 3 + 1]) * 0.5; T[k * 3 + 2] = (P[u * 3 + 2] + P[w * 3 + 2]) * 0.5; }
+        else { T[k * 3] = P[i * 3]; T[k * 3 + 1] = P[i * 3 + 1]; T[k * 3 + 2] = P[i * 3 + 2]; }
+        continue;
+      }
       let x = 0, y = 0, z = 0;
       for (let j = 0; j < L.length; j++) { const o = L[j] * 3; for (let q = 0; q < 3; q++) { const u = I[o + q]; if (u !== i) { x += P[u * 3]; y += P[u * 3 + 1]; z += P[u * 3 + 2]; } } }
       const inv = 1 / (2 * L.length);
@@ -4054,7 +4087,12 @@ function smoothVerts(G, F, count, s) {
       continue;
     }
     const a = m.vvOff[i], b = m.vvOff[i + 1];
-    if (m.boundary[i] || b === a) { T[k * 3] = P[i * 3]; T[k * 3 + 1] = P[i * 3 + 1]; T[k * 3 + 2] = P[i * 3 + 2]; continue; }
+    if (m.boundary[i] || b === a) {
+      const bp = b > a && S.smoothRims ? borderPair(m, i) : null;
+      if (bp) { const [u, w] = bp; T[k * 3] = (P[u * 3] + P[w * 3]) * 0.5; T[k * 3 + 1] = (P[u * 3 + 1] + P[w * 3 + 1]) * 0.5; T[k * 3 + 2] = (P[u * 3 + 2] + P[w * 3 + 2]) * 0.5; }
+      else { T[k * 3] = P[i * 3]; T[k * 3 + 1] = P[i * 3 + 1]; T[k * 3 + 2] = P[i * 3 + 2]; }
+      continue;
+    }
     let x = 0, y = 0, z = 0;
     for (let j = a; j < b; j++) { const u = m.vv[j] * 3; x += P[u]; y += P[u + 1]; z += P[u + 2]; }
     const inv = 1 / (b - a);
@@ -10260,7 +10298,9 @@ function bindRange(id, out, get, set, fmtv) {
 }
 const pct = (v) => Math.round(v * 100) + '%';
 const syncRadius = bindRange('sRadius', 'oRadius', () => brush().radius, (v) => (brush().radius = v), (v) => v + ' px');
-const syncStrength = bindRange('sStrength', 'oStrength', () => brush().strength, (v) => (brush().strength = v), pct);
+// (as in Blender) the slider is the square root of the strength: its lower half is the weak quarter,
+// where small steps matter; the brush keeps the strength itself, so saved brushes act as before
+const syncStrength = bindRange('sStrength', 'oStrength', () => Math.sqrt(Math.max(0, brush().strength)), (v) => (brush().strength = Math.round(v * v * 10000) / 10000), (v) => Math.round(v * 100) + '%');
 bindRange('sCurve', 'oCurve', () => S.curve, (v) => (S.curve = v), (v) => (v < 1 ? 'мека ' : v > 1 ? 'твърда ' : 'права ') + v.toFixed(2));
 bindRange('sStab', 'oStab', () => S.stab, (v) => (S.stab = v), pct);
 bindRange('sDetail', 'oDetail', () => S.detail, (v) => { S.detail = v; syncDynUI(); }, (v) => v + ' px');

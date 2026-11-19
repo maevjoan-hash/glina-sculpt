@@ -1,6 +1,6 @@
 {
   "name": "glina-build",
-  "version": "2.14.0",
+  "version": "2.15.0",
   "description": "Сглобява офлайн версиите на Глина от ../index.html",
   "scripts": {
     "build": "node build.mjs",

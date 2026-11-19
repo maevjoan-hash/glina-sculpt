@@ -213,6 +213,47 @@ const layerRun = async (rust) => {
 const layR = await layerRun(true), layJ = await layerRun(false);
 check('„Слой“ lifts each point straight out from the surface, not sideways (along its own normal)', layR.n > 100 && layR.sideways < 0.06, { sideways: layR.sideways, n: layR.n });
 check('… the same to the bit in Rust and in JavaScript', layR.pos.length === layJ.pos.length && layR.pos.every((v, k) => v === layJ.pos[k]));
+// ---------- the strength slider is the square root of the strength (as in Blender) ----------
+const sq = await G(() => {
+  const W = window.__glina; W.selectTool('draw'); W.brush().strength = 0.5; W.openBrushPanel();
+  const el = document.getElementById('sStrength'), out = document.getElementById('oStrength');
+  const shown = { slider: +el.value, text: out.textContent };
+  el.value = '0.5'; el.dispatchEvent(new Event('input'));
+  const half = W.brush().strength;
+  el.value = '1'; el.dispatchEvent(new Event('input'));
+  const full = W.brush().strength;
+  el.value = '0.1'; el.dispatchEvent(new Event('input'));
+  const low = W.brush().strength;
+  W.brush().strength = 0.5; W.closeBrushPanel();
+  return { shown, half, full, low, min: +el.min };
+});
+check('a brush at strength 0.5 shows the slider at 71%; the slider at half is a quarter of the strength, full is full', Math.abs(sq.shown.slider - Math.SQRT1_2) < 0.004 && sq.shown.text === '71%' && Math.abs(sq.half - 0.25) < 1e-9 && sq.full === 1 && Math.abs(sq.low - 0.01) < 1e-9 && sq.min === 0.1, sq);
+// ---------- smoothing an open edge along itself (as in Blender) ----------
+const rimRun = async (rust, rims) => {
+  await G(() => { const W = window.__glina; document.getElementById('bNew').click(); [...document.querySelectorAll('#menu button')].find((b) => b.textContent.startsWith('Равнина')).click(); W.S.sym = false; W.syncSym(); W.cam.q.setFromAxisAngle(new W.cam.target.constructor(1, 0, 0), -Math.PI / 2); W.orbit(0, 0); });
+  // a jagged rim: every rim point pushed in or out across the rim, in the plane
+  await G(() => { const W = window.__glina, m = W.mesh; let k = 0; for (let i = 0; i < m.n; i++) if (m.boundary[i]) { const x = m.pos[i * 3], z = m.pos[i * 3 + 2]; const ax = Math.abs(x) > Math.abs(z) ? 0 : 2; const along = ax === 0 ? z : x; m.pos[i * 3 + ax] += (Math.round(along * 70) % 2 ? 1 : -1) * 0.012 * Math.sign(m.pos[i * 3 + ax]); k++; } m.computeAllNormals(); W.gmesh.geometry.attributes.position.needsUpdate = true; });
+  const b0 = await G(() => Array.from(window.__glina.mesh.pos.subarray(0, window.__glina.mesh.n * 3)));
+  await G(([rust, rims]) => { const W = window.__glina; W.rustBrushes = rust; W.S.smoothRims = rims; W.selectTool('smooth'); W.brush().radius = 90; W.brush().strength = 1; }, [rust, rims]);
+  // the right rim is at x ≈ +1 in the model: along it, top to bottom
+  const sx = await G(() => { const W = window.__glina, r = document.getElementById('gl').getBoundingClientRect(), T = W.cam.target.constructor; const a = new T(0.97, 0, 0.6).project(W.camera), b = new T(0.97, 0, -0.6).project(W.camera); return [[r.left + (a.x * 0.5 + 0.5) * r.width, r.top + (-a.y * 0.5 + 0.5) * r.height], [r.left + (b.x * 0.5 + 0.5) * r.width, r.top + (-b.y * 0.5 + 0.5) * r.height]]; });
+  for (let k = 0; k < 3; k++) await drag(sx[0][0], sx[0][1], sx[1][0], sx[1][1]);
+  const r = await G((b0) => {
+    // on the right rim (x > 0.9, |z| < 0.5): how far each point is from its two rim neighbours' middle, and
+    // how far the rim moved in on average
+    const W = window.__glina, m = W.mesh, P = m.pos; let jag0 = 0, jag1 = 0, inward = 0, c = 0;
+    const rim = []; for (let i = 0; i < m.n; i++) if (m.boundary[i] && b0[i * 3] > 0.9 && Math.abs(b0[i * 3 + 2]) < 0.5) rim.push(i);
+    rim.sort((a, b) => b0[a * 3 + 2] - b0[b * 3 + 2]);
+    for (let k = 1; k < rim.length - 1; k++) { const [a, i, b] = [rim[k - 1], rim[k], rim[k + 1]]; jag0 += Math.abs(b0[i * 3] - (b0[a * 3] + b0[b * 3]) / 2); jag1 += Math.abs(P[i * 3] - (P[a * 3] + P[b * 3]) / 2); inward += b0[i * 3] - P[i * 3]; c++; }
+    return { jag0: jag0 / c, jag1: jag1 / c, inward: inward / c, n: c, pos: Array.from(P) };
+  }, b0);
+  await G(() => { window.__glina.rustBrushes = true; window.__glina.S.smoothRims = true; });
+  return r;
+};
+const rimOff = await rimRun(true, false), rimR = await rimRun(true, true), rimJ = await rimRun(false, true);
+check('„Изглаждане“ smooths a jagged open rim along itself (it stayed jagged before)', rimR.n > 10 && rimR.jag1 < rimR.jag0 * 0.35 && rimOff.jag1 > rimOff.jag0 * 0.9, { before: rimR.jag0, now: rimR.jag1, without: rimOff.jag1 });
+check('… without pulling the rim in from the side', Math.abs(rimR.inward) < 0.004, { inward: rimR.inward });
+check('… the same to the bit in Rust and in JavaScript', rimR.pos.length === rimJ.pos.length && rimR.pos.every((v, k) => v === rimJ.pos[k]));
 check('no page errors', errors.length === 0, errors.slice(0, 5));
 await browser.close();
 const ok = results.filter(Boolean).length;
