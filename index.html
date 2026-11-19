@@ -9113,14 +9113,18 @@ function setDyntopo(on) {
   S.dyntopo = on; saveSettings(); syncDynUI();
   if (!!mesh.dyn === want) return;
   busy(true);
-  setTimeout(() => {
+  const convert = () => {
+    // (a stroke begun meanwhile is let finish first: otherwise the switch would show on while the mesh
+    // stayed as it was)
+    if (stroke) { setTimeout(convert, 40); return; }
     busy(false);
     const want = S.dyntopo && mesh.f <= DYN_MAX_TRIS;
-    if (stroke || !!mesh.dyn === want) return;          // toggled back before this ran
+    if (!!mesh.dyn === want) return;          // toggled back before this ran
     const a = mesh.arrays();
     setMesh(new SculptMesh(a.pos, a.idx, a.col, a.mask, a.level, a.grp));
     toast(S.dyntopo ? `Динамична топология: детайл ${S.detail} px. Четката сама добавя триъгълници.` : 'Динамичната топология е изключена.');
-  }, 30);
+  };
+  setTimeout(convert, 30);
 }
 function floodDetail() {
   if (!mesh.dyn || stroke) return;
