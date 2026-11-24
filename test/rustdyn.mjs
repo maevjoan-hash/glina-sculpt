@@ -38,6 +38,7 @@ const state = () => G(() => {
 for (const rust of [true, false]) {
   const R = rust ? 'Rust' : 'JavaScript';
   await G((r) => { const W = window.__glina; W.setDyntopo(false); document.getElementById('bNew').click(); [...document.querySelectorAll('#menu button')].find((b) => b.textContent.startsWith('Сфера, по-лека')).click(); W.rustDyn = r; W.S.detail = 8; W.S.decimate = true; W.setDyntopo(true); W.selectTool('draw'); W.undoStack.length = 0; }, rust);
+  await page.waitForFunction(() => window.__glina.mesh.dyn, null, { timeout: 30000 });   // (the switch converts the mesh in the background)
   const a = await state();
   for (let k = 0; k < 3; k++) await drag([[cx - 120, cy - 40 + k * 40], [cx + 120, cy - 30 + k * 40]]);
   const b = await state();
