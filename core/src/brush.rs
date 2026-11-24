@@ -346,6 +346,162 @@ pub fn smooth(count: usize, pos: &[f32], nb_off: &[u32], nb: &[u32], edge: &[u8]
     n
 }
 
+/// The ring of a brushed point: its neighbours in the page's order, each once (the page's list may
+/// repeat them).
+fn ring_of(k: usize, nb_off: &[u32], nb: &[u32], out: &mut Vec<usize>) {
+    out.clear();
+    for &u in &nb[nb_off[k] as usize..nb_off[k + 1] as usize] { let u = u as usize; if !out.contains(&u) { out.push(u); } }
+}
+
+/// Relax and Slide (as Blender's Relax and Topology Slide), as the page's relaxVerts. The patch: the
+/// `count` brushed points first, then their neighbours; `pos` (ext·3) in and out. `nrm` (count·3) the
+/// brushed points' normals; `rim` 1 for a point on an open edge; `pair` (count·2) its two neighbours along
+/// the edge (patch indices, −1: none). `par`: c (3), s, sign, mode (0 relax, 1 along the stroke, 2 toward
+/// the brush), the stroke's direction (3), whether there is one.
+#[allow(clippy::too_many_arguments)]
+pub fn relax(count: usize, pos: &mut [f32], nrm: &[f32], nb_off: &[u32], nb: &[u32], rim: &[u8], pair: &[i32], mask: &[f32], fall: &[f32], par: &[f64], changed: &mut [u8]) -> usize {
+    let (cx, cy, cz, s, sign, mode) = (par[0], par[1], par[2], par[3], par[4], par[5] as u32);
+    let (dirx, diry, dirz, has_dir) = (par[6], par[7], par[8], par[9] != 0.0);
+    for c in changed.iter_mut() { *c = 0; }
+    if mode == 1 && !has_dir { return 0; }
+    let mut t = vec![0f32; count * 3];
+    let mut ring = Vec::new();
+    let p = |pos: &[f32], i: usize, q: usize| pos[i * 3 + q] as f64;
+    let mut n = 0;
+    for _ in 0..(if mode == 0 { 2 } else { 1 }) {
+        for k in 0..count {
+            let o = k * 3;
+            t[o] = 0.0; t[o + 1] = 0.0; t[o + 2] = 0.0;
+            if fall[k] as f64 * (1.0 - mask[k] as f64) <= 0.0 { continue; }
+            ring_of(k, nb_off, nb, &mut ring);
+            if ring.len() <= 2 { continue; }
+            let (px, py, pz) = (p(pos, k, 0), p(pos, k, 1), p(pos, k, 2));
+            let is_rim = rim[k] != 0;
+            let (mut nx, mut ny, mut nz) = (nrm[o] as f64, nrm[o + 1] as f64, nrm[o + 2] as f64);
+            if mode == 0 {
+                let (mut ax, mut ay, mut az) = (0.0, 0.0, 0.0);
+                if is_rim {
+                    if pair[k * 2] < 0 || pair[k * 2 + 1] < 0 { continue; }
+                    let (u, w) = (pair[k * 2] as usize, pair[k * 2 + 1] as usize);
+                    ax = (p(pos, u, 0) + p(pos, w, 0)) * 0.5; ay = (p(pos, u, 1) + p(pos, w, 1)) * 0.5; az = (p(pos, u, 2) + p(pos, w, 2)) * 0.5;
+                    let (e1x, e1y, e1z) = (p(pos, u, 0) - px, p(pos, u, 1) - py, p(pos, u, 2) - pz);
+                    let l1 = { let h = js_hypot(&[e1x, e1y, e1z]); if h == 0.0 || h.is_nan() { 1.0 } else { h } };
+                    let (e2x, e2y, e2z) = (p(pos, w, 0) - px, p(pos, w, 1) - py, p(pos, w, 2) - pz);
+                    let l2 = { let h = js_hypot(&[e2x, e2y, e2z]); if h == 0.0 || h.is_nan() { 1.0 } else { h } };
+                    nx = e1x / l1 + e2x / l2; ny = e1y / l1 + e2y / l2; nz = e1z / l1 + e2z / l2;
+                } else {
+                    for &u in &ring { ax += p(pos, u, 0); ay += p(pos, u, 1); az += p(pos, u, 2); }
+                    let l = ring.len() as f64;
+                    ax /= l; ay /= l; az /= l;
+                }
+                let nl = js_hypot(&[nx, ny, nz]);
+                let (mut dx, mut dy, mut dz) = (ax - px, ay - py, az - pz);
+                if nl > 1e-12 {
+                    nx /= nl; ny /= nl; nz /= nl;
+                    let d = dx * nx + dy * ny + dz * nz;
+                    dx -= nx * d; dy -= ny * d; dz -= nz * d;
+                } else if is_rim { dx = ax - px; dy = ay - py; dz = az - pz; }
+                else { continue; }
+                t[o] = dx as f32; t[o + 1] = dy as f32; t[o + 2] = dz as f32;
+            } else {
+                if is_rim { continue; }
+                let (mut dx, mut dy, mut dz) = if mode == 1 { (dirx * sign, diry * sign, dirz * sign) } else { ((cx - px) * sign, (cy - py) * sign, (cz - pz) * sign) };
+                let nl = js_hypot(&[nx, ny, nz]);
+                if nl > 1e-12 {
+                    nx /= nl; ny /= nl; nz /= nl;
+                    let d = dx * nx + dy * ny + dz * nz;
+                    dx -= nx * d; dy -= ny * d; dz -= nz * d;
+                }
+                let dl = js_hypot(&[dx, dy, dz]);
+                if dl < 1e-12 { continue; }
+                dx /= dl; dy /= dl; dz /= dl;
+                let (mut tx, mut ty, mut tz) = (0.0, 0.0, 0.0);
+                for &u in &ring {
+                    let (ex, ey, ez) = (p(pos, u, 0) - px, p(pos, u, 1) - py, p(pos, u, 2) - pz);
+                    let el = js_hypot(&[ex, ey, ez]);
+                    if el < 1e-12 { continue; }
+                    let along = ex * dx + ey * dy + ez * dz;
+                    if along <= 0.0 { continue; }
+                    tx += ex / el * along; ty += ey / el * along; tz += ez / el * along;
+                }
+                t[o] = tx as f32; t[o + 1] = ty as f32; t[o + 2] = tz as f32;
+            }
+        }
+        let k0 = if mode == 0 { (s * 1.5).min(1.0) } else { s.min(1.0) * 0.5 };
+        for k in 0..count {
+            let o = k * 3;
+            let w = (fall[k] as f64 * k0).min(1.0) * (1.0 - mask[k] as f64);
+            let truthy = |v: f32| v != 0.0 && !v.is_nan();
+            if w <= 0.0 || !(truthy(t[o]) || truthy(t[o + 1]) || truthy(t[o + 2])) { continue; }
+            if changed[k] == 0 { changed[k] = 1; n += 1; }
+            for q in 0..3 { pos[o + q] = (pos[o + q] as f64 + t[o + q] as f64 * w) as f32; }
+        }
+    }
+    n
+}
+
+/// Enhance Details (as Blender's), as the page does it: each brushed point that has no direction yet gets
+/// one, away from the middle of its neighbours as they were when the stroke began (`p0`, ext·3; points on an
+/// open edge get none); then it goes that way by its falloff, at most `cap` in the whole stroke.
+/// `pos` (count·3), `has` (count), `dirs` (count·3) and `used` (count) in and out.
+#[allow(clippy::too_many_arguments)]
+pub fn enhance(count: usize, pos: &mut [f32], p0: &[f32], nb_off: &[u32], nb: &[u32], rim: &[u8], has: &mut [u8], dirs: &mut [f32], used: &mut [f32], mask: &[f32], fall: &[f32], s: f64, changed: &mut [u8]) -> usize {
+    for k in 0..count {
+        if has[k] != 0 { continue; }
+        has[k] = 1;
+        if rim[k] != 0 { continue; }
+        let (a, b) = (nb_off[k] as usize, nb_off[k + 1] as usize);
+        if a == b { continue; }
+        let (mut x, mut y, mut z) = (0.0f64, 0.0f64, 0.0f64);
+        for &u in &nb[a..b] { let u = u as usize * 3; x += p0[u] as f64; y += p0[u + 1] as f64; z += p0[u + 2] as f64; }
+        let c = (b - a) as f64;
+        dirs[k * 3] = (p0[k * 3] as f64 - x / c) as f32; dirs[k * 3 + 1] = (p0[k * 3 + 1] as f64 - y / c) as f32; dirs[k * 3 + 2] = (p0[k * 3 + 2] as f64 - z / c) as f32;
+    }
+    let (cap, k0) = ((s * 2.0).min(1.0), s.min(1.0) * 0.5);
+    let mut n = 0;
+    for k in 0..count {
+        changed[k] = 0;
+        let mut w = fall[k] as f64 * (1.0 - mask[k] as f64) * k0;
+        if w <= 0.0 { continue; }
+        w = w.min(cap - used[k] as f64);
+        if w <= 0.0 { continue; }
+        used[k] = (used[k] as f64 + w) as f32;
+        changed[k] = 1; n += 1;
+        for q in 0..3 { pos[k * 3 + q] = (pos[k * 3 + q] as f64 + dirs[k * 3 + q] as f64 * w) as f32; }
+    }
+    n
+}
+
+/// Smear (as Blender's), as the page does it: each brushed point takes on the colour of its neighbours
+/// behind it along the stroke (`par`: that direction in the brush's plane (3), the strength), as the colours
+/// were before this dab (`col`, ext·3). New colours of the brushed points go to `out` (count·3).
+#[allow(clippy::too_many_arguments)]
+pub fn smear(count: usize, pos: &[f32], col: &[f32], nb_off: &[u32], nb: &[u32], mask: &[f32], fall: &[f32], par: &[f64], out: &mut [f32], changed: &mut [u8]) -> usize {
+    let (tx, ty, tz, k0) = (par[0], par[1], par[2], par[3]);
+    let mut n = 0;
+    for k in 0..count {
+        changed[k] = 0;
+        let o = k * 3;
+        out[o..o + 3].copy_from_slice(&col[o..o + 3]);
+        let w = fall[k] as f64 * (1.0 - mask[k] as f64) * k0;
+        if w <= 0.0 { continue; }
+        let (mut r0, mut g0, mut b0, mut ws) = (0.0f64, 0.0f64, 0.0f64, 0.0f64);
+        for &u in &nb[nb_off[k] as usize..nb_off[k + 1] as usize] {
+            let u = u as usize;
+            let (ex, ey, ez) = (pos[u * 3] as f64 - pos[o] as f64, pos[u * 3 + 1] as f64 - pos[o + 1] as f64, pos[u * 3 + 2] as f64 - pos[o + 2] as f64);
+            let el = js_hypot(&[ex, ey, ez]);
+            if el < 1e-12 { continue; }
+            let back = -(ex * tx + ey * ty + ez * tz) / el;
+            if back <= 0.0 { continue; }
+            r0 += col[u * 3] as f64 * back; g0 += col[u * 3 + 1] as f64 * back; b0 += col[u * 3 + 2] as f64 * back; ws += back;
+        }
+        if ws <= 0.0 { continue; }
+        changed[k] = 1; n += 1;
+        for (q, v) in [r0, g0, b0].into_iter().enumerate() { let c = col[o + q] as f64; out[o + q] = (c + (v / ws - c) * w) as f32; }
+    }
+    n
+}
+
 pub const CLOTH_PINCH: u32 = 0;
 pub const CLOTH_SLIDE: u32 = 1;
 pub const CLOTH_INFLATE: u32 = 2;

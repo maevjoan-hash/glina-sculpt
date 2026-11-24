@@ -14,10 +14,22 @@ const check = (name, ok, ev) => { results.push(ok); console.log(`${ok ? 'PASS' :
 const run = (id, rust, sign = 1, dyn = false) => page.evaluate(([id, rust, sign, dyn]) => {
   const W = window.__glina;
   W.setDyntopo(false);
-  document.getElementById('bNew').click(); [...document.querySelectorAll('#menu button')].find((b) => b.textContent.startsWith('Сфера, по-лека')).click();
-  W.S.sym = true; W.syncSym(); W.setDyntopo(dyn); W.orbit(0, 0);
+  // (relaxing an open rim: a plane seen from above, far enough that the stroke crosses its edge)
+  const rim = id === 'relaxrim';
+  document.getElementById('bNew').click(); [...document.querySelectorAll('#menu button')].find((b) => b.textContent.startsWith(rim ? 'Равнина' : 'Сфера, по-лека')).click();
+  W.S.sym = true; W.syncSym(); W.setDyntopo(dyn);
+  if (rim) {
+    W.cam.q.setFromAxisAngle(new W.cam.target.constructor(1, 0, 0), -Math.PI / 2); W.cam.dist *= 2.6;
+    // the rim points pushed along the rim, unevenly, so relaxing has something to even out there
+    const m = W.mesh; for (let i = 0; i < m.n; i++) if (m.boundary[i]) { const x = m.pos[i * 3], z = m.pos[i * 3 + 2], along = Math.abs(x) > Math.abs(z) ? 2 : 0; m.pos[i * 3 + along] += 0.012 * Math.sin(i * 1.7); }
+    m.computeAllNormals();
+  }
+  W.orbit(0, 0);
   if (id === 'morph') { W.storeMorph(); const m = W.mesh; for (let i = 0; i < m.n; i++) m.pos[i * 3] *= 1.1; }
-  W.selectTool(id); W.rustBrushes = rust;
+  // (smearing needs colours to smear: stripes)
+  if (id === 'smear') { const m = W.mesh; for (let i = 0; i < m.n; i++) { const t = 0.5 + 0.5 * Math.sin(m.pos[i * 3] * 23); m.col[i * 3] = 1; m.col[i * 3 + 1] = t; m.col[i * 3 + 2] = 1 - t; } }
+  W.selectTool(id === 'slidepinch' ? 'slide' : rim ? 'relax' : id); W.rustBrushes = rust;
+  if (id === 'slide' || id === 'slidepinch') W.brush().relax = id === 'slidepinch' ? 'pinch' : 'drag';
   if (W.brush().alphaRot === 'random') W.brush().alphaRot = 'fixed';   // (a random turn would differ between the two runs)
   const r = document.getElementById('gl').getBoundingClientRect(), cx = r.width / 2, cy = r.height / 2;
   W.undoStack.length = 0;   // (a long run reaches the 100-step limit, where a new step drops an old one)
@@ -31,7 +43,7 @@ const run = (id, rust, sign = 1, dyn = false) => page.evaluate(([id, rust, sign,
 const diff = (a, b) => { let d = 0; for (let i = 0; i < a.length; i++) d = Math.max(d, Math.abs(a[i] - b[i])); return d; };
 // (dynamic topology changes the mesh by the time a stroke takes, so two runs never match: its strokes
 // are checked by the other tests)
-for (const [id, sign, dyn] of [['smooth', 1], ['clothpinch', 1], ['clothpinch', -1], ['clothslide', 1], ['clothhook', 1], ['clothtwist', 1], ['clothinflate', 1], ['clothperp', 1], ['clothexpand', 1], ['clothexpand', -1], ['nudge', 1], ['mpscrape', 1], ['claythumb', 1], ['claythumb', -1], ['draw', 1], ['draw', -1], ['dam', 1], ['clay', 1], ['claybuild', 1], ['inflate', 1], ['pinch', 1], ['magnify', 1], ['crease', 1], ['flatten', 1], ['flatten', -1], ['trim', 1], ['planar', 1], ['layer', 1], ['layer', -1], ['blob', 1], ['morph', 1], ['mask', 1], ['mask', -1], ['paint', 1]]) {
+for (const [id, sign, dyn] of [['smooth', 1], ['clothpinch', 1], ['clothpinch', -1], ['clothslide', 1], ['clothhook', 1], ['clothtwist', 1], ['clothinflate', 1], ['clothperp', 1], ['clothexpand', 1], ['clothexpand', -1], ['nudge', 1], ['mpscrape', 1], ['claythumb', 1], ['claythumb', -1], ['relax', 1], ['relaxrim', 1], ['slide', 1], ['slide', -1], ['slidepinch', 1], ['slidepinch', -1], ['enhance', 1], ['smear', 1], ['draw', 1], ['draw', -1], ['dam', 1], ['clay', 1], ['claybuild', 1], ['inflate', 1], ['pinch', 1], ['magnify', 1], ['crease', 1], ['flatten', 1], ['flatten', -1], ['trim', 1], ['planar', 1], ['layer', 1], ['layer', -1], ['blob', 1], ['morph', 1], ['mask', 1], ['mask', -1], ['paint', 1]]) {
   const R = await run(id, true, sign, dyn), J = await run(id, false, sign, dyn);
   const d = Math.max(diff(R.pos, J.pos), diff(R.mask, J.mask), diff(R.col, J.col));
   const changedAny = R.undo === 1;

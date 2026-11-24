@@ -3992,6 +3992,7 @@ function applyBrush(tool, c, n, r, s, sign, dab = {}) {
       const d0 = dd.x * ax + dd.y * ay + dd.z * az; let tx = dd.x - ax * d0, ty = dd.y - ay * d0, tz = dd.z - az * d0; const tl = Math.hypot(tx, ty, tz);
       if (tl < 1e-9) return;
       tx /= tl; ty /= tl; tz /= tl;
+      if (rustBrushes && coreSync && rustSmear(G, F, count, [tx, ty, tz], Math.min(1, s))) break;
       const C0 = new Float32Array(count * 3), slot = new Map();
       for (let k = 0; k < count; k++) { const i = G[k]; slot.set(i, k); C0[k * 3] = CL[i * 3]; C0[k * 3 + 1] = CL[i * 3 + 1]; C0[k * 3 + 2] = CL[i * 3 + 2]; }
       const k0 = Math.min(1, s);
@@ -4032,6 +4033,7 @@ function applyBrush(tool, c, n, r, s, sign, dab = {}) {
       const nv = m.pos.length / 3;
       if (!stroke.ed || stroke.ed.length < nv) { const a = new Float32Array(nv * 3), h = new Uint8Array(nv), u = new Float32Array(nv); if (stroke.ed) { a.set(stroke.ed); h.set(stroke.edHas); u.set(stroke.edUsed); } stroke.ed = a; stroke.edHas = h; stroke.edUsed = u; }
       const ED = stroke.ed, EH = stroke.edHas, EU = stroke.edUsed, P0 = stroke.p0 && stroke.p0.length >= nv * 3 ? stroke.p0 : P;
+      if (rustBrushes && coreSync && rustEnhance(G, F, count, s, ED, EH, EU, P0)) break;
       for (let k = 0; k < count; k++) {
         const i = G[k]; if (EH[i]) continue; EH[i] = 1;
         if (m.dyn ? m.isBoundary(i) : m.boundary[i]) continue;
@@ -4393,6 +4395,60 @@ function smoothVertsHC(G, F, count, s) {
   }
   frame_.positions = true;
 }
+// The same in the Rust core (brush.rs: relax, enhance, smear), on a patch: the brushed points and their
+// neighbours. Each returns false if the core could not take it, and the JavaScript does it instead.
+function rustRelax(G, F, count, c, s, sign, mode, dir) {
+  const X = coreSync, m = mesh, P = m.pos, NR = m.nrm, MK = m.mask;
+  const { ext, nbOff, nb } = corePatch(G, count), E = ext.length, map = m.patchMap;
+  const pos = new Float32Array(E * 3), nrm = new Float32Array(count * 3), rim = new Uint8Array(count), pair = new Int32Array(count * 2).fill(-1), mask = new Float32Array(count), fall = new Float32Array(count);
+  for (let e = 0; e < E; e++) { const i = ext[e]; pos[e * 3] = P[i * 3]; pos[e * 3 + 1] = P[i * 3 + 1]; pos[e * 3 + 2] = P[i * 3 + 2]; }
+  for (let k = 0; k < count; k++) {
+    const i = G[k]; mask[k] = MK[i]; fall[k] = F[k];
+    nrm[k * 3] = NR[i * 3]; nrm[k * 3 + 1] = NR[i * 3 + 1]; nrm[k * 3 + 2] = NR[i * 3 + 2];
+    if (m.dyn ? m.isBoundary(i) : m.boundary[i]) { rim[k] = 1; const bp = mode === 'relax' ? borderPair(m, i) : null; if (bp) { pair[k * 2] = map[bp[0]]; pair[k * 2 + 1] = map[bp[1]]; } }
+  }
+  const par = Float64Array.from([c.x, c.y, c.z, s, sign, mode === 'relax' ? 0 : mode === 'drag' ? 1 : 2, dir ? dir.x : 0, dir ? dir.y : 0, dir ? dir.z : 0, dir ? 1 : 0]);
+  const at = coreBlock(X, [['pos', pos], ['nrm', nrm], ['off', nbOff], ['nb', nb], ['rim', rim], ['pair', pair], ['mask', mask], ['fall', fall], ['par', par], ['ch', new Uint8Array(count)]]);
+  if (X.brush_relax_raw(count, E, at.pos, at.nrm, at.off, at.nb, nb.length, at.rim, at.pair, at.mask, at.fall, at.par, at.ch) < 0) return false;
+  const OUT = new Float32Array(X.memory.buffer, at.pos, count * 3), CH = new Uint8Array(X.memory.buffer, at.ch, count);
+  for (let k = 0; k < count; k++) { if (!CH[k]) continue; const i = G[k]; touchVert(i); P[i * 3] = OUT[k * 3]; P[i * 3 + 1] = OUT[k * 3 + 1]; P[i * 3 + 2] = OUT[k * 3 + 2]; }
+  frame_.positions = true;
+  return true;
+}
+function rustEnhance(G, F, count, s, ED, EH, EU, P0) {
+  const X = coreSync, m = mesh, P = m.pos, MK = m.mask;
+  const { ext, nbOff, nb } = corePatch(G, count), E = ext.length;
+  const p0 = new Float32Array(E * 3), pos = new Float32Array(count * 3), rim = new Uint8Array(count), has = new Uint8Array(count), dirs = new Float32Array(count * 3), used = new Float32Array(count), mask = new Float32Array(count), fall = new Float32Array(count);
+  for (let e = 0; e < E; e++) { const i = ext[e]; p0[e * 3] = P0[i * 3]; p0[e * 3 + 1] = P0[i * 3 + 1]; p0[e * 3 + 2] = P0[i * 3 + 2]; }
+  for (let k = 0; k < count; k++) {
+    const i = G[k]; mask[k] = MK[i]; fall[k] = F[k]; has[k] = EH[i]; used[k] = EU[i];
+    rim[k] = (m.dyn ? m.isBoundary(i) : m.boundary[i]) ? 1 : 0;
+    for (let q = 0; q < 3; q++) { pos[k * 3 + q] = P[i * 3 + q]; dirs[k * 3 + q] = ED[i * 3 + q]; }
+  }
+  const at = coreBlock(X, [['pos', pos], ['p0', p0], ['off', nbOff], ['nb', nb], ['rim', rim], ['has', has], ['dirs', dirs], ['used', used], ['mask', mask], ['fall', fall], ['ch', new Uint8Array(count)]]);
+  if (X.brush_enhance_raw(count, E, at.pos, at.p0, at.off, at.nb, nb.length, at.rim, at.has, at.dirs, at.used, at.mask, at.fall, s, at.ch) < 0) return false;
+  const b = X.memory.buffer, OUT = new Float32Array(b, at.pos, count * 3), HAS = new Uint8Array(b, at.has, count), DIR = new Float32Array(b, at.dirs, count * 3), USED = new Float32Array(b, at.used, count), CH = new Uint8Array(b, at.ch, count);
+  for (let k = 0; k < count; k++) {
+    const i = G[k]; EH[i] = HAS[k]; EU[i] = USED[k]; ED[i * 3] = DIR[k * 3]; ED[i * 3 + 1] = DIR[k * 3 + 1]; ED[i * 3 + 2] = DIR[k * 3 + 2];
+    if (!CH[k]) continue;
+    touchVert(i); P[i * 3] = OUT[k * 3]; P[i * 3 + 1] = OUT[k * 3 + 1]; P[i * 3 + 2] = OUT[k * 3 + 2];
+  }
+  frame_.positions = true;
+  return true;
+}
+function rustSmear(G, F, count, t, k0) {
+  const X = coreSync, m = mesh, P = m.pos, CL = m.col, MK = m.mask;
+  const { ext, nbOff, nb } = corePatch(G, count), E = ext.length;
+  const pos = new Float32Array(E * 3), col = new Float32Array(E * 3), mask = new Float32Array(count), fall = new Float32Array(count);
+  for (let e = 0; e < E; e++) { const i = ext[e]; for (let q = 0; q < 3; q++) { pos[e * 3 + q] = P[i * 3 + q]; col[e * 3 + q] = CL[i * 3 + q]; } }
+  for (let k = 0; k < count; k++) { mask[k] = MK[G[k]]; fall[k] = F[k]; }
+  const at = coreBlock(X, [['pos', pos], ['col', col], ['off', nbOff], ['nb', nb], ['mask', mask], ['fall', fall], ['par', Float64Array.from([t[0], t[1], t[2], k0])], ['out', new Float32Array(count * 3)], ['ch', new Uint8Array(count)]]);
+  if (X.brush_smear_raw(count, E, at.pos, at.col, at.off, at.nb, nb.length, at.mask, at.fall, at.par, at.out, at.ch) < 0) return false;
+  const OUT = new Float32Array(X.memory.buffer, at.out, count * 3), CH = new Uint8Array(X.memory.buffer, at.ch, count);
+  for (let k = 0; k < count; k++) { if (!CH[k]) continue; const i = G[k]; touchVert(i); CL[i * 3] = OUT[k * 3]; CL[i * 3 + 1] = OUT[k * 3 + 1]; CL[i * 3 + 2] = OUT[k * 3 + 2]; }
+  frame_.colors = true;
+  return true;
+}
 // Relax and Slide (as Blender's Relax and Topology Slide): the polygons move along the surface, not off it.
 // Relax evens out stretched and bunched polygons where the stroke goes — each point goes toward the middle of
 // its ring, but only within its own tangent plane, so the form stays. Slide pushes the polygons along the
@@ -4401,6 +4457,7 @@ function smoothVertsHC(G, F, count, s) {
 function relaxVerts(G, F, count, c, s, sign, mode, dir) {
   const m = mesh, P = m.pos, NR = m.nrm, MK = m.mask, T = m.tmp;
   if (mode === 'drag' && !dir) return;
+  if (rustBrushes && coreSync && count && rustRelax(G, F, count, c, s, sign, mode, dir)) return;
   const ring = [];
   for (let it = 0; it < (mode === 'relax' ? 2 : 1); it++) {
     for (let k = 0; k < count; k++) {

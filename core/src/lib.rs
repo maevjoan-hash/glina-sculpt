@@ -616,6 +616,37 @@ pub unsafe extern "C" fn brush_smooth_raw(count: usize, ext: usize, pos: *const 
     if nb.iter().any(|&u| u as usize >= ext) || nb_off[count] as usize > nb_len { return -1; }
     brush::smooth(count, std::slice::from_raw_parts(pos, ext * 3), nb_off, nb, std::slice::from_raw_parts(edge, count), std::slice::from_raw_parts(mask, count), std::slice::from_raw_parts(fall, count), s, std::slice::from_raw_parts_mut(out, count * 3), std::slice::from_raw_parts_mut(changed, count)) as i32
 }
+/// Relax / Slide on a patch (brush.rs). Returns how many points changed, or −1 for bad input.
+/// # Safety
+/// Every pointer must point to as many values as its count says.
+#[no_mangle]
+pub unsafe extern "C" fn brush_relax_raw(count: usize, ext: usize, pos: *mut f32, nrm: *const f32, nb_off: *const u32, nb: *const u32, nb_len: usize, rim: *const u8, pair: *const i32, mask: *const f32, fall: *const f32, par: *const f64, changed: *mut u8) -> i32 {
+    let nb_off = std::slice::from_raw_parts(nb_off, count + 1);
+    let nb = std::slice::from_raw_parts(nb, nb_len);
+    let pair = std::slice::from_raw_parts(pair, count * 2);
+    if nb.iter().any(|&u| u as usize >= ext) || nb_off[count] as usize > nb_len || pair.iter().any(|&u| u >= ext as i32) { return -1; }
+    brush::relax(count, std::slice::from_raw_parts_mut(pos, ext * 3), std::slice::from_raw_parts(nrm, count * 3), nb_off, nb, std::slice::from_raw_parts(rim, count), pair, std::slice::from_raw_parts(mask, count), std::slice::from_raw_parts(fall, count), std::slice::from_raw_parts(par, 10), std::slice::from_raw_parts_mut(changed, count)) as i32
+}
+/// Enhance Details on a patch (brush.rs). Returns how many points changed, or −1 for bad input.
+/// # Safety
+/// Every pointer must point to as many values as its count says.
+#[no_mangle]
+pub unsafe extern "C" fn brush_enhance_raw(count: usize, ext: usize, pos: *mut f32, p0: *const f32, nb_off: *const u32, nb: *const u32, nb_len: usize, rim: *const u8, has: *mut u8, dirs: *mut f32, used: *mut f32, mask: *const f32, fall: *const f32, s: f64, changed: *mut u8) -> i32 {
+    let nb_off = std::slice::from_raw_parts(nb_off, count + 1);
+    let nb = std::slice::from_raw_parts(nb, nb_len);
+    if nb.iter().any(|&u| u as usize >= ext) || nb_off[count] as usize > nb_len { return -1; }
+    brush::enhance(count, std::slice::from_raw_parts_mut(pos, count * 3), std::slice::from_raw_parts(p0, ext * 3), nb_off, nb, std::slice::from_raw_parts(rim, count), std::slice::from_raw_parts_mut(has, count), std::slice::from_raw_parts_mut(dirs, count * 3), std::slice::from_raw_parts_mut(used, count), std::slice::from_raw_parts(mask, count), std::slice::from_raw_parts(fall, count), s, std::slice::from_raw_parts_mut(changed, count)) as i32
+}
+/// Smear on a patch (brush.rs). Returns how many points changed, or −1 for bad input.
+/// # Safety
+/// Every pointer must point to as many values as its count says.
+#[no_mangle]
+pub unsafe extern "C" fn brush_smear_raw(count: usize, ext: usize, pos: *const f32, col: *const f32, nb_off: *const u32, nb: *const u32, nb_len: usize, mask: *const f32, fall: *const f32, par: *const f64, out: *mut f32, changed: *mut u8) -> i32 {
+    let nb_off = std::slice::from_raw_parts(nb_off, count + 1);
+    let nb = std::slice::from_raw_parts(nb, nb_len);
+    if nb.iter().any(|&u| u as usize >= ext) || nb_off[count] as usize > nb_len { return -1; }
+    brush::smear(count, std::slice::from_raw_parts(pos, ext * 3), std::slice::from_raw_parts(col, ext * 3), nb_off, nb, std::slice::from_raw_parts(mask, count), std::slice::from_raw_parts(fall, count), std::slice::from_raw_parts(par, 4), std::slice::from_raw_parts_mut(out, count * 3), std::slice::from_raw_parts_mut(changed, count)) as i32
+}
 /// A cloth-brush dab on a patch (brush.rs); `pos` (ext·3) in and out. Returns 0, or −1 for bad input.
 /// # Safety
 /// Every pointer must point to as many values as its count says.
