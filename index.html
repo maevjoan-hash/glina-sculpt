@@ -4728,6 +4728,58 @@ function revertStroke() {
   if (n) { frame_.positions = true; frame_.colors = frame_.colors || stroke.tool === 'paint'; frame_.masks = frame_.masks || stroke.tool === 'mask'; }
 }
 
+// The rotate, boundary and elastic grab in the Rust core (brush.rs), the same to the bit as the JavaScript
+// in processStroke, which stays as the fallback. Each returns false if the core could not take it.
+function rustRotate(g, ang) {
+  const X = coreSync, P = mesh.pos, MK = mesh.mask;
+  for (const part of g.parts) {
+    const n = part.idx.length, mask = new Float32Array(n);
+    for (let j = 0; j < n; j++) mask[j] = MK[part.idx[j]];
+    const c = part.c, k = part.axis;
+    const at = coreBlock(X, [['orig', part.orig], ['fall', Float32Array.from(part.fall)], ['mask', mask], ['par', Float64Array.from([c.x, c.y, c.z, k.x, k.y, k.z, ang, part.turn])], ['out', new Float32Array(n * 3)]]);
+    if (X.brush_rotate_raw(n, at.orig, at.fall, at.mask, at.par, at.out) < 0) return false;
+    const OUT = new Float32Array(X.memory.buffer, at.out, n * 3);
+    for (let j = 0; j < n; j++) { const i = part.idx[j]; touchVert(i); P[i * 3] = OUT[j * 3]; P[i * 3 + 1] = OUT[j * 3 + 1]; P[i * 3 + 2] = OUT[j * 3 + 2]; }
+  }
+  return true;
+}
+function rustBoundary(g, ang, disp) {
+  const X = coreSync, P = mesh.pos;
+  const mode = g.mode === 'bend' ? 0 : g.mode === 'expand' ? 1 : 2;
+  for (const part of g.parts) {
+    const n = part.idx.length;
+    // (each point's rim frame, as numbers: along, inward, the pivot — made once per stroke)
+    if (!part.frame) { part.frame = new Float64Array(n * 9); for (let j = 0; j < n; j++) { const f = part.F[j]; part.frame.set([f.t[0], f.t[1], f.t[2], f.i[0], f.i[1], f.i[2], f.p[0], f.p[1], f.p[2]], j * 9); } }
+    const at = coreBlock(X, [['orig', part.orig], ['w', part.w], ['frame', part.frame], ['nrm', part.nrm], ['out', new Float32Array(n * 3)]]);
+    if (X.brush_boundary_raw(n, at.orig, at.w, at.frame, at.nrm, mode, ang, disp, at.out) < 0) return false;
+    const OUT = new Float32Array(X.memory.buffer, at.out, n * 3);
+    for (let j = 0; j < n; j++) { const i = part.idx[j]; touchVert(i); P[i * 3] = OUT[j * 3]; P[i * 3 + 1] = OUT[j * 3 + 1]; P[i * 3 + 2] = OUT[j * 3 + 2]; }
+  }
+  return true;
+}
+function rustElastic(g, groups, nSub, f, mainF, e0) {
+  const X = coreSync, P = mesh.pos, MK = mesh.mask;
+  // the points of all groups once each (a point two groups reach is moved by both, in turn)
+  const slot = new Map(), pts = [];
+  const gOff = new Uint32Array(groups.length + 1), list = [], mOff = new Uint32Array(groups.length + 1), mats = [], gf = [];
+  groups.forEach((grp, gi) => {
+    for (const i of grp.list) { let k = slot.get(i); if (k === undefined) { k = pts.length; slot.set(i, k); pts.push(i); } list.push(k); }
+    gOff[gi + 1] = list.length;
+    for (const m of grp.ms) mats.push(...m);
+    mOff[gi + 1] = mOff[gi] + grp.ms.length;
+    gf.push(...grp.f);
+  });
+  const n = pts.length, pos = new Float32Array(n * 3), mask = new Float32Array(n);
+  for (let k = 0; k < n; k++) { const i = pts[k]; pos[k * 3] = P[i * 3]; pos[k * 3 + 1] = P[i * 3 + 1]; pos[k * 3 + 2] = P[i * 3 + 2]; mask[k] = MK[i]; }
+  const scale = g.kelScale === 'single' ? 0 : g.kelScale === 'tri' ? 2 : 1;
+  const par = Float64Array.from([g.cur.x, g.cur.y, g.cur.z, mainF[0], mainF[1], mainF[2], f[0], f[1], f[2], e0, nSub, g.volume, scale, KEL_GROW, KEL_GROW_MAX, KEL_REACH, g.pulled]);
+  const at = coreBlock(X, [['pos', pos], ['mask', mask], ['goff', gOff], ['list', Uint32Array.from(list)], ['moff', mOff], ['mats', Float64Array.from(mats)], ['gf', Float64Array.from(gf)], ['par', par], ['ch', new Uint8Array(n)]]);
+  if (X.brush_elastic_raw(n, at.pos, at.mask, groups.length, at.goff, at.list, mats.length / 9, at.moff, at.mats, at.gf, at.par, at.ch) < 0) return false;
+  const b = X.memory.buffer, OUT = new Float32Array(b, at.pos, n * 3), CH = new Uint8Array(b, at.ch, n), PAR = new Float64Array(b, at.par, 17);
+  for (let k = 0; k < n; k++) { if (!CH[k]) continue; const i = pts[k]; touchVert(i); P[i * 3] = OUT[k * 3]; P[i * 3 + 1] = OUT[k * 3 + 1]; P[i * 3 + 2] = OUT[k * 3 + 2]; }
+  g.cur.set(PAR[0], PAR[1], PAR[2]); g.pulled = PAR[16];
+  return true;
+}
 function processStroke() {
   if (!stroke) return;
   const q = stroke.queue; if (!q.length) return;
@@ -4770,6 +4822,7 @@ function processStroke() {
     // the screen's y goes down, so a turn the pen makes clockwise on screen is a turn about the axis toward
     // the eye the other way round: the clay turns with the pen
     const ang = -g.turned * g.strength * stroke.sign, P = mesh.pos, MK = mesh.mask;
+    if (rustBrushes && coreSync && rustRotate(g, ang)) { frame_.positions = true; return; }
     for (const part of g.parts) {
       const k = part.axis, O = part.orig, c = part.c;
       for (let j = 0; j < part.idx.length; j++) {
@@ -4790,6 +4843,7 @@ function processStroke() {
     if (!to) return;
     const disp = to.sub(g.start).dot(g.parts[0].out) * g.strength * stroke.sign;
     const P = mesh.pos, ang = (disp / g.r) * Math.PI;
+    if (rustBrushes && coreSync && rustBoundary(g, ang, disp)) { frame_.positions = true; return; }
     for (const part of g.parts) {
       const O = part.orig, N = part.nrm;
       for (let j = 0; j < part.idx.length; j++) {
@@ -4930,7 +4984,9 @@ function processStroke() {
         grp.list = mesh.gIdx.slice(0, cnt);
       }
       const mainF = groups[0].f;   // the identity is always first
-      for (let sub = 0; sub < nSub; sub++) {
+      // (in the Rust core when it is there; the steps below otherwise)
+      const inCore = rustBrushes && coreSync && rustElastic(g, groups, nSub, [fx, fy, fz], mainF, e0);
+      for (let sub = 0; sub < (inCore ? 0 : nSub); sub++) {
         const eps = epsAt(g.pulled), K = kelvinlet(eps, g.volume, g.kelScale);
         g.pulled += Math.hypot(fx, fy, fz);
         for (const grp of groups) {

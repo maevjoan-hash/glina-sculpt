@@ -647,6 +647,36 @@ pub unsafe extern "C" fn brush_smear_raw(count: usize, ext: usize, pos: *const f
     if nb.iter().any(|&u| u as usize >= ext) || nb_off[count] as usize > nb_len { return -1; }
     brush::smear(count, std::slice::from_raw_parts(pos, ext * 3), std::slice::from_raw_parts(col, ext * 3), nb_off, nb, std::slice::from_raw_parts(mask, count), std::slice::from_raw_parts(fall, count), std::slice::from_raw_parts(par, 4), std::slice::from_raw_parts_mut(out, count * 3), std::slice::from_raw_parts_mut(changed, count)) as i32
 }
+/// Rotate, one part (brush.rs). Returns 0, or −1 for bad input.
+/// # Safety
+/// Every pointer must point to as many values as its count says.
+#[no_mangle]
+pub unsafe extern "C" fn brush_rotate_raw(n: usize, orig: *const f32, fall: *const f32, mask: *const f32, par: *const f64, out: *mut f32) -> i32 {
+    if orig.is_null() || fall.is_null() || mask.is_null() || par.is_null() || out.is_null() { return -1; }
+    brush::rotate(std::slice::from_raw_parts(orig, n * 3), std::slice::from_raw_parts(fall, n), std::slice::from_raw_parts(mask, n), std::slice::from_raw_parts(par, 8), std::slice::from_raw_parts_mut(out, n * 3));
+    0
+}
+/// Boundary, one part (brush.rs). Returns 0, or −1 for bad input.
+/// # Safety
+/// Every pointer must point to as many values as its count says.
+#[no_mangle]
+pub unsafe extern "C" fn brush_boundary_raw(n: usize, orig: *const f32, w: *const f32, frame: *const f64, nrm: *const f32, mode: u32, ang: f64, disp: f64, out: *mut f32) -> i32 {
+    if orig.is_null() || w.is_null() || frame.is_null() || nrm.is_null() || out.is_null() { return -1; }
+    brush::boundary(std::slice::from_raw_parts(orig, n * 3), std::slice::from_raw_parts(w, n), std::slice::from_raw_parts(frame, n * 9), std::slice::from_raw_parts(nrm, n * 3), mode, ang, disp, std::slice::from_raw_parts_mut(out, n * 3));
+    0
+}
+/// One frame of the elastic grab (brush.rs). Returns 0, or −1 for bad input.
+/// # Safety
+/// Every pointer must point to as many values as its count says.
+#[no_mangle]
+pub unsafe extern "C" fn brush_elastic_raw(n: usize, pos: *mut f32, mask: *const f32, ng: usize, g_off: *const u32, list: *const u32, nm: usize, m_off: *const u32, mats: *const f64, gf: *const f64, par: *mut f64, changed: *mut u8) -> i32 {
+    let g_off = std::slice::from_raw_parts(g_off, ng + 1);
+    let list = std::slice::from_raw_parts(list, g_off[ng] as usize);
+    let m_off = std::slice::from_raw_parts(m_off, ng + 1);
+    if list.iter().any(|&u| u as usize >= n) || m_off[ng] as usize > nm || (0..ng).any(|g| m_off[g + 1] <= m_off[g]) { return -1; }
+    brush::elastic(std::slice::from_raw_parts_mut(pos, n * 3), std::slice::from_raw_parts(mask, n), g_off, list, m_off, std::slice::from_raw_parts(mats, nm * 9), std::slice::from_raw_parts(gf, ng * 3), std::slice::from_raw_parts_mut(par, 17), std::slice::from_raw_parts_mut(changed, n));
+    0
+}
 /// A cloth-brush dab on a patch (brush.rs); `pos` (ext·3) in and out. Returns 0, or −1 for bad input.
 /// # Safety
 /// Every pointer must point to as many values as its count says.

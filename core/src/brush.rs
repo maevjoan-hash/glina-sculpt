@@ -502,6 +502,129 @@ pub fn smear(count: usize, pos: &[f32], col: &[f32], nb_off: &[u32], nb: &[u32],
     n
 }
 
+// (cos and sin here and in the page's JavaScript can differ in the last bit of an f64: measured on 1–2 % of
+// angles. Every other step is the page's, so rotate, boundary and the cloth's twist agree with it to well
+// under 1e-6, not always to the bit; near zero a rounding there may come out −5e-19 instead of +5e-19.)
+/// Rotate (as Blender's), one part: every point (from where it was when the stroke began, `orig`) turns
+/// about the axis `k` through `c` by `angle` × its falloff × `turn` (−1 for a mirrored copy). `out` n·3.
+/// `par`: c (3), k (3), angle, turn.
+pub fn rotate(orig: &[f32], fall: &[f32], mask: &[f32], par: &[f64], out: &mut [f32]) {
+    let (cx, cy, cz, kx, ky, kz, ang, turn) = (par[0], par[1], par[2], par[3], par[4], par[5], par[6], par[7]);
+    for j in 0..fall.len() {
+        let w = fall[j] as f64 * (1.0 - mask[j] as f64);
+        let t = ang * w * turn;
+        let (co, sn) = (t.cos(), t.sin());
+        let o = j * 3;
+        let (px, py, pz) = (orig[o] as f64 - cx, orig[o + 1] as f64 - cy, orig[o + 2] as f64 - cz);
+        let kd = kx * px + ky * py + kz * pz;
+        let (qx, qy, qz) = (ky * pz - kz * py, kz * px - kx * pz, kx * py - ky * px);
+        out[o] = (cx + px * co + qx * sn + kx * kd * (1.0 - co)) as f32;
+        out[o + 1] = (cy + py * co + qy * sn + ky * kd * (1.0 - co)) as f32;
+        out[o + 2] = (cz + pz * co + qz * sn + kz * kd * (1.0 - co)) as f32;
+    }
+}
+
+/// Boundary (as Blender's), one part. Per point: where it was (`orig`), its weight `w`, and from the rim
+/// point it was reached from (f64, 9 each): along the rim (t), inward (i), the pivot (p); its normal `nrm`.
+/// `mode` 0 bend (about −t through p, by `ang` × w), 1 expand (out across the rim by `disp` × w), 2 inflate.
+#[allow(clippy::too_many_arguments)]
+pub fn boundary(orig: &[f32], w: &[f32], frame: &[f64], nrm: &[f32], mode: u32, ang: f64, disp: f64, out: &mut [f32]) {
+    for j in 0..w.len() {
+        let o = j * 3;
+        let f = &frame[j * 9..j * 9 + 9];
+        let wj = w[j] as f64;
+        let (mut x, mut y, mut z) = (orig[o] as f64, orig[o + 1] as f64, orig[o + 2] as f64);
+        if mode == 0 {
+            let a = -ang * wj;
+            let (kx, ky, kz) = (f[0], f[1], f[2]);
+            let (c, sn) = (a.cos(), a.sin());
+            let (px, py, pz) = (x - f[6], y - f[7], z - f[8]);
+            let kd = kx * px + ky * py + kz * pz;
+            let (cx, cy, cz) = (ky * pz - kz * py, kz * px - kx * pz, kx * py - ky * px);
+            x = f[6] + px * c + cx * sn + kx * kd * (1.0 - c);
+            y = f[7] + py * c + cy * sn + ky * kd * (1.0 - c);
+            z = f[8] + pz * c + cz * sn + kz * kd * (1.0 - c);
+        } else if mode == 1 {
+            let t = disp * wj;
+            x -= f[3] * t; y -= f[4] * t; z -= f[5] * t;
+        } else {
+            let t = disp * wj;
+            x += nrm[o] as f64 * t; y += nrm[o + 1] as f64 * t; z += nrm[o + 2] as f64 * t;
+        }
+        out[o] = x as f32; out[o + 1] = y as f32; out[o + 2] = z as f32;
+    }
+}
+
+/// One frame of the elastic grab (regularized Kelvinlets, de Goes & James 2017; one, two or three scales as
+/// in Blender), as the page does it: `nsub` small steps, each a Kelvinlet of radius ε round where the grabbed
+/// point is now (ε grows with the distance pulled so far), for every group of symmetric copies in turn.
+/// `pos` (points of all groups, n·3) in and out; `mask` n. A group: its points (`list` from `g_off`), its
+/// copies' matrices (`mats`, 9 each, from `m_off`), its pull per step (`gf`, 3).
+/// `par` in and out: the centre (3, moved), the main pull per step (3), the pull per step (3), ε₀, nsub,
+/// ν, scale (0 one, 1 two, 2 three), ε growth, its limit, reach, pulled so far (moved).
+#[allow(clippy::too_many_arguments)]
+pub fn elastic(pos: &mut [f32], mask: &[f32], g_off: &[u32], list: &[u32], m_off: &[u32], mats: &[f64], gf: &[f64], par: &mut [f64], changed: &mut [u8]) {
+    let ng = g_off.len() - 1;
+    let (mfx, mfy, mfz, fx, fy, fz) = (par[3], par[4], par[5], par[6], par[7], par[8]);
+    let (e0, nsub, nu, scale, grow, grow_max, reach) = (par[9], par[10] as usize, par[11], par[12] as u32, par[13], par[14], par[15]);
+    let a = 1.0 / (4.0 * std::f64::consts::PI);
+    let b = a / (4.0 * (1.0 - nu.max(0.0).min(0.49)));
+    let ks: Vec<(f64, f64)> = match scale {
+        0 => vec![(1.0, 1.0)],
+        2 => vec![(1.0, 1.0), (1.1, -(1.44 - 1.0) / (1.44 - 1.21)), (1.2, (1.21 - 1.0) / (1.44 - 1.21))],
+        _ => vec![(1.0, 1.0), (1.1, -1.0)],
+    };
+    for c in changed.iter_mut() { *c = 0; }
+    for _ in 0..nsub {
+        let eps = (e0 * grow_max).min(e0 + grow * par[16]);
+        let s3: Vec<(f64, f64)> = ks.iter().map(|&(k, w)| { let e = eps * k; (e * e, w) }).collect();
+        let mut n0 = 0.0;
+        for &(k, w) in &ks { let e = eps * k; n0 += w * ((a - b) / e + a / (2.0 * e)); }
+        let norm = 1.0 / n0;
+        let (fade_in, fade_out) = (eps * (reach - 1.0), eps * reach);
+        par[16] += js_hypot(&[fx, fy, fz]);
+        for gi in 0..ng {
+            // the members' images of the current centre, averaged
+            let (ma, mb) = (m_off[gi] as usize, m_off[gi + 1] as usize);
+            let (mut cx, mut cy, mut cz) = (0.0, 0.0, 0.0);
+            for m in ma..mb {
+                let mm = &mats[m * 9..m * 9 + 9];
+                cx += mm[0] * par[0] + mm[1] * par[1] + mm[2] * par[2];
+                cy += mm[3] * par[0] + mm[4] * par[1] + mm[5] * par[2];
+                cz += mm[6] * par[0] + mm[7] * par[1] + mm[8] * par[2];
+            }
+            let inv = 1.0 / (mb - ma) as f64;
+            cx *= inv; cy *= inv; cz *= inv;
+            let (sx, sy, sz) = (gf[gi * 3], gf[gi * 3 + 1], gf[gi * 3 + 2]);
+            for &i in &list[g_off[gi] as usize..g_off[gi + 1] as usize] {
+                let i = i as usize;
+                let free = 1.0 - mask[i] as f64;
+                if free <= 0.0 { continue; }
+                changed[i] = 1;
+                let o = i * 3;
+                let (rx, ry, rz) = (pos[o] as f64 - cx, pos[o + 1] as f64 - cy, pos[o + 2] as f64 - cz);
+                let r2 = rx * rx + ry * ry + rz * rz;
+                let rf = rx * sx + ry * sy + rz * sz;
+                let (mut aa, mut bb) = (0.0, 0.0);
+                for &(es, w) in &s3 {
+                    let q = (r2 + es).sqrt();
+                    let q3 = q * q * q;
+                    aa += w * ((a - b) / q + (a / 2.0) * es / q3);
+                    bb += w * b / q3;
+                }
+                let mut w = norm;
+                let d = r2.sqrt();
+                if d > fade_in { let t = ((d - fade_in) / (fade_out - fade_in)).min(1.0); w *= 1.0 - t * t * (3.0 - 2.0 * t); }
+                aa *= w; bb *= w * rf;
+                pos[o] = (pos[o] as f64 + (aa * sx + bb * rx) * free) as f32;
+                pos[o + 1] = (pos[o + 1] as f64 + (aa * sy + bb * ry) * free) as f32;
+                pos[o + 2] = (pos[o + 2] as f64 + (aa * sz + bb * rz) * free) as f32;
+            }
+        }
+        par[0] += mfx; par[1] += mfy; par[2] += mfz;
+    }
+}
+
 pub const CLOTH_PINCH: u32 = 0;
 pub const CLOTH_SLIDE: u32 = 1;
 pub const CLOTH_INFLATE: u32 = 2;
