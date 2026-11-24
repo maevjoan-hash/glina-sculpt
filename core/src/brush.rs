@@ -22,6 +22,14 @@ pub const MORPH: u32 = 11;
 pub const GROOM: u32 = 12;
 pub const MASK: u32 = 13;
 pub const PAINT: u32 = 14;
+/// (as Blender's Thumb / Nudge) along the surface with the pen: par 16..18 the step in the brush's plane,
+/// 19 the strength for it
+pub const NUDGE: u32 = 15;
+/// (as Blender's Multiplane Scrape) par 16..18 across the stroke, 19 cos and 20 sin of half the angle, 21 the
+/// strength for it
+pub const MPSCRAPE: u32 = 16;
+/// (as Blender's Clay Thumb) par 16..18 the leaning plane's normal, 19 the strength for it
+pub const CLAYTHUMB: u32 = 17;
 
 /// `pos` (3 per point) in and out; `aux`: layer heights (1), morph targets (3), fibre `along` (1),
 /// colours (3, in and out) or the mask (1, in and out), by kind. Returns how many points changed.
@@ -193,6 +201,59 @@ pub fn dab(kind: u32, pos: &mut [f32], nrm: &[f32], mask: &[f32], fall: &[f32], 
                 changed[k] = 1; count += 1;
                 let o = k * 3;
                 for (q, c) in [cr, cg, cb].into_iter().enumerate() { let a = aux[o + q] as f64; aux[o + q] = (a + (c - a) * w) as f32; }
+            }
+        }
+        NUDGE => {
+            let (tx, ty, tz, k0) = (g(16), g(17), g(18), g(19));
+            for k in 0..n {
+                let w = fall[k] as f64 * (1.0 - mask[k] as f64) * k0;
+                if w <= 0.0 { continue; }
+                changed[k] = 1; count += 1;
+                let o = k * 3;
+                add(&mut pos[o], tx * w); add(&mut pos[o + 1], ty * w); add(&mut pos[o + 2], tz * w);
+            }
+        }
+        CLAYTHUMB => {
+            let (nx, ny, nz, k0) = (g(16), g(17), g(18), g(19));
+            for k in 0..n {
+                let w = fall[k] as f64 * (1.0 - mask[k] as f64);
+                if w <= 0.0 { continue; }
+                let o = k * 3;
+                let d = (pos[o] as f64 - cx) * nx + (pos[o + 1] as f64 - cy) * ny + (pos[o + 2] as f64 - cz) * nz;
+                if d.abs() < 1e-9 { continue; }
+                changed[k] = 1; count += 1;
+                let t = d * w * k0;
+                add(&mut pos[o], -nx * t); add(&mut pos[o + 1], -ny * t); add(&mut pos[o + 2], -nz * t);
+            }
+        }
+        MPSCRAPE => {
+            let (xx, xy, xz, ch, sh, k0) = (g(16), g(17), g(18), g(19), g(20), g(21));
+            // the planes meet on the ridge already there: the highest point near the stroke's line
+            let (mut ox, mut oh, mut best) = (0.0f64, 0.0f64, f64::NEG_INFINITY);
+            if sign > 0.0 {
+                for k in 0..n {
+                    let o = k * 3;
+                    let (dx, dy, dz) = (pos[o] as f64 - cx, pos[o + 1] as f64 - cy, pos[o + 2] as f64 - cz);
+                    let lx = dx * xx + dy * xy + dz * xz;
+                    if lx.abs() > r * 0.2 { continue; }
+                    let hh = dx * ax + dy * ay + dz * az;
+                    let sc = hh - lx.abs() * 1e-3;
+                    if sc > best { best = sc; ox = lx; oh = hh; }
+                }
+            }
+            let (qx, qy, qz) = (cx + xx * ox + ax * oh, cy + xy * ox + ay * oh, cz + xz * ox + az * oh);
+            for k in 0..n {
+                let w = fall[k] as f64 * (1.0 - mask[k] as f64);
+                if w <= 0.0 { continue; }
+                let o = k * 3;
+                let (dx, dy, dz) = (pos[o] as f64 - qx, pos[o + 1] as f64 - qy, pos[o + 2] as f64 - qz);
+                let sd = if dx * xx + dy * xy + dz * xz > 0.0 { sh } else { -sh };
+                let (nx, ny, nz) = (ax * ch + xx * sd, ay * ch + xy * sd, az * ch + xz * sd);
+                let above = dx * nx + dy * ny + dz * nz;
+                if above <= 0.0 { continue; }
+                changed[k] = 1; count += 1;
+                let t = above * w * k0;
+                add(&mut pos[o], -nx * t); add(&mut pos[o + 1], -ny * t); add(&mut pos[o + 2], -nz * t);
             }
         }
         _ => {}

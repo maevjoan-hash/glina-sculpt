@@ -31,7 +31,7 @@ const run = (id, rust, sign = 1, dyn = false) => page.evaluate(([id, rust, sign,
 const diff = (a, b) => { let d = 0; for (let i = 0; i < a.length; i++) d = Math.max(d, Math.abs(a[i] - b[i])); return d; };
 // (dynamic topology changes the mesh by the time a stroke takes, so two runs never match: its strokes
 // are checked by the other tests)
-for (const [id, sign, dyn] of [['smooth', 1], ['clothpinch', 1], ['clothpinch', -1], ['clothslide', 1], ['clothhook', 1], ['clothtwist', 1], ['clothinflate', 1], ['clothperp', 1], ['clothexpand', 1], ['clothexpand', -1], ['draw', 1], ['draw', -1], ['dam', 1], ['clay', 1], ['claybuild', 1], ['inflate', 1], ['pinch', 1], ['magnify', 1], ['crease', 1], ['flatten', 1], ['flatten', -1], ['trim', 1], ['planar', 1], ['layer', 1], ['layer', -1], ['blob', 1], ['morph', 1], ['mask', 1], ['mask', -1], ['paint', 1]]) {
+for (const [id, sign, dyn] of [['smooth', 1], ['clothpinch', 1], ['clothpinch', -1], ['clothslide', 1], ['clothhook', 1], ['clothtwist', 1], ['clothinflate', 1], ['clothperp', 1], ['clothexpand', 1], ['clothexpand', -1], ['nudge', 1], ['mpscrape', 1], ['claythumb', 1], ['claythumb', -1], ['draw', 1], ['draw', -1], ['dam', 1], ['clay', 1], ['claybuild', 1], ['inflate', 1], ['pinch', 1], ['magnify', 1], ['crease', 1], ['flatten', 1], ['flatten', -1], ['trim', 1], ['planar', 1], ['layer', 1], ['layer', -1], ['blob', 1], ['morph', 1], ['mask', 1], ['mask', -1], ['paint', 1]]) {
   const R = await run(id, true, sign, dyn), J = await run(id, false, sign, dyn);
   const d = Math.max(diff(R.pos, J.pos), diff(R.mask, J.mask), diff(R.col, J.col));
   const changedAny = R.undo === 1;

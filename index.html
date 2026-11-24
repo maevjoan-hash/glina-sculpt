@@ -3678,7 +3678,7 @@ const lastFrame = { u: [1, 0, 0], v: [0, 1, 0] };   // the brush plane of the la
 /* ---------- the brushes in the Rust core ----------
    The points under the dab (with their falloff) go to the core with the brush plane; it gives back
    their new positions (or mask, or colour) and which of them changed, which are kept for undo here. */
-const RUST_BRUSH = { draw: 1, inflate: 2, clay: 3, claystrips: 4, flatten: 5, scrape: 6, planar: 7, layer: 8, pinch: 9, crease: 10, morph: 11, groom: 12, mask: 13, paint: 14 };
+const RUST_BRUSH = { draw: 1, inflate: 2, clay: 3, claystrips: 4, flatten: 5, scrape: 6, planar: 7, layer: 8, pinch: 9, crease: 10, morph: 11, groom: 12, mask: 13, paint: 14, nudge: 15, mpscrape: 16, claythumb: 17 };
 let rustBrushes = true, dabBlock = null;   // { ptr, cap }: one block in the core's memory, reused
 function rustBrushDab(tool, c, r, s, sign, b, dab, count, A, Pc, V) {
   const X = coreSync, m = mesh, P = m.pos, NR = m.nrm, MK = m.mask, CL = m.col, G = m.gIdx, F = m.gFall;
@@ -3687,6 +3687,7 @@ function rustBrushDab(tool, c, r, s, sign, b, dab, count, A, Pc, V) {
   const par = new Float64Array(28);
   par.set([c.x, c.y, c.z, A[0], A[1], A[2], Pc[0], Pc[1], Pc[2], V[0], V[1], V[2], r, s, sign, b.mod || 0]);
   if (tool === 'pinch' && dab.dir && S.pinchLine) par[16] = 1;
+  if (DAB_PRE.has(tool)) { if (!dab.pre) return true; par.set(dab.pre, 16); }   // (no step or no direction: nothing to do this dab)
   if (tool === 'planar') {
     if (!stroke.planes) stroke.planes = [];
     const pl = stroke.planes[dab.copy || 0] || (stroke.planes[dab.copy || 0] = [Pc[0], Pc[1], Pc[2], A[0], A[1], A[2]]);
@@ -3761,6 +3762,32 @@ function tiltNormal(ax, ay, az, tilt, strength, mirror) {
   v.applyAxisAngle(R, tilt[1] * rot * (det < 0 ? -1 : 1)).applyAxisAngle(U, tilt[0] * rot * (det < 0 ? -1 : 1)).normalize();
   return [v.x, v.y, v.z];
 }
+const DAB_PRE = new Set(['nudge', 'mpscrape', 'claythumb']);
+function dabPre(tool, dab, ax, ay, az, s, sign, b) {
+  if (tool === 'nudge') {
+    // the part of the pen's step since the last dab that lies in the brush's plane; the step already
+    // shrinks with closer dabs, so the spacing's own evening-out is taken back out
+    const st = dab.step; if (!st) return null;
+    const d = st.x * ax + st.y * ay + st.z * az;
+    return [st.x - ax * d, st.y - ay * d, st.z - az * d, Math.min(1, s / ((stroke && stroke.spComp) || 1))];
+  }
+  const dd = dab.dir; if (!dd) return null;
+  if (tool === 'mpscrape') {
+    // across the stroke, and half the angle between the two planes (Alt turns it over)
+    let xx = ay * dd.z - az * dd.y, xy = az * dd.x - ax * dd.z, xz = ax * dd.y - ay * dd.x; const xl = Math.hypot(xx, xy, xz);
+    if (xl < 1e-6) return null;
+    xx /= xl; xy /= xl; xz /= xl;
+    const h = (parseFloat(b.mpAngle) || 60) * Math.PI / 360 * sign;
+    return [xx, xy, xz, Math.cos(h), Math.sin(h), Math.min(1, s * 0.6)];
+  }
+  // claythumb: the plane leans back 0.8° more every dab of the stroke, up to 60°
+  if (!dab.copy) stroke.ctAngle = Math.min(60, (stroke.ctAngle || 0) + 0.8);
+  const along = dd.x * ax + dd.y * ay + dd.z * az; let tx = dd.x - ax * along, ty = dd.y - ay * along, tz = dd.z - az * along; const tl = Math.hypot(tx, ty, tz);
+  if (tl < 1e-6) return null;
+  tx /= tl; ty /= tl; tz /= tl;
+  const an = (stroke.ctAngle || 0.8) * Math.PI / 180 * sign, ca = Math.cos(an), sa = Math.sin(an);
+  return [ax * ca - tx * sa, ay * ca - ty * sa, az * ca - tz * sa, Math.min(1, s * 0.5)];
+}
 function applyBrush(tool, c, n, r, s, sign, dab = {}) {
   const m = mesh, b = dab.b || BRUSH_DEFAULTS;
   const front = curFront && tool !== 'smooth' && tool !== 'relax';
@@ -3827,6 +3854,9 @@ function applyBrush(tool, c, n, r, s, sign, dab = {}) {
     }
   }
 
+  // what some brushes work out once per dab (a direction, a plane), the same numbers for the core and for
+  // the JavaScript below; and once only, however the dab is then done (the thumb's lean grows per dab)
+  if (DAB_PRE.has(tool)) dab.pre = dabPre(tool, dab, ax, ay, az, s, sign, b);
   // the brush's own work in the Rust core (the same as below, which stays as the fallback)
   if (rustBrushes && coreSync && RUST_BRUSH[tool] && !(tool === 'paint' && S.paintFromRef && refState.px && sign > 0)
     && rustBrushDab(tool, c, r, s, sign, b, dab, count, [ax, ay, az], [px, py, pz], [vx, vy, vz])) return;
@@ -4022,13 +4052,9 @@ function applyBrush(tool, c, n, r, s, sign, dab = {}) {
       // (as Blender's Clay Thumb) a plane through the point under the brush that leans further back with every
       // dab of the stroke (0.8° a dab, up to 60°): what is under the brush goes to it — the clay in front
       // rises, behind it a hollow stays, as when a thumb pushes clay along
-      const dd = dab.dir; if (!dd) return;
-      if (!dab.copy) stroke.ctAngle = Math.min(60, (stroke.ctAngle || 0) + 0.8);
-      const along = dd.x * ax + dd.y * ay + dd.z * az; let tx = dd.x - ax * along, ty = dd.y - ay * along, tz = dd.z - az * along; const tl = Math.hypot(tx, ty, tz);
-      if (tl < 1e-6) return;
-      tx /= tl; ty /= tl; tz /= tl;
-      const an = (stroke.ctAngle || 0.8) * Math.PI / 180 * sign, ca = Math.cos(an), sa = Math.sin(an);
-      const nx = ax * ca - tx * sa, ny = ay * ca - ty * sa, nz = az * ca - tz * sa, k0 = Math.min(1, s * 0.5);
+      // (the plane: worked out once in dabPre, for the core and for this alike)
+      const pre = dab.pre; if (!pre) return;
+      const [nx, ny, nz, k0] = pre;
       for (let k = 0; k < count; k++) {
         const i = G[k], w = F[k] * (1 - MK[i]); if (w <= 0) continue;
         const d = (P[i * 3] - c.x) * nx + (P[i * 3 + 1] - c.y) * ny + (P[i * 3 + 2] - c.z) * nz;
@@ -4043,11 +4069,8 @@ function applyBrush(tool, c, n, r, s, sign, dab = {}) {
       // angle down to its side of the stroke: what stands above them is cut down to them, so a sharp ridge
       // is left along the stroke. Each side of the stroke goes to its own plane. Alt turns the angle the
       // other way: an inner corner (a groove's walls) is cut to the angle.
-      const dd = dab.dir; if (!dd) return;
-      let xx = ay * dd.z - az * dd.y, xy = az * dd.x - ax * dd.z, xz = ax * dd.y - ay * dd.x; const xl = Math.hypot(xx, xy, xz);
-      if (xl < 1e-6) return;
-      xx /= xl; xy /= xl; xz /= xl;
-      const h = (parseFloat(b.mpAngle) || 60) * Math.PI / 360 * sign, ch = Math.cos(h), sh = Math.sin(h), k0 = Math.min(1, s * 0.6);
+      const pre = dab.pre; if (!pre) return;
+      const [xx, xy, xz, ch, sh, k0] = pre;
       // the planes meet on the ridge already there: at the highest point near the stroke's line (a press a
       // pixel beside the ridge would put their meeting on its slope, cut the ridge lower, and the next dab,
       // standing on that, lower again). On a fresh surface that is the point under the brush.
@@ -4074,9 +4097,8 @@ function applyBrush(tool, c, n, r, s, sign, dab = {}) {
       // the part of the pen's step since the last dab that lies in the brush's plane. Every dab takes what is
       // under it now, so the clay is smeared along the stroke as with a thumb. (The step already shrinks with
       // closer dabs, so the spacing's own evening-out is taken back out.)
-      const st = dab.step; if (!st) return;
-      const d = st.x * ax + st.y * ay + st.z * az, tx = st.x - ax * d, ty = st.y - ay * d, tz = st.z - az * d;
-      const k0 = Math.min(1, s / ((stroke && stroke.spComp) || 1));
+      const pre = dab.pre; if (!pre) return;
+      const [tx, ty, tz, k0] = pre;
       for (let k = 0; k < count; k++) {
         const i = G[k], w = F[k] * (1 - MK[i]) * k0; if (w <= 0) continue; touchVert(i);
         P[i * 3] += tx * w; P[i * 3 + 1] += ty * w; P[i * 3 + 2] += tz * w;
