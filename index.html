@@ -1013,6 +1013,7 @@ const S = {
   journalHints: true,  // a hint on the screen when a tool is used in a way that will not work well
   pinchLine: true,     // pinch draws toward the stroke's line, not its point (as Blender)
   penTilt: 0,          // how much the pen's lean steers draw, clay strips and the planes (0: not at all)
+  libRefit: false,     // (the switch for measuring: the tree refit by three-mesh-bvh's own code)
   smoothHC: true,      // (the switch for measuring: keepVol brushes smooth with the HC Laplacian)
   smoothRims: true,    // smoothing also smooths open edges along themselves (borderPair)
   decPaint: true,      // decimation keeps painted borders (Decimation Master: Use Polypaint)
@@ -2938,11 +2939,71 @@ canvas.addEventListener('webglcontextrestored', () => requestRender());
    ===================================================================== */
 const raycaster = new THREE.Raycaster(); raycaster.firstHitOnly = true;
 const ndc = new THREE.Vector2();
-function refitBVH() { if (bvhDirty && geo && geo.boundsTree) { geo.boundsTree.refit(); bvhDirty = false; } }
+function refitBVH() { if (bvhDirty && geo && geo.boundsTree) { bvhRefit(null); bvhDirty = false; } }
+/* The tree's boxes made to fit the surface again: as three-mesh-bvh's own refit, on its node layout (8 words
+   a node: the box as 6 floats; then the right child, or for a leaf its first triangle; the triangle count and
+   the leaf flag in the last two half-words), but in one pass with the search for what the brush reached, and
+   reading the corners straight from the position array (the library goes through getX/getY/getZ for each).
+   A node whose box `meets` nothing is left as it is; a leaf gets the box of its triangles; a node above
+   changed children gets their union. The boxes come out the same as the library's to the bit (test/spec.mjs). */
+const BVH_LEAF = 0xFFFF, _bvhViews = new WeakMap();
+const fastRefitOk = (bvh) => !S.libRefit && bvh && Array.isArray(bvh._roots) && !bvh._indirectBuffer && geo.index && geo.attributes.position.itemSize === 3 && !geo.attributes.position.isInterleavedBufferAttribute;
+function bvhRefit(meets) {
+  const bvh = geo.boundsTree;
+  if (!fastRefitOk(bvh)) { bvh.refit(); return; }
+  const P = geo.attributes.position.array, I = geo.index.array;
+  for (const buf of bvh._roots) {
+    let v = _bvhViews.get(buf);
+    if (!v) { v = { f: new Float32Array(buf), u32: new Uint32Array(buf), u16: new Uint16Array(buf) }; _bvhViews.set(buf, v); }
+    const { f, u32, u16 } = v;
+    const visit = (o) => {
+      if (meets && !meets(f, o)) return false;
+      if (u16[o * 2 + 15] === BVH_LEAF) {
+        const off = u32[o + 6], cnt = u16[o * 2 + 14];
+        let x0 = Infinity, y0 = Infinity, z0 = Infinity, x1 = -Infinity, y1 = -Infinity, z1 = -Infinity;
+        for (let i = 3 * off, e = 3 * (off + cnt); i < e; i++) {
+          const q = I[i] * 3, x = P[q], y = P[q + 1], z = P[q + 2];
+          if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y; if (z < z0) z0 = z; if (z > z1) z1 = z;
+        }
+        if (f[o] === x0 && f[o + 1] === y0 && f[o + 2] === z0 && f[o + 3] === x1 && f[o + 4] === y1 && f[o + 5] === z1) return false;
+        f[o] = x0; f[o + 1] = y0; f[o + 2] = z0; f[o + 3] = x1; f[o + 4] = y1; f[o + 5] = z1;
+        return true;
+      }
+      const L = o + 8, Rt = u32[o + 6];
+      const a = visit(L), b = visit(Rt);
+      if (!a && !b) return false;
+      for (let i = 0; i < 3; i++) { const l0 = f[L + i], r0 = f[Rt + i], l1 = f[L + i + 3], r1 = f[Rt + i + 3]; f[o + i] = l0 < r0 ? l0 : r0; f[o + i + 3] = l1 > r1 ? l1 : r1; }
+      return true;
+    };
+    visit(0);
+  }
+}
 // After a dab, refit just the nodes whose (old) bounds meet the brush spheres: every moved vertex was
 // inside one of them, so the next dab in the same frame picks against current geometry.
-const _rs = [new THREE.Sphere(), new THREE.Sphere()];
+let _rc = new Float64Array(6);
 function refitAround(centres, r) {
+  const n = centres.length, r2 = (r * 1.01) * (r * 1.01);
+  if (fastRefitOk(geo.boundsTree)) {
+    if (_rc.length < n * 3) _rc = new Float64Array(n * 3);
+    const C = _rc;
+    for (let k = 0; k < n; k++) { C[k * 3] = centres[k].x; C[k * 3 + 1] = centres[k].y; C[k * 3 + 2] = centres[k].z; }
+    // (a box meets a sphere when the box's nearest point is within the radius, as three.js's intersectsBox)
+    bvhRefit((f, o) => {
+      for (let k = 0; k < n; k++) {
+        const cx = C[k * 3], cy = C[k * 3 + 1], cz = C[k * 3 + 2];
+        const dx = cx < f[o] ? f[o] - cx : cx > f[o + 3] ? cx - f[o + 3] : 0;
+        const dy = cy < f[o + 1] ? f[o + 1] - cy : cy > f[o + 4] ? cy - f[o + 4] : 0;
+        const dz = cz < f[o + 2] ? f[o + 2] - cz : cz > f[o + 5] ? cz - f[o + 5] : 0;
+        if (dx * dx + dy * dy + dz * dz <= r2) return true;
+      }
+      return false;
+    });
+    return;
+  }
+  refitAroundLib(centres, r);
+}
+const _rs = [new THREE.Sphere(), new THREE.Sphere()];
+function refitAroundLib(centres, r) {
   const bvh = geo.boundsTree, nodes = new Set(), n = centres.length;
   while (_rs.length < n) _rs.push(new THREE.Sphere());
   for (let k = 0; k < n; k++) _rs[k].set(centres[k], r * 1.01);
@@ -5048,7 +5109,7 @@ function processStroke() {
     if (frame_.count) mesh.updateNormals(mesh.frList, frame_.count);
     if (b.stroke === 'line') {
       // the surface is back as it was, so picking along the line needs the tree to match it again
-      if (!mesh.dyn && geo.boundsTree) { geo.boundsTree.refit(); bvhDirty = false; }
+      if (!mesh.dyn && geo.boundsTree) { bvhRefit(null); bvhDirty = false; }
       const dx = s.x - A.x, dy = s.y - A.y, len = Math.hypot(dx, dy);
       const step = Math.max(1.5, radiusPxFor(pressureOf(A.p)) * b.spacing), nd = Math.min(400, Math.floor(len / step));
       stroke.prevHit = null; stroke.dir = null;
@@ -11684,5 +11745,5 @@ loadAutosave().then((d) => {
     toast('Продължавате последния модел. „Нов“ започва отначало.');
   }
 });
-window.__glina = { tiltNormal, set penTiltNow(v) { penTilt = v; }, get journal() { return journal; }, journalFile, logEv, gatherConnected, arrayDrag, foldPanel, arraySize, tposeStart, tposeApply, get TP() { return TP; }, setThick, thickOf, get rustMR() { return rustMR; }, set rustMR(v) { rustMR = v; }, mrEncode, mrDecode, mrLower, mrFrames, setWheel, camHist, camHistGo, get wheelOp() { return wheelOp; }, frameView, arrayMatrices, arrayPreview, get arrPrev() { return arrPrev; }, resetPanels, applySecLayout, get rustDyn() { return rustDyn; }, set rustDyn(v) { rustDyn = v; }, get mrPending() { return mrPending; }, openPatterns, closePatterns, selectPattern, patternAlongCurve, armPatternCurve, beginStroke, processStroke, endStroke, get rustBrushes() { return rustBrushes; }, set rustBrushes(v) { rustBrushes = v; }, openBrushPanel, closeBrushPanel, openPalette, closePalette, setDrawerTab, railIds, microPoly, topoAdd, topoBuild, topoMake, get topoLines() { return topoLines; }, set topoLines(v) { topoLines = v; }, shadowAdd, shadowMake, get shadows() { return shadows; }, set shadows(v) { shadows = v; }, earClip, shadowPrism, viewAxis, bendBuild, vdmCapture, vdmReset, get vdmField() { return vdmField; }, set vdmField(v) { vdmField = v; }, vdmDefault, snakeAlongCurve, quadRemesh, quadRemeshArrays, surfaceStats, get coreSync() { return coreSync; }, set subdivCore(v) { subdivCore = v; }, polyTris, studioPNG, setCustomMatcap, dropCustomMatcap, get customMatcap() { return customMatcap; }, matcapTextures, material, get gmesh() { return gmesh; }, renderer, makeCube, polishFeatures, sliceGroups, makeGear, makeTube, makeRing, revolve, meshToAxis, straighten, transformTools, gizmoTools, eigenSym3, subdivideArrays, slimeBridge, nanoMesh, maskIslands, texturedFiles, zipMany, levelArrays, zmBuild, quadsOf, exportSTL, renderPrintInfo, decimate, decimateArrays, printScale, projectBytes, saveProject, openProject, packValue, unpackValue, panelLoops, balloonTool, shellFrom, refOpen, refState, refColourAt, refLayout, smoothViewUpdate, get smoothViewObj() { return smoothViewObj; }, recallFrom, makeFibers, fiberArrays, projectAll, storeMorph, switchMorph, dropMorph, morphOf, fillColour, cavityColour, zsOpen, zsClose, zsSkin, get zs() { return zs; }, xtract, latticeLive, latticeScreen, get lattice() { return lattice; }, surfaceContrast, snapshotPNG, maskHidden, startCloth, stopCloth, get clothRun() { return clothRun; }, hideSelection, hideGroup, showAll, invertVisibility, hideMasked, deleteHidden, hiddenCount, setHiddenUndoable, deform, makeArray, arrayArrays, setGizmoMode, get gizmoPin() { return gizmoPin; }, set gizmoPin(v) { gizmoPin = v; }, exportOBJ, scheduleAutosave, get TOOLS() { return TOOLS; }, get curTool() { return curTool; }, activateTool, addTool, appendPrimitive, duplicateTool, deleteTool, moveTool, mergeDown, splitGroups, extractTool, extractShell, makeBoolean, newScene, gizmoHandle, gizmoScreen, get solo() { return solo; }, set solo(v) { solo = v; renderOthers(); }, toolArrays, voxelCombine, voxelRemesh, coreStart, get working() { return working; }, sliceByPlane, mirrorWeldArrays, mirrorWeld, mirrorFlip, applyNoise, snapView, setOrtho, historyJump, polyframe, get cam() { return cam; }, trimByPlane, applyCut, tubeArrays, immShape, hasOpenEdges, get curve() { return liveCurve(); }, dropCurve, get immFile() { return immFile; }, set immFile(v) { immFile = v; }, get LAYERS() { return LAYERS; }, get recLayer() { return recLayer; }, addLayer, deleteLayer, toggleLayer, recordLayer, setLayerStrength, bakeLayers, groupOp, maskAllBut, groupNear, get mesh() { return mesh; }, get stroke() { return stroke; }, get gesture() { return gesture; }, get nav() { return nav; }, get MR() { return MR; }, syncSym, get SYM() { return SYM; }, setLevel, divide, deleteLower, deleteHigher, camera, orbit, pick, selectTool, brush, brushById, maskOp, remesh, undo, redo, subdivide, setDyntopo, floodDetail, S, get undoStack() { return undoStack; } };
+window.__glina = { bvhRefit, tiltNormal, set penTiltNow(v) { penTilt = v; }, get journal() { return journal; }, journalFile, logEv, gatherConnected, arrayDrag, foldPanel, arraySize, tposeStart, tposeApply, get TP() { return TP; }, setThick, thickOf, get rustMR() { return rustMR; }, set rustMR(v) { rustMR = v; }, mrEncode, mrDecode, mrLower, mrFrames, setWheel, camHist, camHistGo, get wheelOp() { return wheelOp; }, frameView, arrayMatrices, arrayPreview, get arrPrev() { return arrPrev; }, resetPanels, applySecLayout, get rustDyn() { return rustDyn; }, set rustDyn(v) { rustDyn = v; }, get mrPending() { return mrPending; }, openPatterns, closePatterns, selectPattern, patternAlongCurve, armPatternCurve, beginStroke, processStroke, endStroke, get rustBrushes() { return rustBrushes; }, set rustBrushes(v) { rustBrushes = v; }, openBrushPanel, closeBrushPanel, openPalette, closePalette, setDrawerTab, railIds, microPoly, topoAdd, topoBuild, topoMake, get topoLines() { return topoLines; }, set topoLines(v) { topoLines = v; }, shadowAdd, shadowMake, get shadows() { return shadows; }, set shadows(v) { shadows = v; }, earClip, shadowPrism, viewAxis, bendBuild, vdmCapture, vdmReset, get vdmField() { return vdmField; }, set vdmField(v) { vdmField = v; }, vdmDefault, snakeAlongCurve, quadRemesh, quadRemeshArrays, surfaceStats, get coreSync() { return coreSync; }, set subdivCore(v) { subdivCore = v; }, polyTris, studioPNG, setCustomMatcap, dropCustomMatcap, get customMatcap() { return customMatcap; }, matcapTextures, material, get gmesh() { return gmesh; }, renderer, makeCube, polishFeatures, sliceGroups, makeGear, makeTube, makeRing, revolve, meshToAxis, straighten, transformTools, gizmoTools, eigenSym3, subdivideArrays, slimeBridge, nanoMesh, maskIslands, texturedFiles, zipMany, levelArrays, zmBuild, quadsOf, exportSTL, renderPrintInfo, decimate, decimateArrays, printScale, projectBytes, saveProject, openProject, packValue, unpackValue, panelLoops, balloonTool, shellFrom, refOpen, refState, refColourAt, refLayout, smoothViewUpdate, get smoothViewObj() { return smoothViewObj; }, recallFrom, makeFibers, fiberArrays, projectAll, storeMorph, switchMorph, dropMorph, morphOf, fillColour, cavityColour, zsOpen, zsClose, zsSkin, get zs() { return zs; }, xtract, latticeLive, latticeScreen, get lattice() { return lattice; }, surfaceContrast, snapshotPNG, maskHidden, startCloth, stopCloth, get clothRun() { return clothRun; }, hideSelection, hideGroup, showAll, invertVisibility, hideMasked, deleteHidden, hiddenCount, setHiddenUndoable, deform, makeArray, arrayArrays, setGizmoMode, get gizmoPin() { return gizmoPin; }, set gizmoPin(v) { gizmoPin = v; }, exportOBJ, scheduleAutosave, get TOOLS() { return TOOLS; }, get curTool() { return curTool; }, activateTool, addTool, appendPrimitive, duplicateTool, deleteTool, moveTool, mergeDown, splitGroups, extractTool, extractShell, makeBoolean, newScene, gizmoHandle, gizmoScreen, get solo() { return solo; }, set solo(v) { solo = v; renderOthers(); }, toolArrays, voxelCombine, voxelRemesh, coreStart, get working() { return working; }, sliceByPlane, mirrorWeldArrays, mirrorWeld, mirrorFlip, applyNoise, snapView, setOrtho, historyJump, polyframe, get cam() { return cam; }, trimByPlane, applyCut, tubeArrays, immShape, hasOpenEdges, get curve() { return liveCurve(); }, dropCurve, get immFile() { return immFile; }, set immFile(v) { immFile = v; }, get LAYERS() { return LAYERS; }, get recLayer() { return recLayer; }, addLayer, deleteLayer, toggleLayer, recordLayer, setLayerStrength, bakeLayers, groupOp, maskAllBut, groupNear, get mesh() { return mesh; }, get stroke() { return stroke; }, get gesture() { return gesture; }, get nav() { return nav; }, get MR() { return MR; }, syncSym, get SYM() { return SYM; }, setLevel, divide, deleteLower, deleteHigher, camera, orbit, pick, selectTool, brush, brushById, maskOp, remesh, undo, redo, subdivide, setDyntopo, floodDetail, S, get undoStack() { return undoStack; } };
 </script>

@@ -364,6 +364,30 @@ const kelRun = async (sc) => {
 const kS = await kelRun('single'), kB = await kelRun('bi'), kT = await kelRun('tri');
 await G(() => { window.__glina.brush().kelScale = 'bi'; });
 check('elastic grab: „Широко“ reaches furthest, „Стегнато“ least; the grabbed point follows the pen in all three', kS.far > kB.far * 1.3 && kB.far > kT.far * 1.3 && kS.near > kT.near && Math.abs(kS.centre - kB.centre) < 0.3 * kB.centre && Math.abs(kT.centre - kB.centre) < 0.3 * kB.centre, { single: kS, bi: kB, tri: kT });
+// ---------- the tree's own refit gives the library's boxes to the bit ----------
+const bvhRun = (lib) => G((lib) => {
+  const W = window.__glina; W.S.libRefit = lib; document.getElementById('bNew').click(); [...document.querySelectorAll('#menu button')].find((b) => b.textContent.startsWith('Сфера, по-лека')).click();
+  W.S.sym = true; W.syncSym(); W.orbit(0, 0); W.selectTool('draw');
+  const r = document.getElementById('gl').getBoundingClientRect(), cx = r.width / 2, cy = r.height / 2;
+  // (a newly built tree's boxes are a little looser than refit ones: start from a refit tree)
+  W.gmesh.geometry.boundsTree.refit();
+  W.beginStroke({ pointerId: -1, pointerType: 'mouse', pressure: 1 }, cx - 100, cy, W.brush(), 1);
+  for (let i = 1; i <= 20; i++) { W.stroke.queue.push({ x: cx - 100 + i * 10, y: cy + Math.sin(i / 3) * 30, p: 1 }); W.processStroke(); }
+  const bvh = W.gmesh.geometry.boundsTree, snap = () => bvh._roots.map((b) => Array.from(new Uint32Array(b.slice(0))));
+  // during the stroke only the nodes the brush reached are refit after each dab; against a full refit at the
+  // same moment, how many nodes are behind (the healer also moves points just outside the brush, so some
+  // may be — the whole tree is refit once a frame anyway)
+  const part = snap(); bvh.refit(); const now = snap();
+  let behind = 0; for (let k = 0; k < part.length; k++) for (let i = 0; i < part[k].length; i += 8) for (let q = 0; q < 6; q++) if (part[k][i + q] !== now[k][i + q]) { behind++; break; }
+  W.endStroke(true);
+  W.bvhRefit(null); const full = snap();
+  W.S.libRefit = false;
+  return { part, full, behind };
+}, lib);
+const bvF = await bvhRun(false), bvL = await bvhRun(true);
+const sameB = (a, b) => a.length === b.length && a.every((x, k) => x.length === b[k].length && x.every((v, i) => v === b[k][i]));
+const bvhRes = { behindOurs: bvF.behind, behindLib: bvL.behind, fullSame: sameB(bvF.full, bvL.full), nodes: bvF.full[0].length / 8 };
+check('the tree refit by the brush: all of it gives the library\'s boxes to the bit; after each dab no more nodes are behind than with the library\'s', bvhRes.fullSame && bvhRes.behindOurs <= bvhRes.behindLib, bvhRes);
 // ---------- Rotate: the clay in the circle turns with the pen, as a dial ----------
 const rotRes = await (async () => {
   await G(() => { const W = window.__glina; document.getElementById('bNew').click(); [...document.querySelectorAll('#menu button')].find((b) => b.textContent.startsWith('Сфера, по-лека')).click(); W.S.sym = false; W.syncSym(); W.cam.q.set(0, 0, 0, 1); W.orbit(0, 0); W.selectTool('rotate'); W.brush().radius = 80; W.brush().strength = 1; });
