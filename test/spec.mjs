@@ -444,9 +444,10 @@ const bvhFrames = await G(() => {
 });
 check('frame after frame (drawing, grabbing, smoothing), the tree refit only where points moved is the same as a full refit', Object.values(bvhFrames).every((x) => x.behind === 0), bvhFrames);
 check('the tree refit by the brush: all of it gives the library\'s boxes to the bit; after each dab no more nodes are behind than with the library\'s', bvhRes.fullSame && bvhRes.behindOurs <= bvhRes.behindLib, bvhRes);
+// (the checks below that count undo steps start the list empty: it keeps the newest 100 steps)
 // ---------- Rotate: the clay in the circle turns with the pen, as a dial ----------
 const rotRes = await (async () => {
-  await G(() => { const W = window.__glina; document.getElementById('bNew').click(); [...document.querySelectorAll('#menu button')].find((b) => b.textContent.startsWith('Сфера, по-лека')).click(); W.S.sym = false; W.syncSym(); W.cam.q.set(0, 0, 0, 1); W.orbit(0, 0); W.selectTool('rotate'); W.brush().radius = 80; W.brush().strength = 1; });
+  await G(() => { const W = window.__glina; document.getElementById('bNew').click(); [...document.querySelectorAll('#menu button')].find((b) => b.textContent.startsWith('Сфера, по-лека')).click(); W.S.sym = false; W.syncSym(); W.cam.q.set(0, 0, 0, 1); W.orbit(0, 0); W.undoStack.length = 0; W.selectTool('rotate'); W.brush().radius = 80; W.brush().strength = 1; });
   const b0 = await G(() => Array.from(window.__glina.mesh.pos.subarray(0, window.__glina.mesh.n * 3))), u0 = await G(() => window.__glina.undoStack.length);
   const e = await G(() => { const W = window.__glina, r = document.getElementById('gl').getBoundingClientRect(), v = new W.cam.target.constructor(0, 0, 1).project(W.camera); return { x: r.left + (v.x * 0.5 + 0.5) * r.width, y: r.top + (-v.y * 0.5 + 0.5) * r.height }; });
   // press in the middle, out to the right, then a quarter turn round to the top (anticlockwise on screen)
@@ -465,7 +466,7 @@ const rotRes = await (async () => {
 check('„Завъртане“: the clay in the middle turns with the pen (a quarter turn anticlockwise), about its axis, the rest stays', rotRes.turn > 1.0 && rotRes.turn < 1.7 && rotRes.drift < 0.002 && rotRes.outside < 1e-6 && rotRes.undo === 1, rotRes);
 // ---------- Draw Face Sets: a new group where the brush goes ----------
 const fsRes = await (async () => {
-  await G(() => { const W = window.__glina; document.getElementById('bNew').click(); [...document.querySelectorAll('#menu button')].find((b) => b.textContent.startsWith('Сфера, по-лека')).click(); W.S.sym = false; W.syncSym(); W.cam.q.set(0, 0, 0, 1); W.orbit(0, 0); W.selectTool('drawgroups'); W.brush().radius = 40; });
+  await G(() => { const W = window.__glina; document.getElementById('bNew').click(); [...document.querySelectorAll('#menu button')].find((b) => b.textContent.startsWith('Сфера, по-лека')).click(); W.S.sym = false; W.syncSym(); W.cam.q.set(0, 0, 0, 1); W.orbit(0, 0); W.undoStack.length = 0; W.selectTool('drawgroups'); W.brush().radius = 40; });
   const e = await G(() => { const W = window.__glina, r = document.getElementById('gl').getBoundingClientRect(), v = new W.cam.target.constructor(0, 0, 1).project(W.camera); return { x: r.left + (v.x * 0.5 + 0.5) * r.width, y: r.top + (-v.y * 0.5 + 0.5) * r.height }; });
   const st = () => G(() => { const W = window.__glina, m = W.mesh, c = new Map(); for (let i = 0; i < m.n; i++) c.set(m.grp[i], (c.get(m.grp[i]) || 0) + 1); return { groups: [...c.entries()].sort((a, b) => a[0] - b[0]), undo: W.undoStack.length, pos: m.pos[0] }; });
   const a = await st();
@@ -497,7 +498,7 @@ check('„Изостряне на детайла“: the bumps get higher, the f
 // ---------- Boundary: the strip by an open rim bends ----------
 const bndRun = async (mode) => {
   await G(() => { const W = window.__glina; document.getElementById('bNew').click(); [...document.querySelectorAll('#menu button')].find((b) => b.textContent.startsWith('Равнина')).click(); W.S.sym = false; W.syncSym(); W.cam.q.setFromAxisAngle(new W.cam.target.constructor(1, 0, 0), -Math.PI / 2); W.orbit(0, 0); });
-  await G((md) => { const W = window.__glina; W.selectTool('boundary'); W.brush().radius = 80; W.brush().strength = 1; W.brush().bnd = md; }, mode);
+  await G((md) => { const W = window.__glina; W.undoStack.length = 0; W.selectTool('boundary'); W.brush().radius = 80; W.brush().strength = 1; W.brush().bnd = md; }, mode);
   const b0 = await G(() => Array.from(window.__glina.mesh.pos.subarray(0, window.__glina.mesh.n * 3))), u0 = await G(() => window.__glina.undoStack.length);
   // press on the right rim (x = +1) and drag out, away from the middle
   const e = await G((md) => { const W = window.__glina, r = document.getElementById('gl').getBoundingClientRect(), T = W.cam.target.constructor; return [new T(0.98, 0, 0), new T(md === 'bend' ? 1.06 : 1.3, 0, 0)].map((v) => { v.project(W.camera); return [r.left + (v.x * 0.5 + 0.5) * r.width, r.top + (-v.y * 0.5 + 0.5) * r.height]; }); }, mode);
