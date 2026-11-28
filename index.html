@@ -1013,6 +1013,7 @@ const S = {
   journalHints: true,  // a hint on the screen when a tool is used in a way that will not work well
   pinchLine: true,     // pinch draws toward the stroke's line, not its point (as Blender)
   penTilt: 0,          // how much the pen's lean steers draw, clay strips and the planes (0: not at all)
+  gatherScan: false,   // (the switch for measuring: gather scans every point instead of the tree)
   libRefit: false,     // (the switch for measuring: the tree refit by three-mesh-bvh's own code)
   smoothHC: true,      // (the switch for measuring: keepVol brushes smooth with the HC Laplacian)
   smoothRims: true,    // smoothing also smooths open edges along themselves (borderPair)
@@ -1313,7 +1314,7 @@ class SculptMesh {
     const fn = this.fn, nr = this.nrm; let x = 0, y = 0, z = 0;
     if (this.dyn) { const L = this.vfA[v]; for (let j = 0; j < L.length; j++) { const t = L[j] * 3; x += fn[t]; y += fn[t + 1]; z += fn[t + 2]; } }
     else for (let j = this.vfOff[v], e = this.vfOff[v + 1]; j < e; j++) { const t = this.vf[j] * 3; x += fn[t]; y += fn[t + 1]; z += fn[t + 2]; }
-    const l = Math.hypot(x, y, z) || 1;
+    const l = Math.sqrt(x * x + y * y + z * z) || 1;   // (√ of the sum: Math.hypot guards against overflow these numbers never reach, and is many times slower)
     nr[v * 3] = x / l; nr[v * 3 + 1] = y / l; nr[v * 3 + 2] = z / l;
   }
   computeAllNormals() {
@@ -2939,7 +2940,10 @@ canvas.addEventListener('webglcontextrestored', () => requestRender());
    ===================================================================== */
 const raycaster = new THREE.Raycaster(); raycaster.firstHitOnly = true;
 const ndc = new THREE.Vector2();
-function refitBVH() { if (bvhDirty && geo && geo.boundsTree) { bvhRefit(null); bvhDirty = false; } }
+function refitBVH() { if (bvhDirty && geo && geo.boundsTree) { bvhRefit(null); bvhDirty = false; bvhPending.length = 0; } }
+// spheres a brush has moved points in since the tree was last refit there (x, y, z, r each): gather refits
+// there first, so a mirrored copy meeting the main dab near the symmetry plane finds the points where they are
+const bvhPending = [];
 /* The tree's boxes made to fit the surface again: as three-mesh-bvh's own refit, on its node layout (8 words
    a node: the box as 6 floats; then the right child, or for a leaf its first triangle; the triangle count and
    the leaf flag in the last two half-words), but in one pass with the search for what the brush reached, and
@@ -2983,6 +2987,7 @@ function bvhRefit(meets) {
 let _rc = new Float64Array(6);
 function refitAround(centres, r) {
   const n = centres.length, r2 = (r * 1.01) * (r * 1.01);
+  bvhPending.length = 0;
   if (fastRefitOk(geo.boundsTree)) {
     if (_rc.length < n * 3) _rc = new Float64Array(n * 3);
     const C = _rc;
@@ -3002,6 +3007,32 @@ function refitAround(centres, r) {
   }
   refitAroundLib(centres, r);
 }
+// the tree refit where the pending spheres are (each with its own radius)
+function refitPending() {
+  const Q = bvhPending, n = Q.length / 4; if (!n) return;
+  const C = Float64Array.from(Q); Q.length = 0;
+  bvhRefit((f, o) => {
+    for (let k = 0; k < n; k++) {
+      const cx = C[k * 4], cy = C[k * 4 + 1], cz = C[k * 4 + 2], rr = C[k * 4 + 3] * 1.01;
+      const dx = cx < f[o] ? f[o] - cx : cx > f[o + 3] ? cx - f[o + 3] : 0;
+      const dy = cy < f[o + 1] ? f[o + 1] - cy : cy > f[o + 4] ? cy - f[o + 4] : 0;
+      const dz = cz < f[o + 2] ? f[o + 2] - cz : cz > f[o + 5] ? cz - f[o + 5] : 0;
+      if (dx * dx + dy * dy + dz * dz <= rr * rr) return true;
+    }
+    return false;
+  });
+}
+// the tree refit where a box is (the points' old and new places, when something other than a brush moved them)
+function refitBox(b) {
+  if (!(b[0] <= b[3])) return;
+  bvhRefit((f, o) => f[o] <= b[3] && f[o + 3] >= b[0] && f[o + 1] <= b[4] && f[o + 4] >= b[1] && f[o + 2] <= b[5] && f[o + 5] >= b[2]);
+}
+function growBox(b, list, n) {
+  const P = mesh.pos;
+  for (let k = 0; k < n; k++) { const o = list[k] * 3; for (let q = 0; q < 3; q++) { const v = P[o + q]; if (v < b[q]) b[q] = v; if (v > b[q + 3]) b[q + 3] = v; } }
+  return b;
+}
+const newBox = () => [Infinity, Infinity, Infinity, -Infinity, -Infinity, -Infinity];
 const _rs = [new THREE.Sphere(), new THREE.Sphere()];
 function refitAroundLib(centres, r) {
   const bvh = geo.boundsTree, nodes = new Set(), n = centres.length;
@@ -3095,7 +3126,7 @@ function screenToPlane(x, y, planePoint, planeNormal) {
    ===================================================================== */
 let strokeId = 1;
 let stroke = null;
-const frame_ = { tag: 1, count: 0, minV: Infinity, maxV: -1, colors: false, masks: false, positions: false };
+const frame_ = { tag: 1, count: 0, minV: Infinity, maxV: -1, colors: false, masks: false, positions: false, box: [Infinity, Infinity, Infinity, -Infinity, -Infinity, -Infinity] };
 const undoStack = [], redoStack = [];
 
 function frameMark(i) {
@@ -3103,6 +3134,11 @@ function frameMark(i) {
   if (m.frStamp[i] !== frame_.tag) {
     m.frStamp[i] = frame_.tag;
     m.frList[frame_.count++] = i;
+    // (where it is now, before it moves: with where the frame leaves it, the box the tree is refit in)
+    const P = m.pos, o = i * 3, B = frame_.box;
+    if (P[o] < B[0]) B[0] = P[o]; if (P[o] > B[3]) B[3] = P[o];
+    if (P[o + 1] < B[1]) B[1] = P[o + 1]; if (P[o + 1] > B[4]) B[4] = P[o + 1];
+    if (P[o + 2] < B[2]) B[2] = P[o + 2]; if (P[o + 2] > B[5]) B[5] = P[o + 2];
     if (i < frame_.minV) frame_.minV = i;
     if (i > frame_.maxV) frame_.maxV = i;
   }
@@ -3126,6 +3162,7 @@ function touchVert(i) {
 // from −0.1): with a sharp line there a wall of a pit had points that moved beside points that did not,
 // and the triangles between them were pulled out into shards
 const FRONT_FULL = 0.3;
+let _gStack = new Int32Array(256);
 function gather(cx, cy, cz, r, nx, ny, nz, frontOnly) {
   const m = mesh, p = m.pos, nr = m.nrm, out = m.gIdx, fall = m.gFall, H = m.hid;
   const r2 = r * r, FL = curLUT;   // (not L: the dynamic branch below has its own L)
@@ -3156,6 +3193,53 @@ function gather(cx, cy, cz, r, nx, ny, nz, frontOnly) {
           out[c] = i; fall[c] = lut(FL, Math.sqrt(d2) / r) * face; c++;
         }
       }
+    }
+    m.gCount = c;
+    return c;
+  }
+  // a static mesh: only the points of the tree's leaves whose boxes meet the sphere (every point within it lies
+  // in such a leaf's box), then put in their numbers' order — the order the scan of every point below gives,
+  // so whatever is summed over them comes out the same to the bit
+  if (!S.gatherScan && geo && geo.boundsTree && geo.attributes.position.array === p && fastRefitOk(geo.boundsTree)) {
+    if (bvhDirty) refitBVH(); else if (bvhPending.length) refitPending();
+    const I = geo.index.array, tv = m.tagV, tag = m.nextTag();
+    let st = _gStack;
+    for (const buf of geo.boundsTree._roots) {
+      let v = _bvhViews.get(buf);
+      if (!v) { v = { f: new Float32Array(buf), u32: new Uint32Array(buf), u16: new Uint16Array(buf) }; _bvhViews.set(buf, v); }
+      const { f, u32, u16 } = v;
+      let sp = 0; st[sp++] = 0;
+      while (sp) {
+        const o = st[--sp];
+        const ex = cx < f[o] ? f[o] - cx : cx > f[o + 3] ? cx - f[o + 3] : 0;
+        const ey = cy < f[o + 1] ? f[o + 1] - cy : cy > f[o + 4] ? cy - f[o + 4] : 0;
+        const ez = cz < f[o + 2] ? f[o + 2] - cz : cz > f[o + 5] ? cz - f[o + 5] : 0;
+        if (ex * ex + ey * ey + ez * ez > r2) continue;
+        if (u16[o * 2 + 15] === BVH_LEAF) {
+          const off = u32[o + 6], cnt = u16[o * 2 + 14];
+          for (let t = 3 * off, e = 3 * (off + cnt); t < e; t++) {
+            const i = I[t];
+            if (tv[i] === tag) continue;
+            tv[i] = tag;
+            const dx = p[i * 3] - cx, dy = p[i * 3 + 1] - cy, dz = p[i * 3 + 2] - cz;
+            if (dx * dx + dy * dy + dz * dz >= r2) continue;
+            if (frontOnly) { const d = nr[i * 3] * nx + nr[i * 3 + 1] * ny + nr[i * 3 + 2] * nz; if (d < -0.1) continue; }
+            if (curGroup >= 0 && m.grp[i] !== curGroup) continue;
+            if (H[i]) continue;
+            out[c++] = i;
+          }
+        } else {
+          if (sp + 2 > st.length) { const s2 = new Int32Array(st.length * 2); s2.set(st); st = _gStack = s2; }
+          st[sp++] = u32[o + 6]; st[sp++] = o + 8;
+        }
+      }
+    }
+    out.subarray(0, c).sort();
+    for (let k = 0; k < c; k++) {
+      const i = out[k], dx = p[i * 3] - cx, dy = p[i * 3 + 1] - cy, dz = p[i * 3 + 2] - cz, d2 = dx * dx + dy * dy + dz * dz;
+      let face = 1;
+      if (frontOnly) { const d = nr[i * 3] * nx + nr[i * 3 + 1] * ny + nr[i * 3 + 2] * nz; if (d < FRONT_FULL) { const t = (d + 0.1) / (FRONT_FULL + 0.1); face = t * t * (3 - 2 * t); } }
+      fall[k] = lut(FL, Math.sqrt(d2) / r) * face;
     }
     m.gCount = c;
     return c;
@@ -3856,6 +3940,7 @@ function applyBrush(tool, c, n, r, s, sign, dab = {}) {
   // a square tip reaches into the corners of its square, √2 times the radius
   const count = gather(c.x, c.y, c.z, square ? r * 1.4143 : r, n.x, n.y, n.z, front);
   if (!count) return;
+  if (!m.dyn) bvhPending.push(c.x, c.y, c.z, square ? r * 1.4143 : r);   // (what follows may move points in here)
   const P = m.pos, NR = m.nrm, MK = m.mask, CL = m.col, G = m.gIdx, F = m.gFall;
   // area normal / centre
   let ax = 0, ay = 0, az = 0, px = 0, py = 0, pz = 0, wsum = 0;
@@ -4841,6 +4926,11 @@ function rustElastic(g, groups, nSub, f, mainF, e0) {
   g.cur.set(PAR[0], PAR[1], PAR[2]); g.pulled = PAR[16];
   return true;
 }
+// a frame's work on the stroke: the tree made current, the queued pen moves, then the normals and the upload
+function strokeFrame() {
+  const t0 = performance.now(); refitBVH(); dynSplitsLeft = DYN_FRAME_SPLITS; dynCollapsesLeft = DYN_FRAME_COLLAPSES; processStroke(); flushFrame();
+  if (stroke) stroke.slow = Math.max(stroke.slow || 0, performance.now() - t0);
+}
 function processStroke() {
   if (!stroke) return;
   const q = stroke.queue; if (!q.length) return;
@@ -5225,7 +5315,9 @@ function dab(x, y, p, o = {}) {
     const R = (o.single && stroke.lastStamp ? Math.max(r, stroke.lastStamp.r) : r) * (b.tip === 'square' ? 1.42 : 1);
     const centres = [hit.point, ...copies.map((c) => c.p)];
     if (o.single && stroke.lastStamp) centres.push(...stroke.lastStamp.centres);
-    refitAround(centres, R);
+    // (a mirrored copy's gather already refit where the main dab moved points: only what is still pending —
+    // the last copy's sphere — is left, unless a DragRect / DragDot stamp also left its last place)
+    if (o.single || !fastRefitOk(geo.boundsTree)) refitAround(centres, R); else refitPending();
     if (o.single) stroke.lastStamp = { centres: centres.slice(0, copies.length + 1).map((c) => c.clone()), r };
     frame_.bvhKept = true;
   }
@@ -5372,10 +5464,11 @@ function healVerts(list, count, dry = false) {
       if (!folded) {
         // the ring's size: how far the neighbours are from their own middle
         let rs = 0;
-        if (dyn) { const L = m.vfA[v]; for (let j = 0; j < L.length; j++) { const t = L[j] * 3, q = (I[t] === v ? I[t + 1] : I[t + 1] === v ? I[t + 2] : I[t]) * 3; rs += Math.hypot(P[q] - cx, P[q + 1] - cy, P[q + 2] - cz); } }
-        else for (let j = m.vvOff[v]; j < m.vvOff[v + 1]; j++) { const q = m.vv[j] * 3; rs += Math.hypot(P[q] - cx, P[q + 1] - cy, P[q + 2] - cz); }
+        const len = (x, y, z) => Math.sqrt(x * x + y * y + z * z);   // (not Math.hypot: the same here, many times faster)
+        if (dyn) { const L = m.vfA[v]; for (let j = 0; j < L.length; j++) { const t = L[j] * 3, q = (I[t] === v ? I[t + 1] : I[t + 1] === v ? I[t + 2] : I[t]) * 3; rs += len(P[q] - cx, P[q + 1] - cy, P[q + 2] - cz); } }
+        else for (let j = m.vvOff[v]; j < m.vvOff[v + 1]; j++) { const q = m.vv[j] * 3; rs += len(P[q] - cx, P[q + 1] - cy, P[q + 2] - cz); }
         rs /= c;
-        if (!(Math.hypot(P[o] - cx, P[o + 1] - cy, P[o + 2] - cz) > rs * 2.2)) continue;
+        if (!(len(P[o] - cx, P[o + 1] - cy, P[o + 2] - cz) > rs * 2.2)) continue;
       }
       bad.push(v); to.push(cx, cy, cz);
     }
@@ -5396,7 +5489,11 @@ function healVerts(list, count, dry = false) {
 function healAround() {
   if (!S.heal || !stroke) return 0;
   const near = mesh.nTouched.slice();
-  return healVerts(near, near.length);
+  // (the healer may move the ring just outside the brush: the tree is refit over its old and new places)
+  const box = !mesh.dyn && geo && geo.boundsTree ? growBox(newBox(), near, near.length) : null;
+  const n = healVerts(near, near.length);
+  if (n && box) refitBox(growBox(box, near, near.length));
+  return n;
 }
 // once more over everything the stroke moved, when it ends: what a later frame folded again
 function healStroke() {
@@ -5412,18 +5509,21 @@ function healStroke() {
 function resetFrame() {
   frame_.count = 0; frame_.minV = Infinity; frame_.maxV = -1;
   frame_.positions = frame_.colors = frame_.masks = frame_.bvhKept = false;
+  const B = frame_.box; B[0] = B[1] = B[2] = Infinity; B[3] = B[4] = B[5] = -Infinity;
   frame_.tag++;
 }
 function flushFrame() {
   if (mesh.dyn) { flushDyn(); return; }
   if (!frame_.count) return;
   const m = mesh;
-  if (frame_.positions && thickOf(m)) thickClamp(m.frList, frame_.count);
+  if (frame_.positions && thickOf(m)) { const box = geo && geo.boundsTree ? growBox(newBox(), m.frList, frame_.count) : null; thickClamp(m.frList, frame_.count); if (box) refitBox(growBox(box, m.frList, frame_.count)); }
   if (frame_.positions) {
     m.updateNormals(m.frList, frame_.count);          // neighbours' normals change as well
     if (healAround()) m.updateNormals(m.frList, frame_.count);
     uploadVerts(['position', 'normal'], m.nTouched, m.nTouched.length);
-    if (!frame_.bvhKept) bvhDirty = true;              // grab / snake: refit the whole tree next frame
+    // grab / snake / pose…: the tree refit where the frame moved points (their old and new places), not all of
+    // it next frame — unless it is out of date elsewhere already, or has no fast refit
+    if (!frame_.bvhKept) { if (!bvhDirty && geo && geo.boundsTree && fastRefitOk(geo.boundsTree)) refitBox(growBox(frame_.box, m.frList, frame_.count)); else bvhDirty = true; }
   }
   if (frame_.colors) uploadVerts(['aColor'], m.frList, frame_.count);
   if (frame_.masks) uploadVerts(['aMask'], m.frList, frame_.count);
@@ -5873,7 +5973,7 @@ function updateHover() {
 /* ---------- frame loop ---------- */
 function frame() {
   renderQueued = false;
-  if (stroke) { const t0 = performance.now(); refitBVH(); dynSplitsLeft = DYN_FRAME_SPLITS; dynCollapsesLeft = DYN_FRAME_COLLAPSES; processStroke(); flushFrame(); if (stroke) stroke.slow = Math.max(stroke.slow || 0, performance.now() - t0); }
+  if (stroke) strokeFrame();
   else updateHover();
   if (S.smoothView || smoothViewObj) smoothViewUpdate();
   renderer.render(scene, camera);
@@ -11745,5 +11845,5 @@ loadAutosave().then((d) => {
     toast('Продължавате последния модел. „Нов“ започва отначало.');
   }
 });
-window.__glina = { bvhRefit, tiltNormal, set penTiltNow(v) { penTilt = v; }, get journal() { return journal; }, journalFile, logEv, gatherConnected, arrayDrag, foldPanel, arraySize, tposeStart, tposeApply, get TP() { return TP; }, setThick, thickOf, get rustMR() { return rustMR; }, set rustMR(v) { rustMR = v; }, mrEncode, mrDecode, mrLower, mrFrames, setWheel, camHist, camHistGo, get wheelOp() { return wheelOp; }, frameView, arrayMatrices, arrayPreview, get arrPrev() { return arrPrev; }, resetPanels, applySecLayout, get rustDyn() { return rustDyn; }, set rustDyn(v) { rustDyn = v; }, get mrPending() { return mrPending; }, openPatterns, closePatterns, selectPattern, patternAlongCurve, armPatternCurve, beginStroke, processStroke, endStroke, get rustBrushes() { return rustBrushes; }, set rustBrushes(v) { rustBrushes = v; }, openBrushPanel, closeBrushPanel, openPalette, closePalette, setDrawerTab, railIds, microPoly, topoAdd, topoBuild, topoMake, get topoLines() { return topoLines; }, set topoLines(v) { topoLines = v; }, shadowAdd, shadowMake, get shadows() { return shadows; }, set shadows(v) { shadows = v; }, earClip, shadowPrism, viewAxis, bendBuild, vdmCapture, vdmReset, get vdmField() { return vdmField; }, set vdmField(v) { vdmField = v; }, vdmDefault, snakeAlongCurve, quadRemesh, quadRemeshArrays, surfaceStats, get coreSync() { return coreSync; }, set subdivCore(v) { subdivCore = v; }, polyTris, studioPNG, setCustomMatcap, dropCustomMatcap, get customMatcap() { return customMatcap; }, matcapTextures, material, get gmesh() { return gmesh; }, renderer, makeCube, polishFeatures, sliceGroups, makeGear, makeTube, makeRing, revolve, meshToAxis, straighten, transformTools, gizmoTools, eigenSym3, subdivideArrays, slimeBridge, nanoMesh, maskIslands, texturedFiles, zipMany, levelArrays, zmBuild, quadsOf, exportSTL, renderPrintInfo, decimate, decimateArrays, printScale, projectBytes, saveProject, openProject, packValue, unpackValue, panelLoops, balloonTool, shellFrom, refOpen, refState, refColourAt, refLayout, smoothViewUpdate, get smoothViewObj() { return smoothViewObj; }, recallFrom, makeFibers, fiberArrays, projectAll, storeMorph, switchMorph, dropMorph, morphOf, fillColour, cavityColour, zsOpen, zsClose, zsSkin, get zs() { return zs; }, xtract, latticeLive, latticeScreen, get lattice() { return lattice; }, surfaceContrast, snapshotPNG, maskHidden, startCloth, stopCloth, get clothRun() { return clothRun; }, hideSelection, hideGroup, showAll, invertVisibility, hideMasked, deleteHidden, hiddenCount, setHiddenUndoable, deform, makeArray, arrayArrays, setGizmoMode, get gizmoPin() { return gizmoPin; }, set gizmoPin(v) { gizmoPin = v; }, exportOBJ, scheduleAutosave, get TOOLS() { return TOOLS; }, get curTool() { return curTool; }, activateTool, addTool, appendPrimitive, duplicateTool, deleteTool, moveTool, mergeDown, splitGroups, extractTool, extractShell, makeBoolean, newScene, gizmoHandle, gizmoScreen, get solo() { return solo; }, set solo(v) { solo = v; renderOthers(); }, toolArrays, voxelCombine, voxelRemesh, coreStart, get working() { return working; }, sliceByPlane, mirrorWeldArrays, mirrorWeld, mirrorFlip, applyNoise, snapView, setOrtho, historyJump, polyframe, get cam() { return cam; }, trimByPlane, applyCut, tubeArrays, immShape, hasOpenEdges, get curve() { return liveCurve(); }, dropCurve, get immFile() { return immFile; }, set immFile(v) { immFile = v; }, get LAYERS() { return LAYERS; }, get recLayer() { return recLayer; }, addLayer, deleteLayer, toggleLayer, recordLayer, setLayerStrength, bakeLayers, groupOp, maskAllBut, groupNear, get mesh() { return mesh; }, get stroke() { return stroke; }, get gesture() { return gesture; }, get nav() { return nav; }, get MR() { return MR; }, syncSym, get SYM() { return SYM; }, setLevel, divide, deleteLower, deleteHigher, camera, orbit, pick, selectTool, brush, brushById, maskOp, remesh, undo, redo, subdivide, setDyntopo, floodDetail, S, get undoStack() { return undoStack; } };
+window.__glina = { strokeFrame, gather, bvhRefit, tiltNormal, set penTiltNow(v) { penTilt = v; }, get journal() { return journal; }, journalFile, logEv, gatherConnected, arrayDrag, foldPanel, arraySize, tposeStart, tposeApply, get TP() { return TP; }, setThick, thickOf, get rustMR() { return rustMR; }, set rustMR(v) { rustMR = v; }, mrEncode, mrDecode, mrLower, mrFrames, setWheel, camHist, camHistGo, get wheelOp() { return wheelOp; }, frameView, arrayMatrices, arrayPreview, get arrPrev() { return arrPrev; }, resetPanels, applySecLayout, get rustDyn() { return rustDyn; }, set rustDyn(v) { rustDyn = v; }, get mrPending() { return mrPending; }, openPatterns, closePatterns, selectPattern, patternAlongCurve, armPatternCurve, beginStroke, processStroke, endStroke, get rustBrushes() { return rustBrushes; }, set rustBrushes(v) { rustBrushes = v; }, openBrushPanel, closeBrushPanel, openPalette, closePalette, setDrawerTab, railIds, microPoly, topoAdd, topoBuild, topoMake, get topoLines() { return topoLines; }, set topoLines(v) { topoLines = v; }, shadowAdd, shadowMake, get shadows() { return shadows; }, set shadows(v) { shadows = v; }, earClip, shadowPrism, viewAxis, bendBuild, vdmCapture, vdmReset, get vdmField() { return vdmField; }, set vdmField(v) { vdmField = v; }, vdmDefault, snakeAlongCurve, quadRemesh, quadRemeshArrays, surfaceStats, get coreSync() { return coreSync; }, set subdivCore(v) { subdivCore = v; }, polyTris, studioPNG, setCustomMatcap, dropCustomMatcap, get customMatcap() { return customMatcap; }, matcapTextures, material, get gmesh() { return gmesh; }, renderer, makeCube, polishFeatures, sliceGroups, makeGear, makeTube, makeRing, revolve, meshToAxis, straighten, transformTools, gizmoTools, eigenSym3, subdivideArrays, slimeBridge, nanoMesh, maskIslands, texturedFiles, zipMany, levelArrays, zmBuild, quadsOf, exportSTL, renderPrintInfo, decimate, decimateArrays, printScale, projectBytes, saveProject, openProject, packValue, unpackValue, panelLoops, balloonTool, shellFrom, refOpen, refState, refColourAt, refLayout, smoothViewUpdate, get smoothViewObj() { return smoothViewObj; }, recallFrom, makeFibers, fiberArrays, projectAll, storeMorph, switchMorph, dropMorph, morphOf, fillColour, cavityColour, zsOpen, zsClose, zsSkin, get zs() { return zs; }, xtract, latticeLive, latticeScreen, get lattice() { return lattice; }, surfaceContrast, snapshotPNG, maskHidden, startCloth, stopCloth, get clothRun() { return clothRun; }, hideSelection, hideGroup, showAll, invertVisibility, hideMasked, deleteHidden, hiddenCount, setHiddenUndoable, deform, makeArray, arrayArrays, setGizmoMode, get gizmoPin() { return gizmoPin; }, set gizmoPin(v) { gizmoPin = v; }, exportOBJ, scheduleAutosave, get TOOLS() { return TOOLS; }, get curTool() { return curTool; }, activateTool, addTool, appendPrimitive, duplicateTool, deleteTool, moveTool, mergeDown, splitGroups, extractTool, extractShell, makeBoolean, newScene, gizmoHandle, gizmoScreen, get solo() { return solo; }, set solo(v) { solo = v; renderOthers(); }, toolArrays, voxelCombine, voxelRemesh, coreStart, get working() { return working; }, sliceByPlane, mirrorWeldArrays, mirrorWeld, mirrorFlip, applyNoise, snapView, setOrtho, historyJump, polyframe, get cam() { return cam; }, trimByPlane, applyCut, tubeArrays, immShape, hasOpenEdges, get curve() { return liveCurve(); }, dropCurve, get immFile() { return immFile; }, set immFile(v) { immFile = v; }, get LAYERS() { return LAYERS; }, get recLayer() { return recLayer; }, addLayer, deleteLayer, toggleLayer, recordLayer, setLayerStrength, bakeLayers, groupOp, maskAllBut, groupNear, get mesh() { return mesh; }, get stroke() { return stroke; }, get gesture() { return gesture; }, get nav() { return nav; }, get MR() { return MR; }, syncSym, get SYM() { return SYM; }, setLevel, divide, deleteLower, deleteHigher, camera, orbit, pick, selectTool, brush, brushById, maskOp, remesh, undo, redo, subdivide, setDyntopo, floodDetail, S, get undoStack() { return undoStack; } };
 </script>
